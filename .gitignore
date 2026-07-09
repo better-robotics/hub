@@ -1,0 +1,27 @@
+# ---- pi (Rust) ----
+pi/target/
+# Cargo.lock is committed — binary crate, reproducible builds.
+pi/mosquitto-passwd.example          # broker demo output — salted, but a credential file
+# CI stages these into pi-gen files/ at build time — not source:
+pi/image/stage-hub/00-hub/files/hubd
+pi/image/stage-hub/00-hub/files/provisiond
+pi/image/stage-hub/00-hub/files/hubd.service
+pi/image/stage-hub/00-hub/files/provisiond.service
+pi/image/stage-hub/00-hub/files/usb-gadget.service
+pi/image/stage-hub/00-hub/files/usb-gadget-setup.sh
+pi/image/stage-hub/00-hub/files/mosquitto.conf
+pi/image/stage-hub/00-hub/files/mosquitto-acl.conf
+
+# ---- esp32 (ESP-IDF) ----
+esp32/build/
+esp32/managed_components/
+esp32/sdkconfig
+esp32/sdkconfig.old
+esp32/dependencies.lock
+esp32/main/wifi_creds.h              # REAL venue Wi-Fi creds — NEVER commit (see wifi_creds.example.h)
+
+# ---- shared / session ----
+__pycache__/
+*.pyc
+mcp-venv/
+scratchpad/

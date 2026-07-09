@@ -1,0 +1,28 @@
+[Unit]
+# Generic Linux unit — runs hubd as the always-on classroom dashboard/HTTP
+# chassis on any systemd host (a Pi is just one). hubd is NOT the MQTT broker:
+# that's Mosquitto, a separate service (see deploy/install.sh + mosquitto.conf).
+# hubd serves the dashboard (:80), /fleet, and the BLE handoff only.
+Description=hub — classroom dashboard/HTTP chassis (broker is Mosquitto)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/hub
+# Dashboard on :80 so the classroom URL is just http://hub.local (avahi/mDNS,
+# hostname `hub`; 10.42.0.1 is the fallback). Code default stays :8000 so
+# unprivileged dev runs (`cargo run --bin hubd`) still bind. hubd holds no
+# MQTT connection, so it needs no broker credentials.
+Environment=HUB_HTTP=0.0.0.0:80
+ExecStart=/opt/hub/hubd
+Restart=always
+RestartSec=2
+# It's an appliance, not a login service — minimal privilege. The one grant:
+# CAP_NET_BIND_SERVICE for :80 (composes fine with DynamicUser).
+DynamicUser=yes
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ReadOnlyPaths=/opt/hub
+
+[Install]
+WantedBy=multi-user.target

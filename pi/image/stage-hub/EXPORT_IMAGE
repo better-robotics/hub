@@ -1,0 +1,3 @@
+# Marks stage-hub as an export stage so pi-gen emits an .img after our
+# customizations (not just the plain Lite image from stage2).
+IMG_SUFFIX=""

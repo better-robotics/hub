@@ -1,0 +1,32 @@
+name: build-hubd
+
+# Builds just the hubd binary (arm64 glibc, forward-compatible with the Pi's
+# Bookworm glibc 2.36) and uploads it as an artifact — the fast redeploy path
+# for a live Pi, skipping the full image bake. The Pi has no toolchain by
+# design; CI is where builds happen. No dbus: hubd is the router + fleet HTTP,
+# BLE lives in provisiond.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04-arm
+    defaults:
+      run:
+        working-directory: pi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: pi
+          key: arm64   # shared with build-image / build-provisiond (same arch, same deps)
+      - name: Build hubd (arm64 glibc)
+        run: cargo build --release --bin hubd
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hubd-arm64
+          path: pi/target/release/hubd
+          # Fast-redeploy artifact, consumed once over serial by
+          # tools/deploy-hubd.sh — no reason to ride the repo's 90-day
+          # default. Matches release-hubd/build-image.
+          retention-days: 1

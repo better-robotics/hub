@@ -1,0 +1,5 @@
+avahi-daemon
+bluez
+network-manager
+mosquitto
+mosquitto-clients

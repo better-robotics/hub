@@ -1,0 +1,20 @@
+[Unit]
+Description=USB composite gadget (ECM + ACM) for recovery access
+# Runs before NetworkManager so usb0 exists for NM to address (10.55.0.1).
+# Independent of hubd/provisiond — the whole point is being reachable when
+# Wi-Fi/BLE/the hub are all down: `ssh pi@10.55.0.1` (ECM) + a serial login
+# at /dev/ttyGS0 (ACM). See deploy/usb-gadget-setup.sh for the UDC-race and
+# FAT32-sync scars.
+After=systemd-modules-load.service
+Before=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/usb-gadget-setup.sh
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=3
+
+[Install]
+WantedBy=multi-user.target

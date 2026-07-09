@@ -1,0 +1,11 @@
+{
+  "request": {
+    "method": "set_led",
+    "on": true,
+    "red": 0,
+    "green": 255,
+    "blue": 0
+  },
+  "response_ok": { "status": "ok" },
+  "response_err": { "status": "error", "message": "invalid_color" }
+}

@@ -1,0 +1,169 @@
+name: build-image
+
+# Builds a flashable Raspberry Pi 4 (arm64) image with hubd + provisiond baked in.
+# Result: flash → set Wi-Fi from a phone over Improv BLE (no app) → the hub is
+# already running. USB-gadget (ssh/serial over USB-C) is the headless recovery
+# channel. No ethernet, no on-device build — install happens here in CI, where
+# the network lives; the offline Pi never installs anything.
+on:
+  workflow_dispatch:        # build on demand
+  push:
+    tags: ['image-v*']      # tagging image-v1 cuts a released .img
+
+permissions:
+  contents: write           # to attach the .img to a Release
+
+jobs:
+  build-image:
+    # Native arm64 runner: pi-gen chroots the arm64 rootfs WITHOUT qemu/binfmt
+    # emulation (the amd64 path failed in preflight, before any stage ran).
+    # 22.04 (not 24.04): its debootstrap + debian-archive-keyring match the
+    # bookworm era — 24.04 bootstrapped a chroot whose apt rejected the Debian
+    # archive keys (NO_PUBKEY) in stage0.
+    runs-on: ubuntu-22.04-arm
+    defaults:
+      run:
+        working-directory: pi
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- cross-build hubd for the Pi (aarch64 glibc = Pi OS Bookworm 64-bit) ---
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: pi
+          # One cache covers the whole ./target: BOTH the musl hubd subdir and
+          # the host-glibc provisiond subdir (incl. bluer deps), plus the cargo
+          # registry. Keyed by arch only — never shared across runner archs.
+          key: arm64
+          cache-on-failure: true     # the pi-gen step fails; still save the rust build
+      # Native arm64 runner: build hubd directly, static (musl) so it's glibc-
+      # version-independent — runs on Pi OS Bookworm (glibc 2.36) regardless of
+      # the runner's newer glibc.
+      - name: Build hubd (static aarch64)
+        run: |
+          sudo apt-get update && sudo apt-get install -y musl-tools
+          rustup target add aarch64-unknown-linux-musl
+          cargo build --release --target aarch64-unknown-linux-musl --bin hubd
+
+      # provisiond links libdbus (BlueZ over D-Bus), so it's a native arm64
+      # glibc binary — NOT musl. The runner is arm64 glibc 2.35; Bookworm is
+      # 2.36, so the binary runs forward-compatibly on the Pi.
+      - name: Build provisiond (arm64 glibc)
+        run: |
+          sudo apt-get install -y libdbus-1-dev pkg-config
+          cargo build --release --bin provisiond --features ble
+
+      # --- stage artifacts the pi-gen custom stage installs into the rootfs ---
+      - name: Stage hub files for pi-gen
+        run: |
+          # files/ holds only gitignored build artifacts now (comitup.conf, its
+          # last tracked member, is gone), so git won't materialize the dir on
+          # checkout — create it before staging.
+          mkdir -p image/stage-hub/00-hub/files
+          cp target/aarch64-unknown-linux-musl/release/hubd image/stage-hub/00-hub/files/hubd
+          cp target/release/provisiond                      image/stage-hub/00-hub/files/provisiond
+          cp deploy/hubd.service                            image/stage-hub/00-hub/files/hubd.service
+          cp deploy/provisiond.service                      image/stage-hub/00-hub/files/provisiond.service
+          cp deploy/usb-gadget.service                      image/stage-hub/00-hub/files/usb-gadget.service
+          cp deploy/usb-gadget-setup.sh                     image/stage-hub/00-hub/files/usb-gadget-setup.sh
+          cp deploy/hub-login-banner.sh                     image/stage-hub/00-hub/files/hub-login-banner.sh
+          # Mosquitto broker config + ACL (passwd is generated in the chroot).
+          cp deploy/mosquitto.conf                          image/stage-hub/00-hub/files/mosquitto.conf
+          cp mosquitto-acl.example.conf                     image/stage-hub/00-hub/files/mosquitto-acl.conf
+
+      # --- bake the image (official RPi-Distro/pi-gen, arm64 branch) ---
+      - name: Build Pi image
+        id: build
+        uses: usimd/pi-gen-action@v1
+        with:
+          # Pinned to the maintained release tag (same build that produced the
+          # OS on the SD card) — modern pi-gen with correct signed-by keyrings,
+          # not the stale `arm64` branch whose apt sources lacked signed-by.
+          pi-gen-version: 2026-06-18-raspios-bookworm-arm64
+          image-name: hub
+          hostname: hub
+          release: bookworm
+          locale: en_US.UTF-8
+          timezone: America/New_York
+          keyboard-keymap: us
+          keyboard-layout: English (US)
+          verbose-output: true            # surface pi-gen's real failure in the log
+          enable-ssh: 1
+          username: pi
+          # key-only login — pubkey baked, no password set
+          password: ''
+          pubkey-only-ssh: 1
+          pubkey-ssh-first-user: >-
+            ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMalS/trWZcu/jbBu42I1rC8MUe5qR8A5Vnk9lloSQfW jonasneves@Jonass-MacBook-Pro.local
+          # Lite base (stage0-2) + our customizations
+          stage-list: stage0 stage1 stage2 ./pi/image/stage-hub
+          compression: xz
+          # Only export the final (stage-hub) image — skip finalizing+compressing
+          # the throwaway stage2 Lite image we never publish. Halves the export tail.
+          export-last-stage-only: true
+          # Cache the bootstrapped work/ (debootstrap + apt across stage0-2) to the
+          # Actions cache: the expensive, deterministic half of the bake. The action
+          # owns the chroot-safe tar round-trip, so this is the maintained form of
+          # work-dir caching — keyed on the build inputs, so a config change busts it.
+          enable-pigen-cache: true
+
+      - name: Verify customizations are in the image
+        run: |
+          set -euo pipefail
+          IMGXZ="${{ steps.build.outputs.image-path }}"
+          echo "image: $IMGXZ"
+          case "$IMGXZ" in
+            *.xz) xz -dkf "$IMGXZ"; IMG="${IMGXZ%.xz}" ;;
+            *)    IMG="$IMGXZ" ;;
+          esac
+          LOOP=$(sudo losetup -fP --show "$IMG")
+          sudo mkdir -p /mnt/hub
+          sudo mount "${LOOP}p2" /mnt/hub
+          echo "=== /opt/hub ===" && sudo ls -l /mnt/hub/opt/hub
+          sudo test -f /mnt/hub/opt/hub/hubd                                          # router binary baked
+          sudo test -f /mnt/hub/opt/hub/provisiond                                    # BLE provisioner baked
+          sudo test -f /mnt/hub/usr/local/bin/usb-gadget-setup.sh                     # recovery channel
+          sudo test -f /mnt/hub/etc/NetworkManager/system-connections/usb-gadget.nmconnection
+          sudo chroot /mnt/hub dpkg-query -W bluez network-manager                    # BLE + NM present
+          sudo test -L /mnt/hub/etc/systemd/system/multi-user.target.wants/hubd.service        # hubd enabled
+          sudo test -L /mnt/hub/etc/systemd/system/multi-user.target.wants/provisiond.service  # provisiond enabled
+          sudo test -L /mnt/hub/etc/systemd/system/multi-user.target.wants/usb-gadget.service  # gadget enabled
+          ! sudo chroot /mnt/hub dpkg-query -W comitup 2>/dev/null                    # comitup gone
+          echo "hubd:" && sudo file /mnt/hub/opt/hub/hubd                             # static musl aarch64
+          echo "provisiond:" && sudo file /mnt/hub/opt/hub/provisiond                 # dynamic glibc aarch64
+          # config.txt/cmdline.txt live on the FAT boot partition (p1), not the
+          # rootfs (p2): on a running Pi /boot/firmware is a mount point, but in
+          # the raw image these files are on p1, so check the dwc2 overlay there.
+          sudo mkdir -p /mnt/boot
+          sudo mount "${LOOP}p1" /mnt/boot
+          sudo grep -q 'dtoverlay=dwc2,dr_mode=peripheral' /mnt/boot/config.txt        # gadget overlay, PERIPHERAL mode (host-mode stock line must not satisfy this)
+          sudo grep -q 'modules-load=dwc2' /mnt/boot/cmdline.txt                      # gadget modules (boot part)
+          sudo umount /mnt/boot
+          sudo umount /mnt/hub && sudo losetup -d "$LOOP"
+          echo "✓ image: hubd + provisiond + usb-gadget recovery, comitup removed"
+
+      - name: Dump pi-gen logs on failure
+        if: failure()
+        run: |
+          echo "===== pi-gen build.log (tail) ====="
+          sudo find pi-gen -name build.log -exec tail -n 120 {} \; 2>/dev/null || true
+          echo "===== stage log files ====="
+          sudo find pi-gen/work -name '*.log' 2>/dev/null | while read -r f; do
+            echo "--- $f ---"; sudo tail -n 40 "$f"
+          done || true
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hub-image
+          path: ${{ steps.build.outputs.image-path }}
+          # The released .img lives on the Release; this copy exists only so a
+          # workflow_dispatch run (no Release) is downloadable the same day.
+          # ~470 MB against the 0.5 GB org quota — never let it accumulate.
+          retention-days: 1
+
+      - name: Attach image to Release
+        if: startsWith(github.ref, 'refs/tags/image-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.build.outputs.image-path }}

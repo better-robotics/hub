@@ -1,0 +1,35 @@
+name: build-provisiond
+
+# Builds just the provisiond binary (arm64 glibc, same target as build-image's
+# provisiond step) and uploads it as an artifact — the fast redeploy path for a
+# live Pi, skipping the full image bake. The Pi has no toolchain by design;
+# CI is where builds happen.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04-arm
+    defaults:
+      run:
+        working-directory: pi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: pi
+          key: arm64   # shared with build-image (same arch, same deps)
+      # Native arm64 glibc: the runner's glibc 2.35 < Bookworm's 2.36, so the
+      # binary runs forward-compatibly on the Pi. libdbus for bluer.
+      - name: Build provisiond (arm64 glibc)
+        run: |
+          sudo apt-get update && sudo apt-get install -y libdbus-1-dev pkg-config
+          cargo build --release --bin provisiond --features ble
+      - uses: actions/upload-artifact@v4
+        with:
+          name: provisiond-arm64
+          path: pi/target/release/provisiond
+          # Fast-redeploy artifact, consumed once over serial by
+          # tools/deploy-hubd.sh — no reason to ride the repo's 90-day
+          # default. Matches release-hubd/build-image.
+          retention-days: 1

@@ -1,0 +1,9 @@
+{
+  "timestamp": 1738171200.125,
+  "accel_x": 0.02,
+  "accel_y": -0.01,
+  "accel_z": 9.81,
+  "gyro_x": 0.1,
+  "gyro_y": -0.2,
+  "gyro_z": 0.05
+}

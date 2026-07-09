@@ -172,6 +172,17 @@
       padding: 0.5rem 1rem; border-radius: var(--radius); border: none;
       color: var(--accent-ink); background: var(--accent);
     }
+    #assign-pins-wrap { flex-basis: 100%; margin: 0.25rem 0; }
+    #assign-pins-wrap summary { cursor: pointer; color: var(--ink-muted); font-size: 0.85rem; }
+    .pins-help { color: var(--ink-muted); font-size: 0.78rem; margin: 0.5rem 0; }
+    .pins-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+    .pins-grid label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.72rem; color: var(--ink-muted); }
+    .pins-grid input {
+      font: inherit; background: var(--surface); color: var(--ink);
+      border: 1px solid var(--border-default); border-radius: var(--radius);
+      padding: 0.4rem 0.5rem; min-height: 2.2rem; width: 100%;
+    }
+    .pins-grid input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
     #assign-status { flex-basis: 100%; font-size: 0.85rem; margin-top: 0.25rem; }
     #assign-status.assign-ok { color: var(--success); }
     #assign-status.assign-err { color: var(--danger-text); }
@@ -229,6 +240,18 @@
       <input id="assign-team" placeholder="team (e.g. team3)" autocomplete="off">
       <input id="assign-pass" type="password" placeholder="team password" autocomplete="off">
       <input id="assign-name" placeholder="name — optional" autocomplete="off">
+      <details id="assign-pins-wrap">
+        <summary>Motor pins — only for a custom-wired chassis</summary>
+        <p class="pins-help">Leave blank to keep the rover's current wiring. GPIO numbers, 0–33.</p>
+        <div class="pins-grid">
+          <label>ENA<input id="pin-ena" type="number" min="0" max="33" placeholder="25"></label>
+          <label>IN1<input id="pin-in1" type="number" min="0" max="33" placeholder="26"></label>
+          <label>IN2<input id="pin-in2" type="number" min="0" max="33" placeholder="27"></label>
+          <label>ENB<input id="pin-enb" type="number" min="0" max="33" placeholder="14"></label>
+          <label>IN3<input id="pin-in3" type="number" min="0" max="33" placeholder="12"></label>
+          <label>IN4<input id="pin-in4" type="number" min="0" max="33" placeholder="13"></label>
+        </div>
+      </details>
       <button id="assign-btn">Assign</button>
       <p id="assign-status"></p>
     </div>
@@ -500,6 +523,14 @@ safe-buffer/index.js:
       const cfg = { target: assignTarget.board, team };
       if (pass) cfg.pass = pass;
       if (name) cfg.name = name;
+      // Motor pins: only the fields actually filled (the firmware seeds the rest
+      // from the rover's current wiring). Out-of-range is refused rover-side.
+      const pins = {};
+      for (const k of ["ena", "in1", "in2", "enb", "in3", "in4"]) {
+        const v = document.getElementById("pin-" + k).value.trim();
+        if (v !== "") pins[k] = Number(v);
+      }
+      if (Object.keys(pins).length) cfg.pins = pins;
       // Publish on the board's CURRENT team topic — that's the subtree it's
       // subscribed to — targeted by board id so only that rover acts. Non-
       // retained (QoS 1): the rover is online (its telemetry is why it's listed),
@@ -508,9 +539,11 @@ safe-buffer/index.js:
       const topic = `robots/${assignTarget.team}/cmd/config`;
       driveClient.publish(topic, JSON.stringify(cfg), { qos: 1, retain: false });
       logLine("out", `${topic} ${JSON.stringify(cfg)}`);
-      status.textContent = `Sent — ${assignTarget.board} → ${team}. It reboots and reappears under ${team} in a few seconds.`;
+      status.textContent = `Sent — ${assignTarget.board} → ${team}${cfg.pins ? " (+ motor pins)" : ""}. It reboots and reappears under ${team} in a few seconds.`;
       status.className = "assign-ok";
-      ["assign-team", "assign-pass", "assign-name"].forEach(i => document.getElementById(i).value = "");
+      ["assign-team", "assign-pass", "assign-name",
+       "pin-ena", "pin-in1", "pin-in2", "pin-enb", "pin-in3", "pin-in4"]
+        .forEach(i => document.getElementById(i).value = "");
     });
 
     function connect(username, password) {

@@ -21,9 +21,9 @@ deleted rather than reimplemented — there was nothing to reimplement once the
 relay itself was removed.
 
 ## Source of truth
-- **Contract:** `protocol/` here is canonical (flipped 2026-07-08, hub#1) —
-  MQTT is the target implementation; hub-zenoh's copy is now the synced
-  evaluation-baseline reference (see `protocol/README.md`).
+- **Contract:** `../CONTRACT.md` + `../envelopes/` (monorepo top level) is
+  canonical (flipped 2026-07-08, hub#1) — MQTT is the target implementation;
+  hub-zenoh's copy is now the synced evaluation-baseline reference.
 - **Broker: Mosquitto, not embedded `rumqttd`.** Decided after concrete
   research, not familiarity: `rumqttd` runs MQTT v4 and v5 on **fully separate
   queues** by default (a v4 client and a v5 client never see each other's
@@ -169,7 +169,7 @@ windows — any hit means alive.
   identity-in-the-key convention. The `rpc_set_led.json` request carries no
   `topic` field; MQTT5's `response_topic`/`correlation_data` properties (on a
   fixed `robots/<id>/led/reply` pattern, not a fully dynamic topic — see
-  `protocol/README.md`) keep that holding without the queryable primitive
+  `../CONTRACT.md`) keep that holding without the queryable primitive
   Zenoh has.
 - **No relay, ever, for MQTT-native jobs.** Before adding a Rust call site
   that touches MQTT pub/sub, check whether Mosquitto's own ACL/broker

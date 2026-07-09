@@ -23,8 +23,8 @@ silently pin different protocol SHAs (the exact drift this structure prevents).
 
 ## Where impl-specific context lives
 - `pi/CLAUDE.md` — the deep Pi context (broker deploy, AP/NAT, BLE scars, ACL).
-  **Predates the monorepo**: some path refs (`protocol/`, `tools/mcp-bridge`)
-  are now `../CONTRACT.md`, `../envelopes/`, `../mcp-bridge/` — fix on touch.
+  Contract refs point at the monorepo top level (`../CONTRACT.md`,
+  `../envelopes/`); remaining `protocol/` mentions there are hub-zenoh's own.
 - `esp32/README.md` — the ESP32 firmware (AP+STA+NAT + on-chip broker + WS bridge).
 
 ## Building
@@ -34,11 +34,13 @@ silently pin different protocol SHAs (the exact drift this structure prevents).
 - Both build-verified in this layout 2026-07-08.
 
 ## Not in this repo (deliberately)
-`hub-zenoh` (Zenoh evaluation baseline, receding — archive when the bake-off is
-formally called), `robot` (rover firmware), `workbench` (browser dev env). Different
-projects, not implementations of this hub.
+`hub-zenoh` (Zenoh evaluation baseline — **archived 2026-07-09**, MQTT won the
+bake-off; kept read-only as the baseline record), `robot` (rover firmware),
+`workbench` (browser dev env). Different projects, not implementations of this hub.
 
 ## CI
 `.github/workflows/` are rehomed for the monorepo (`working-directory: pi`,
-`pi/`-prefixed artifact paths). **Not yet verified against a real Actions run** —
-that's the one thing that couldn't be checked locally at migration time.
+`pi/`-prefixed artifact paths). `broker-tests` (on push) and `build-hubd` (via
+dispatch) both **verified green** 2026-07-09 — the rehome holds. The other
+`build-*`/`release-*` workflows are `workflow_dispatch` (or tag-gated for
+`build-image`); trigger on demand with `gh workflow run <name>.yml -R better-robotics/hub`.

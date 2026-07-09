@@ -37,34 +37,38 @@ pip install -r requirements.txt          # or: uv pip install -r requirements.tx
 HUB_HOST=hub.local HUB_PASS=<professor-pw> python hub_mcp.py
 ```
 
-Environment knobs (defaults match `../../mosquitto.example.conf`):
+Environment knobs (defaults match `../pi/mosquitto.example.conf`):
 
 | var | default | note |
 |-----|---------|------|
-| `HUB_HOST` | `localhost` | broker host |
+| `HUB_HOST` | `localhost` | broker host (`hub.local` reaches either hub) |
 | `HUB_PORT` | `1883` | raw MQTT — **not** the `:9001` WebSocket port |
 | `HUB_USER` | `professor` | ACL identity with fleet write |
 | `HUB_PASS` | *(empty)* | password from your `mosquitto-passwd` |
 
 ## Register with Claude Code
 
-```sh
-claude mcp add hub-fleet -- python /abs/path/to/tools/mcp-bridge/hub_mcp.py
-```
-
-…or drop a `.mcp.json` in your working directory:
+This repo ships a committed **`.mcp.json`** at its root, so opening `hub/` in
+Claude Code offers the `hub-fleet` server automatically (you approve it once).
+It resolves this script by project-relative path and pulls the broker password
+from your environment — never a committed secret:
 
 ```json
 {
   "mcpServers": {
     "hub-fleet": {
-      "command": "python",
-      "args": ["/abs/path/to/tools/mcp-bridge/hub_mcp.py"],
-      "env": { "HUB_HOST": "hub.local", "HUB_PASS": "<professor-pw>" }
+      "command": "python3",
+      "args": ["${CLAUDE_PROJECT_DIR}/mcp-bridge/hub_mcp.py"],
+      "env": { "HUB_HOST": "${HUB_HOST:-hub.local}", "HUB_PASS": "${HUB_PASS}" }
     }
   }
 }
 ```
+
+So: `pip install -r mcp-bridge/requirements.txt`, `export HUB_PASS=<professor-pw>`,
+open the repo, approve `hub-fleet`. (`${CLAUDE_PROJECT_DIR}` makes the path work
+regardless of where you launched Claude; `${HUB_PASS}` stays in your shell, out
+of git.)
 
 Then, in a Claude Code session:
 

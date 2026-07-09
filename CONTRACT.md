@@ -27,3 +27,40 @@ on the rover side) is still hub#1 phase 3.
 
 Language bindings (which mirror these envelopes): Rust in `pi/src/lib.rs`; the
 ESP32 firmware hardcodes the same topics in C.
+
+## Discovery & isolation — how a client reaches *either* hub
+
+The rover (`better-robotics/robot`) is a raw-TCP MQTT client, so the two hosts
+(`pi/`, `esp32/`) are **the same broker to it** — same `:1883`, same topics,
+same auth. One firmware runs against both. The only host-specific concern is
+*finding* the broker, and it resolves to two host-agnostic rules:
+
+- **Discovery = the DHCP gateway.** On any hub AP the gateway *is* the hub, which
+  runs the broker → connect to **`<gateway>:1883`**. `hub.local` (mDNS, both hubs
+  set hostname `hub`) is the named fallback. **Never a hardcoded IP** — the Pi AP
+  defaults to `10.42.0.1` (NetworkManager `shared`), the ESP32 SoftAP to
+  `192.168.4.1` (ESP-IDF default); both are overridable, but gateway-discovery
+  makes the value irrelevant, so we don't pin it (and `10.0.0.x` specifically
+  would risk colliding with the STA uplink's subnet).
+- **SSID = `hub-<suffix>`** (suffix from the AP MAC, e.g. `hub-a3f2`). The rover
+  scan-joins the strongest open `hub-*`. Single-hub rooms need zero Wi-Fi
+  provisioning; multi-hub rooms bind the team's suffix via BLE Improv.
+
+**Isolation unit = `robots/<id>`** — a team owns its subtree, and that is the
+whole ACL:
+
+| identity | scope | why |
+|----------|-------|-----|
+| team | `robots/<id>/#` rw | drive/read only your own rover |
+| professor | `robots/#` rw | oversight + drive any |
+| anonymous | `robots/#` read | the read-only fleet view (dashboard) |
+
+Directional per-channel rules (imu robot→device, pwm device→robot) are dropped:
+they guard a team spoofing *its own* rover's telemetry — not a classroom threat.
+Enforcement differs by host, ownership model does not: the **Pi** enforces this
+per-topic ACL; the **ESP32** has no per-topic ACL (connect-only `connect_cb`), so
+there isolation is team-level connect-auth + rover convention (each rover only
+subscribes its own id). Per-team identity is real on both because the rover
+authenticates with **username/password** over `esp-mqtt` — the capability
+`zenoh-pico` lacked (`robot/CLAUDE.md` usrpwd scar), and the concrete reason the
+MQTT transport, not Zenoh, is what the rover ships on.

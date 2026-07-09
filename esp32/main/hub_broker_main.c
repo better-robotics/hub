@@ -1,9 +1,10 @@
 /*
- * ESP32-as-hub feasibility test (better-robotics/hub-mqtt#2).
- *
- * Now the full local-hub slice: AP+STA+NAPT + Mosquitto broker + per-team
- * connect-auth, on one plain ESP32.
- *   - AP  (brobo-hub-test)  : students/rovers/laptop join here.
+ * ESP32-as-hub — the full local-hub slice on one plain ESP32:
+ * AP+STA+NAPT + Mosquitto broker + per-team connect-auth. (Feasibility
+ * validated on hardware 2026-07-09; the exploration issue is closed.)
+ *   - AP  (hub-<suffix>)    : students/rovers/laptop join here. `hub-` prefix
+ *                             matches the Pi's SSID convention so a rover's
+ *                             `hub-*` scan finds either hub (CONTRACT.md).
  *   - STA (venue Wi-Fi)     : uplink for internet.
  *   - NAPT                  : forwards AP-side traffic out the STA leg, so
  *                             joining the AP does NOT cut internet (the thing
@@ -22,6 +23,7 @@
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_mac.h"
 #include "nvs_flash.h"
 #include "mosq_broker.h"
 #include "mdns.h"
@@ -32,7 +34,8 @@
 #include "wifi_creds.h"
 
 /* --- AP: what students/rovers/laptop join (demo creds, safe to commit) --- */
-#define AP_SSID     "brobo-hub-test"
+#define AP_SSID_PREFIX "hub-"          /* + last 2 MAC bytes → hub-a3f2; the
+                                        * `hub-*` convention a rover scans for */
 #define AP_PASS     "brobotics"        /* 8-63 chars → WPA2; "" → open */
 #define AP_CHANNEL  1                  /* overridden to match STA channel in APSTA (single radio) */
 #define AP_MAX_CONN 8                  /* esp32_nat_router's documented ceiling */
@@ -46,9 +49,13 @@ static const char *TAG = "hub-broker";
 static esp_netif_t *ap_netif;
 static esp_netif_t *sta_netif;
 
-/* Per-team session auth. Whole-session accept/reject (no per-topic ACL); that's
- * sufficient under the per-team-broker topology (hub-mqtt#2). Mirrors
- * classroom.example.json5. */
+/* Session auth: whole-session accept/reject, the only gate this broker port
+ * offers (no per-topic ACL). On the ESP32, isolation is therefore connect-auth
+ * + rover convention — each rover subscribes only its own robots/<id> — while
+ * the Pi enforces the same robots/<id> ownership per-topic (CONTRACT.md §
+ * Discovery & isolation). Credentials mirror classroom.example.json5: a team's
+ * rover shares its TEAM identity (robot-id == team), so there is no standalone
+ * rover credential. */
 static int connect_cb(const char *client_id, const char *username,
                       const char *password, int password_len)
 {
@@ -56,13 +63,12 @@ static int connect_cb(const char *client_id, const char *username,
         { "professor", "change-me" },
         { "team1",     "change-me-team1" },
         { "team2",     "change-me-team2" },
-        { "rover",     "rover-secret" },
     };
     const char *cid = client_id ? client_id : "(none)";
     /* DEMO-ONLY: allow anonymous (no username) so the dashboard's credential-
-     * free public fleet view works against this single broker (which has no
-     * per-topic ACL). The real per-team model runs a broker PER team, so the
-     * fleet view authenticates too — there is no anonymous tier there. */
+     * free public fleet view works against this single broker. Per-topic
+     * enforcement of the read-only tier isn't possible here (no ACL); the Pi
+     * hub gives anonymous read-only robots/# for the same view. */
     if (!username) {
         ESP_LOGI(TAG, "accept %s (anonymous, demo read tier)", cid);
         return 0;
@@ -142,13 +148,23 @@ void app_main(void)
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
+    /* SSID = hub-<last 2 MAC bytes>, e.g. hub-a3f2 — unique per hub, shared
+     * `hub-` prefix so a rover's `hub-*` scan finds either hub (CONTRACT.md). */
+    uint8_t apmac[6];
+    esp_read_mac(apmac, ESP_MAC_WIFI_SOFTAP);
+    char ap_ssid[16];
+    int ap_ssid_len = snprintf(ap_ssid, sizeof ap_ssid,
+                               AP_SSID_PREFIX "%02x%02x", apmac[4], apmac[5]);
+
     wifi_config_t ap = {
         .ap = {
-            .ssid = AP_SSID, .ssid_len = strlen(AP_SSID), .channel = AP_CHANNEL,
+            .channel = AP_CHANNEL,
             .password = AP_PASS, .max_connection = AP_MAX_CONN,
             .authmode = WIFI_AUTH_WPA2_PSK,
         },
     };
+    memcpy(ap.ap.ssid, ap_ssid, ap_ssid_len);
+    ap.ap.ssid_len = ap_ssid_len;
     if (strlen(AP_PASS) == 0) {
         ap.ap.authmode = WIFI_AUTH_OPEN;
     }
@@ -161,7 +177,7 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &sta));
     ESP_ERROR_CHECK(esp_wifi_start());
     ESP_LOGI(TAG, "APSTA up: AP '%s' (join this), STA → '%s' (uplink). "
-                  "AP channel follows the venue's (single radio).", AP_SSID, STA_SSID);
+                  "AP channel follows the venue's (single radio).", ap_ssid, STA_SSID);
 
     /* mDNS: advertise hostname "hub" so Apple/Bonjour clients reach the
      * dashboard at http://hub.local/ (matches the Pi's avahi name). Bare

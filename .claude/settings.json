@@ -1,29 +1,4 @@
 {
-  "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "PIDFILE=\"$HOME/.cache/better-robotics-hubd.pid\"\nmkdir -p \"$HOME/.cache\"\n[ -L \"$PIDFILE\" ] && rm -f \"$PIDFILE\"\nif ! curl -sf -m 0.3 http://localhost:8000/fleet 2>/dev/null | jq -e '.robots' >/dev/null 2>&1; then\n  nohup \"${CLAUDE_PROJECT_DIR}/pi/target/release/hubd\" >\"$HOME/.cache/hubd.log\" 2>&1 &\n  echo $! > \"$PIDFILE\"\n  disown\nfi",
-            "timeout": 5,
-            "statusMessage": "Checking hubd..."
-          }
-        ]
-      }
-    ],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "PIDFILE=\"$HOME/.cache/better-robotics-hubd.pid\"\nif [ -f \"$PIDFILE\" ] && [ ! -L \"$PIDFILE\" ]; then\n  pid=$(cat \"$PIDFILE\")\n  if [ -n \"$pid\" ] && [ \"$(ps -p \"$pid\" -o ucomm= 2>/dev/null | tr -d ' ')\" = \"hubd\" ]; then\n    kill \"$pid\"\n  fi\n  rm -f \"$PIDFILE\"\nfi",
-            "timeout": 5
-          }
-        ]
-      }
-    ]
-  },
   "statusLine": {
     "type": "command",
     "command": "${CLAUDE_PROJECT_DIR}/.claude/statusline.sh"

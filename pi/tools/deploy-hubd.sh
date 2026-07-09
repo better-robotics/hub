@@ -12,7 +12,7 @@
 # install + restart on the Pi → sync tools/ to /opt/hub/tools → probe /fleet.
 set -euo pipefail
 
-REPO=better-robotics/hub-mqtt
+REPO=better-robotics/hub   # was hub-mqtt — merged into the monorepo 2026-07-08
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$DIR"
 

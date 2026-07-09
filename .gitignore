@@ -25,3 +25,6 @@ __pycache__/
 *.pyc
 mcp-venv/
 scratchpad/
+
+# personal per-dev Claude settings (statusline, local perms) — never team config
+.claude/settings.local.json

@@ -4,9 +4,7 @@
 # CI stages these into the pi-gen files/ dir at build time — not source.
 # Binaries are built; the units + scripts are copied from deploy/ (canonical).
 image/stage-hub/00-hub/files/hubd
-image/stage-hub/00-hub/files/provisiond
 image/stage-hub/00-hub/files/hubd.service
-image/stage-hub/00-hub/files/provisiond.service
 image/stage-hub/00-hub/files/usb-gadget.service
 image/stage-hub/00-hub/files/usb-gadget-setup.sh
 image/stage-hub/00-hub/files/mosquitto.conf

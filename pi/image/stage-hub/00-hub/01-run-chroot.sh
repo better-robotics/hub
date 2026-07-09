@@ -1,13 +1,10 @@
 #!/bin/bash -e
-# Inside the target rootfs (chroot). bluez + network-manager come from
-# 00-packages; binaries, units, and configs were placed by 00-run.sh — this
-# step only enables them.
+# Inside the target rootfs (chroot). network-manager comes from 00-packages;
+# binaries, units, and configs were placed by 00-run.sh — this step only
+# enables them.
 
 # Wi-Fi regulatory domain — radio stays disabled until this is set.
 raspi-config nonint do_wifi_country US || true
-
-# BlueZ must run for provisiond's GATT/advertising.
-systemctl enable bluetooth || true
 
 # Mosquitto broker: seed PLACEHOLDER creds matching classroom.example.json5
 # (change before a real class: mosquitto_passwd -b /etc/mosquitto/hub-passwd …).
@@ -22,10 +19,9 @@ chown mosquitto:mosquitto /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 chmod 0600 /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 
 # Each independently restartable: usb-gadget (recovery, before NM), serial
-# console on the gadget, BLE provisioner, the dashboard chassis (hubd), and
-# the MQTT broker (Mosquitto).
+# console on the gadget, the dashboard chassis + Wi-Fi setup (hubd), and the
+# MQTT broker (Mosquitto).
 systemctl enable usb-gadget.service
 systemctl enable serial-getty@ttyGS0.service
-systemctl enable provisiond.service
 systemctl enable hubd.service
 systemctl enable mosquitto.service

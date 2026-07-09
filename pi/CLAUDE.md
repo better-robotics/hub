@@ -15,8 +15,8 @@ Rover firmware: [`better-robotics/robot`](https://github.com/better-robotics/rob
 for what's left.** hubd is **not an MQTT client**: Mosquitto is the broker,
 and every MQTT party (rover firmware, the browser dashboard's `mqtt.js`, sim
 clients) talks to it directly, scoped by Mosquitto's own ACL. This repo is a
-fork of hub-zenoh's shared chassis (dashboard, uplink probe, BLE provisioning,
-Pi image build) with the Zenoh-only session/subscribe/publish call sites
+fork of hub-zenoh's shared chassis (dashboard, uplink probe, device-served
+Wi-Fi setup, Pi image build) with the Zenoh-only session/subscribe/publish call sites
 deleted rather than reimplemented — there was nothing to reimplement once the
 relay itself was removed.
 
@@ -38,8 +38,8 @@ relay itself was removed.
   before.
 - **hubd carries no MQTT client library** — not `rumqttc`, not anything.
   Once classroom scoping moved to Mosquitto's broker-native ACL (see below),
-  hubd's remaining jobs (dashboard HTML, uplink probe, locator string, BLE
-  provisioning) never needed one.
+  hubd's remaining jobs (dashboard HTML, uplink probe, locator string,
+  device-served Wi-Fi setup) never needed one.
 
 ## Architecture
 Three layers; the hub (this repo) is no longer the middle one for MQTT
@@ -88,9 +88,16 @@ because the audience is any browser on the hub's network, and because an
 `https:`-served page can't open a plain `ws://` connection (mixed content) —
 serving the dashboard from the hub's own plain-HTTP origin is what makes the
 direct MQTT-over-WS connection possible at all, same reasoning that already
-ruled out the public github.io setup page fetching `/fleet` directly. BLE
-(Chrome-only Web Bluetooth) stays only where no network exists yet — day-zero
-hub setup, home-mode rover.
+ruled out the public github.io setup page fetching `/fleet` directly.
+
+**Wi-Fi setup is device-served** (replaced BLE/Improv provisioning, deleted
+2026-07-09). hubd exposes `GET /wifi/scan`, `GET /wifi/status`, `POST
+/wifi/connect` (see `src/wifi.rs` — nmcli glue); the dashboard's "Set up Wi-Fi"
+panel drives them and hides when the page isn't hub-served. A phone joins the
+hub's own `hub-XXXX` AP, opens `http://hub.local`, and picks the uplink network
+there — no hosted website, no Web Bluetooth, works on iOS. The join is pinned to
+the uplink radio, never the AP's (the 2026-07-04 outage lesson; see
+`uplink_device` in `src/wifi.rs`).
 
 - **Address:** code default `:8000` (unprivileged dev); the appliance unit
   binds `:80` via `AmbientCapabilities=CAP_NET_BIND_SERVICE`. The classroom
@@ -104,8 +111,9 @@ hub setup, home-mode rover.
   drop-in — mirror the removal there if it earns it.)
 - **Uplink probe:** background task, `GET generate_204` (IPv4 only) every
   10 s — 204 → `full`, any other answer → `portal`, none → `none`. Downgrades
-  debounced (3 agreeing probes). *Not nmcli*: a DynamicUser UID has no D-Bus
-  identity. (Inherited unchanged — transport-agnostic.)
+  debounced (3 agreeing probes). *Not nmcli* — deliberately: hubd runs root now
+  and could ask NM, but a raw self-probe tests the path packets actually take,
+  not NM's opinion of it. (Probe logic inherited unchanged — transport-agnostic.)
 - **Portal UX:** the pill's remediation is free by topology — venue portals
   authorize by MAC, every classroom client shares the hub's venue-side MAC via
   NAT, so any phone joining the hub's Wi-Fi gets the venue sign-in sheet and
@@ -152,14 +160,6 @@ gateway 10.42.0.1 = constant locator). Scars:
 - **Open AP for now**: ESP32-C3 WPA2 join fails against this AP (4-way
   handshake timeout; open joins in ~6 s). Interop unresolved — see
   `better-robotics/robot` CLAUDE.md.
-
-## BLE verification scar (inherited from hub-zenoh, 2026-07-04)
-Not transport-specific — this is about `provisiond`'s BLE stack, unchanged
-here. **macOS is a dishonest BLE observer** — CoreBluetooth misses whole 8 s
-scan windows and serves stale names/identities from its cache. A "device
-vanished" read from a Mac scan is evidence of nothing. Honest tests: for
-rovers, `sudo btmgmt find` on the Pi; for the hub's own adv, repeated Mac scan
-windows — any hit means alive.
 
 ## Conventions
 - **Measured data only** — a real board's IMU omits fields it can't sense; no

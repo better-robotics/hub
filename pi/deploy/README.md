@@ -6,7 +6,9 @@ MQTT client). This directory installs both on any systemd Linux box. **A
 Raspberry Pi is the worked example below; nothing here is Pi-specific** except
 the network values, which you supply.
 
-- `hubd.service` — generic systemd unit for hubd (`Restart=always`).
+- `hubd.service` — generic systemd unit for hubd (`Restart=always`): serves the
+  dashboard, `/fleet`, and device-served Wi-Fi setup (`/wifi/*`, driving nmcli —
+  which is why the unit runs as root, not the old `DynamicUser`).
 - `mosquitto.conf` — broker config, dropped into `/etc/mosquitto/conf.d/`
   (Debian's packaged mosquitto includes it and runs it under its own unit).
 - `install.sh` — native-builds `hubd`, installs it to `/opt/hub/`, and
@@ -51,17 +53,16 @@ a cross toolchain. If rebuild friction ever shows up, add a cross path
 (`cross build --target aarch64-unknown-linux-gnu` from a dev machine, then ship
 just the binary) — that's a later optimization.
 
-## The other units: BLE + USB planes
+## The other units: USB recovery plane
 
-`install.sh` installs **hubd + Mosquitto** (the Wi-Fi data plane). The rest of
-this directory kits out the appliance's other two planes — the three-plane
-topology is diagrammed in the [main README](../README.md#deployed-the-appliances-three-planes):
+`install.sh` installs **hubd + Mosquitto** (the Wi-Fi data plane; hubd also
+serves the device-served Wi-Fi setup panel over `/wifi/*` — see `../src/wifi.rs`).
+The rest of this directory kits out the appliance's recovery plane:
 
-- `provisiond.service` — Wi-Fi provisioning over Improv BLE (runs `/opt/hub/provisiond`).
 - `usb-gadget.service` + `usb-gadget-setup.sh` — USB-C recovery: ECM ethernet
-  (`ssh pi@10.55.0.1`) + ACM serial (`/dev/ttyGS0`), independent of hubd/provisiond.
+  (`ssh pi@10.55.0.1`) + ACM serial (`/dev/ttyGS0`), independent of hubd.
 - `hub-login-banner.sh` — status on every recovery-console login: hub IP, SSID,
-  hubd health. Improv carries provisioning only; status lives here.
+  hubd health.
 
 ## Operating it
 

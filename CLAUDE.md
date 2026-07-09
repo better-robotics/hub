@@ -24,7 +24,8 @@ drift check is what keeps its embedded dashboard from silently pinning an old
 copy. A breaking contract change now means: land it here, then resync in `robot`.
 
 ## Where impl-specific context lives
-- `pi/CLAUDE.md` — the deep Pi context (broker deploy, AP/NAT, BLE scars, ACL).
+- `pi/CLAUDE.md` — the deep Pi context (broker deploy, AP/NAT, device-served
+  Wi-Fi setup, ACL).
   Contract refs point at the monorepo top level (`../CONTRACT.md`,
   `../envelopes/`); remaining `protocol/` mentions there are hub-zenoh's own.
 - The ESP32 hub role's context lives in `better-robotics/robot` (`CLAUDE.md`,

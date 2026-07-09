@@ -5,8 +5,9 @@
 //! by Mosquitto's own ACL (mosquitto-acl.example.conf). hubd only serves
 //! plain HTTP: the dashboard page (which then makes its own MQTT-over-WS
 //! connection), `/fleet` (uplink verdict + broker locator, for the parts a
-//! browser can't get over MQTT), and BLE day-zero provisioning lives in the
-//! separate `provisiond` binary.
+//! browser can't get over MQTT), and device-served Wi-Fi setup at `/wifi/*`
+//! (nmcli, `src/wifi.rs`) — the day-zero provisioning that used to be a
+//! separate BLE `provisiond` binary (deleted 2026-07-09).
 //!
 //! `GET /` is the embedded dashboard; `GET /fleet` is `{uplink, locator}`.
 //! The dashboard has `mqtt.js` inlined directly (2026-07-08) rather than
@@ -35,9 +36,10 @@ type Uplink = Arc<Mutex<String>>;
 /// Probe the internet uplink the way phones do: fetch a known 204 endpoint
 /// over plain HTTP. 204 → clear internet; any other HTTP answer → something
 /// answered in the endpoint's place, i.e. a captive portal; no answer → no
-/// uplink. Self-probing (not nmcli) because the unit runs DynamicUser and a
-/// dynamic UID can't open an NMClient D-Bus connection — and the probe tests
-/// the path packets actually take, not NM's opinion of it.
+/// uplink. Self-probing rather than asking nmcli (hubd runs as root now and
+/// could — see deploy/hubd.service) because the probe tests the path packets
+/// actually take, not NM's opinion of it (NM's cached verdict lags its probe
+/// interval and can disagree with reality right after a join).
 async fn probe_uplink() -> &'static str {
     const HOST: &str = "connectivitycheck.gstatic.com";
     let probe = async {
@@ -82,6 +84,34 @@ fn fleet_json(uplink: &Uplink, locator: &str) -> String {
     serde_json::json!({ "uplink": *uplink.lock().unwrap(), "locator": locator }).to_string()
 }
 
+/// `GET /wifi/status` — the venue network the uplink is on (or null) plus the
+/// live internet verdict, so the setup panel can show "currently on X · online"
+/// and confirm a join landed.
+async fn wifi_status_json(uplink: &Uplink) -> String {
+    let ssid = hub::wifi::uplink_ssid().await;
+    serde_json::json!({ "ssid": ssid, "uplink": *uplink.lock().unwrap() }).to_string()
+}
+
+/// `POST /wifi/connect` — body `{ssid, password}`. Joins on the uplink radio
+/// (never the classroom AP's) and reports the outcome; the panel shows `error`
+/// verbatim on failure.
+async fn wifi_connect_json(body: &str) -> (&'static str, &'static str, String) {
+    let v: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
+    let ssid = v.get("ssid").and_then(|s| s.as_str()).unwrap_or("");
+    let password = v.get("password").and_then(|s| s.as_str()).unwrap_or("");
+    if ssid.is_empty() {
+        return ("400 Bad Request", "application/json", r#"{"ok":false,"error":"missing ssid"}"#.into());
+    }
+    match hub::wifi::connect(ssid, password).await {
+        Ok(()) => ("200 OK", "application/json", r#"{"ok":true}"#.into()),
+        Err(e) => (
+            "200 OK",
+            "application/json",
+            serde_json::json!({ "ok": false, "error": e }).to_string(),
+        ),
+    }
+}
+
 async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String) {
     loop {
         let Ok((mut sock, _)) = listener.accept().await else { continue };
@@ -102,15 +132,30 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String) 
                 let resp = "HTTP/1.1 204 No Content\r\n\
                             Access-Control-Allow-Origin: *\r\n\
                             Access-Control-Allow-Private-Network: true\r\n\
-                            Access-Control-Allow-Methods: GET\r\n\
+                            Access-Control-Allow-Methods: GET, POST\r\n\
+                            Access-Control-Allow-Headers: Content-Type\r\n\
                             Connection: close\r\n\r\n";
                 let _ = sock.write_all(resp.as_bytes()).await;
                 return;
             }
-            let (status, ctype, body) = match path {
-                "/fleet" => ("200 OK", "application/json", fleet_json(&uplink, &locator)),
-                "/" | "/index.html" => ("200 OK", "text/html; charset=utf-8", DASHBOARD_HTML.into()),
-                "/icon.svg" => ("200 OK", "image/svg+xml", ICON_SVG.into()),
+            // The Wi-Fi setup panel POSTs `{ssid, password}` here; the body is
+            // whatever follows the header terminator (creds are tiny — one read
+            // of `buf` holds them).
+            let post_body = req.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or("");
+            let (status, ctype, body) = match (method, path) {
+                ("GET", "/fleet") => ("200 OK", "application/json", fleet_json(&uplink, &locator)),
+                ("GET", "/") | ("GET", "/index.html") => {
+                    ("200 OK", "text/html; charset=utf-8", DASHBOARD_HTML.into())
+                }
+                ("GET", "/icon.svg") => ("200 OK", "image/svg+xml", ICON_SVG.into()),
+                // Device-served Wi-Fi setup (replaces the old BLE/website flow).
+                ("GET", "/wifi/scan") => (
+                    "200 OK",
+                    "application/json",
+                    serde_json::to_string(&hub::wifi::scan().await).unwrap_or_else(|_| "[]".into()),
+                ),
+                ("GET", "/wifi/status") => ("200 OK", "application/json", wifi_status_json(&uplink).await),
+                ("POST", "/wifi/connect") => wifi_connect_json(post_body).await,
                 _ => ("404 Not Found", "text/plain", "not found".into()),
             };
             // ACAO *: /fleet is public-read JSON, and the rover setup page

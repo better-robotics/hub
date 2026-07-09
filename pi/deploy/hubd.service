@@ -2,10 +2,13 @@
 # Generic Linux unit — runs hubd as the always-on classroom dashboard/HTTP
 # chassis on any systemd host (a Pi is just one). hubd is NOT the MQTT broker:
 # that's Mosquitto, a separate service (see deploy/install.sh + mosquitto.conf).
-# hubd serves the dashboard (:80), /fleet, and the BLE handoff only.
-Description=hub — classroom dashboard/HTTP chassis (broker is Mosquitto)
-After=network-online.target
-Wants=network-online.target
+# hubd serves the dashboard (:80), /fleet, and device-served Wi-Fi setup
+# (/wifi/*, driving NetworkManager) — the latter folded in when provisiond and
+# the BLE stack were deleted (2026-07-09).
+Description=hub — classroom dashboard + Wi-Fi setup (broker is Mosquitto)
+# NetworkManager (not just network-online): /wifi/scan|connect shell out to nmcli.
+After=network-online.target NetworkManager.service
+Wants=network-online.target NetworkManager.service
 
 [Service]
 Type=simple
@@ -18,11 +21,14 @@ Environment=HUB_HTTP=0.0.0.0:80
 ExecStart=/opt/hub/hubd
 Restart=always
 RestartSec=2
-# It's an appliance, not a login service — minimal privilege. The one grant:
-# CAP_NET_BIND_SERVICE for :80 (composes fine with DynamicUser).
-DynamicUser=yes
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-ReadOnlyPaths=/opt/hub
+# Root, not the old DynamicUser: hubd now drives NetworkManager (nmcli) for the
+# device-served Wi-Fi panel, which a dynamic UID can't do (no D-Bus/polkit
+# identity). This is the privilege the deleted provisiond used to hold; folding
+# provisioning into hubd folds that requirement in too. The blast radius is a
+# classroom-LAN HTTP server that can change the hub's Wi-Fi — which is exactly
+# the feature, so the grant is the capability, not a leak. :80 needs no separate
+# CAP_NET_BIND_SERVICE as root.
+User=root
 
 [Install]
 WantedBy=multi-user.target

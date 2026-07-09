@@ -7,19 +7,11 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Improv Wi-Fi BLE provisioning protocol (the `provisiond` wire layer).
-pub mod improv;
-
-/// Hub-info BLE service — the courier read (hub#3). A phone/laptop connects,
-/// reads one JSON blob `{ssid, locator}`, disconnects (~2 s hub slot); the
-/// values then ride that browser into the rover's provisioning session, so no
-/// student ever types the hub's address. provisiond composes the JSON live at
-/// read time — the characteristic can't drift from actual network state.
-/// The setup page (better-robotics.github.io/provision) hard-codes these UUIDs.
-pub mod hubinfo {
-    pub const SERVICE_UUID: &str = "5ecf89a4-9f99-45dc-b3e6-998933c06dd8";
-    pub const CHAR_INFO: &str = "69e7f1d7-a25e-4f0a-ba18-caabeaaa72e1";
-}
+/// Device-served Wi-Fi setup over NetworkManager (`nmcli`). hubd exposes it as
+/// `/wifi/*` HTTP; a phone on the hub's own AP configures the uplink from the
+/// dashboard. Replaced the Improv-over-BLE path (`provisiond`) on 2026-07-09 —
+/// no hosted website, no Web Bluetooth, works on iOS.
+pub mod wifi;
 
 /// Default robot id for the demos. Override with `ROBOT_ID`.
 pub const ROBOT_ID: &str = "rover_01";

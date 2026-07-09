@@ -11,7 +11,7 @@
 set -uo pipefail
 
 # Append every boot's outcome to a log on the boot partition. The whole
-# point of USB-CDC is being reachable when SSH/BLE/journal aren't — so
+# point of USB-CDC is being reachable when SSH/journal aren't — so
 # the log goes somewhere recoverable WITHOUT the Pi (pop the SD into any
 # host). Append, not overwrite, so multi-boot failure patterns stay
 # visible. Only redirect when /boot/firmware looks writable — otherwise
@@ -73,8 +73,8 @@ echo 0x0200 > bcdUSB
 mkdir -p strings/0x409
 SN=$(awk '/Serial/ { print $NF; exit }' /proc/cpuinfo 2>/dev/null || echo "0000000000")
 # Per-chip product string so two Pis plugged into the same host can be
-# told apart in System Information / lsusb. Derivation matches the BLE
-# name (provisiond device_name): last 4 of /proc/cpuinfo Serial, uppercased.
+# told apart in System Information / lsusb. Derivation matches the hub-XXXX
+# AP SSID: last 4 of /proc/cpuinfo Serial, uppercased.
 SUFFIX=$(echo "$SN" | tail -c 5 | tr '[:lower:]' '[:upper:]')
 [ -z "$SUFFIX" ] && SUFFIX="0000"
 echo "$SN" > strings/0x409/serialnumber

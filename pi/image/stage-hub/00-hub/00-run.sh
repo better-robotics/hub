@@ -4,12 +4,11 @@
 # copied from deploy/ (the single source of truth, also used off-Pi by
 # deploy/install.sh).
 
-# --- hub dashboard chassis + BLE provisioner ---
+# --- hub dashboard chassis (serves the dashboard + device-served Wi-Fi setup;
+# the old BLE provisiond was deleted 2026-07-09, provisioning is /wifi/* now) ---
 install -d "${ROOTFS_DIR}/opt/hub"
 install -m 0755 files/hubd            "${ROOTFS_DIR}/opt/hub/hubd"
-install -m 0755 files/provisiond      "${ROOTFS_DIR}/opt/hub/provisiond"
 install -m 0644 files/hubd.service       "${ROOTFS_DIR}/etc/systemd/system/hubd.service"
-install -m 0644 files/provisiond.service "${ROOTFS_DIR}/etc/systemd/system/provisiond.service"
 
 # --- Mosquitto broker config (the package itself comes from 00-packages;
 # the passwd file is generated in the chroot, 01-run-chroot.sh) ---
@@ -57,15 +56,16 @@ chmod 600 "${ROOTFS_DIR}/etc/NetworkManager/system-connections/usb-gadget.nmconn
 
 # Login banner: print the hub's IP + router status on every interactive login
 # (serial autologin and ssh both source /etc/profile.d/*.sh). This is where
-# "what's my hub's address / is it up" is answered — Improv stays provisioning-only.
+# "what's my hub's address / is it up" is answered.
 install -m 0644 files/hub-login-banner.sh "${ROOTFS_DIR}/etc/profile.d/hub-status.sh"
 
 # Autologin on the USB-ACM serial console (physical-cable possession is the auth
 # boundary, same as holding the SD card): drops straight to a `pi` shell that
 # shows boot logs + journalctl. `pi` is in the `adm` group, so it reads ALL
 # journals with NO sudo — which is the whole "see logs" need. We deliberately do
-# NOT grant passwordless root: Wi-Fi (re)config goes through BLE (provisiond) or
-# the SD card, so the recovery console stays read-oriented and least-privileged.
+# NOT grant passwordless root: Wi-Fi (re)config goes through the dashboard's
+# Wi-Fi setup panel or the SD card, so the recovery console stays read-oriented
+# and least-privileged.
 install -d -m 0755 "${ROOTFS_DIR}/etc/systemd/system/serial-getty@ttyGS0.service.d"
 cat > "${ROOTFS_DIR}/etc/systemd/system/serial-getty@ttyGS0.service.d/autologin.conf" <<'AUTOEOF'
 [Service]
@@ -81,8 +81,9 @@ AUTOEOF
 
 # Connectivity checking: gives NM a real HTTP probe so `nmcli -g CONNECTIVITY
 # general` can say `portal` (venue sign-in page blocking internet) instead of
-# guessing `full` from the default route. provisiond serves the verdict over
-# BLE (hub-info characteristic); the setup page renders it.
+# guessing `full` from the default route. hubd renders the verdict from its own
+# HTTP probe (probe_uplink, self-testing the real path); this NM config just
+# keeps NM's own connectivity state honest alongside it.
 install -d "${ROOTFS_DIR}/etc/NetworkManager/conf.d"
 cat > "${ROOTFS_DIR}/etc/NetworkManager/conf.d/20-connectivity.conf" <<'CONNEOF'
 [connectivity]

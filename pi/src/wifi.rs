@@ -1,0 +1,180 @@
+//! Wi-Fi provisioning over NetworkManager (`nmcli`) — the device-served
+//! replacement for the old Improv-over-BLE path (`provisiond`, deleted
+//! 2026-07-09). A phone joins the hub's own `hub-XXXX` AP, opens the
+//! dashboard hubd already serves, and scans/joins a venue network from a
+//! panel there. No hosted website, no Web Bluetooth, works on iOS.
+//!
+//! hubd calls these directly (it runs privileged now — see deploy/hubd.service,
+//! DynamicUser dropped so it can drive NM). The functions shell out to `nmcli`,
+//! so they compile anywhere but only do anything on a Linux host with
+//! NetworkManager (the Pi); on a dev Mac they just return empty/err.
+
+use serde::Serialize;
+
+/// One scanned network, as the setup panel wants it.
+#[derive(Serialize)]
+pub struct Net {
+    pub ssid: String,
+    /// nmcli SIGNAL, 0..100 (not dBm — the panel shows bars, not physics).
+    pub signal: i32,
+    /// "WPA3" | "WPA2" | "WPA" | "WEP" | "NO" (open).
+    pub security: String,
+}
+
+async fn nmcli_out(args: &[&str]) -> String {
+    tokio::process::Command::new("nmcli")
+        .args(args)
+        .output()
+        .await
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
+}
+
+/// Split an `nmcli -t` line on unescaped `:` and unescape `\:` / `\\`
+/// (terse-mode escaping — an SSID can contain a literal colon).
+fn split_nmcli(line: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut cur = String::new();
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => {
+                if let Some(n) = chars.next() {
+                    cur.push(n);
+                }
+            }
+            ':' => fields.push(std::mem::take(&mut cur)),
+            _ => cur.push(c),
+        }
+    }
+    fields.push(cur);
+    fields
+}
+
+/// Map nmcli's SECURITY field to a short token the panel can badge.
+fn map_auth(sec: &str) -> String {
+    let s = sec.to_uppercase();
+    if s.contains("WPA3") {
+        "WPA3"
+    } else if s.contains("WPA2") {
+        "WPA2"
+    } else if s.contains("WPA") {
+        "WPA"
+    } else if s.contains("WEP") {
+        "WEP"
+    } else {
+        "NO"
+    }
+    .to_string()
+}
+
+/// Visible networks, strongest-labelled first duplicate wins, AP's own SSID
+/// excluded is unnecessary (nmcli lists infrastructure APs, not our own AP).
+pub async fn scan() -> Vec<Net> {
+    let out = tokio::process::Command::new("nmcli")
+        .args(["-t", "-f", "SSID,SIGNAL,SECURITY", "device", "wifi", "list", "--rescan", "yes"])
+        .output()
+        .await;
+    let Ok(out) = out else {
+        return vec![];
+    };
+    let mut nets = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        let f = split_nmcli(line);
+        if f.len() < 3 || f[0].is_empty() || !seen.insert(f[0].clone()) {
+            continue;
+        }
+        nets.push(Net {
+            ssid: f[0].clone(),
+            signal: f[1].parse().unwrap_or(0),
+            security: map_auth(&f[2]),
+        });
+    }
+    nets
+}
+
+/// A Wi-Fi device the AP does not own — the uplink join must be pinned to
+/// one. Unpinned `nmcli device wifi connect` grabs whichever radio NM
+/// fancies; on 2026-07-04 that was wlan0, and the classroom AP silently
+/// became a venue-Wi-Fi client. Avoid the device of any active mode=ap
+/// connection AND any mode=ap profile's pinned interface (covers the AP
+/// being down at join time).
+async fn uplink_device() -> Option<String> {
+    let mut ap_devs: Vec<String> = Vec::new();
+    let active = nmcli_out(&["-t", "-f", "NAME,TYPE,DEVICE", "connection", "show", "--active"]).await;
+    for line in active.lines() {
+        let f = split_nmcli(line);
+        if f.len() < 3 || f[1] != "802-11-wireless" {
+            continue;
+        }
+        let mode = nmcli_out(&["-g", "802-11-wireless.mode", "connection", "show", &f[0]]).await;
+        if mode.trim() == "ap" {
+            ap_devs.push(f[2].clone());
+        }
+    }
+    for line in nmcli_out(&["-t", "-f", "NAME,TYPE", "connection", "show"]).await.lines() {
+        let f = split_nmcli(line);
+        if f.len() < 2 || f[1] != "802-11-wireless" {
+            continue;
+        }
+        let mode = nmcli_out(&["-g", "802-11-wireless.mode", "connection", "show", &f[0]]).await;
+        if mode.trim() != "ap" {
+            continue;
+        }
+        let dev = nmcli_out(&["-g", "connection.interface-name", "connection", "show", &f[0]]).await;
+        let dev = dev.trim();
+        if !dev.is_empty() {
+            ap_devs.push(dev.to_string());
+        }
+    }
+    for line in nmcli_out(&["-t", "-f", "DEVICE,TYPE", "device"]).await.lines() {
+        let f = split_nmcli(line);
+        if f.len() >= 2 && f[1] == "wifi" && !ap_devs.contains(&f[0]) {
+            return Some(f[0].clone());
+        }
+    }
+    None
+}
+
+/// Join a venue network on the uplink radio, never the AP's. Returns Ok on a
+/// successful `nmcli` join, Err with a human message otherwise (the panel
+/// shows it verbatim).
+pub async fn connect(ssid: &str, password: &str) -> Result<(), String> {
+    let Some(dev) = uplink_device().await else {
+        return Err("no spare Wi-Fi radio — the only one carries the classroom AP".into());
+    };
+    let mut cmd = tokio::process::Command::new("nmcli");
+    cmd.args(["device", "wifi", "connect", ssid, "ifname", &dev]);
+    if !password.is_empty() {
+        cmd.args(["password", password]);
+    }
+    match cmd.output().await {
+        Ok(o) if o.status.success() => Ok(()),
+        Ok(o) => Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// The venue network the uplink leg is currently joined to (the active
+/// non-AP wireless connection), or None if not joined. Lets the panel show
+/// "currently on <ssid>" and confirm a join landed.
+pub async fn uplink_ssid() -> Option<String> {
+    let active = nmcli_out(&["-t", "-f", "NAME,TYPE", "connection", "show", "--active"]).await;
+    for line in active.lines() {
+        let f = split_nmcli(line);
+        if f.len() < 2 || f[1] != "802-11-wireless" {
+            continue;
+        }
+        let mode = nmcli_out(&["-g", "802-11-wireless.mode", "connection", "show", &f[0]]).await;
+        if mode.trim() == "ap" {
+            continue;
+        }
+        let ssid = nmcli_out(&["-g", "802-11-wireless.ssid", "connection", "show", &f[0]]).await;
+        let ssid = ssid.trim();
+        if !ssid.is_empty() {
+            return Some(ssid.to_string());
+        }
+    }
+    None
+}

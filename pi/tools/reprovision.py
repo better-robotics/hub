@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Send a robot back to its BLE provisioning window over the fabric:
+"""Send a robot back to its re-onboarding window over the fabric:
 `reprovision.py rover-b79c`. Publishes to robots/<id>/cmd/reprovision — the
 robot reboots into a 3-minute window, then returns to operating mode on its
 own.

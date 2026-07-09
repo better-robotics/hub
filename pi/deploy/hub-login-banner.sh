@@ -1,8 +1,9 @@
 # Login banner for the recovery console (serial autologin + ssh). Installed to
 # /etc/profile.d/, so it runs on every interactive login and prints the one thing
 # the operator needs after provisioning: the hub's IP — so rovers can be pointed
-# at tcp/<ip>:7447 — plus whether the router is up. This is the *status* surface;
-# Improv (the provisioning page) stays provisioning-only by design.
+# at the broker mqtt://<ip>:1883 — plus whether the router is up. This is the
+# *status* surface; Wi-Fi setup itself is the dashboard's job (http://hub.local),
+# not this console.
 #
 # Defensive on purpose: a profile.d script is sourced into the login shell, so it
 # must never `exit`, never error out, and only act for interactive shells.
@@ -20,9 +21,9 @@ case $- in
       else
         printf '  Wi-Fi:    %s\n' "$_hub_wlan_ip"
       fi
-      printf '  Rovers:   tcp/%s:7447\n' "$_hub_wlan_ip"
+      printf '  Rovers:   mqtt://%s:1883\n' "$_hub_wlan_ip"
     else
-      printf '  Wi-Fi:    not connected — set it over Bluetooth (improv-wifi)\n'
+      printf '  Wi-Fi:    not up — set it from the dashboard (http://hub.local)\n'
     fi
     printf '  Recovery: ssh pi@10.55.0.1  (over this USB cable)\n'
     printf '  Router:   hubd %s   ·   logs: journalctl -u hubd -f\n\n' "$_hub_router"

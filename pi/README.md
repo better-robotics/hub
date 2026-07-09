@@ -19,7 +19,7 @@ cargo run --bin hubd                  # dashboard on http://localhost:8000
  ┌──────────────────────────┐    ┌─────────────────────────────┐    ┌────────────────┐
  │ browser                  │    │ hubd (Rust)                 │    │ ESP32 firmware │
  │ dashboard.html + mqtt.js │◄──►│ HTTP chassis: page, /fleet, │    │ (esp-mqtt)     │
- └──────────────────────────┘    │ BLE — not an MQTT client    │    └────────────────┘
+ └──────────────────────────┘    │ Wi-Fi — not an MQTT client  │    └────────────────┘
                                  └─────────────────────────────┘
                │                                                             │
       MQTT-over-WS :9001                                              raw MQTT :1883
@@ -35,8 +35,13 @@ cargo run --bin hubd                  # dashboard on http://localhost:8000
 **`hubd` is not an MQTT client** — the inversion from hub-zenoh, where hubd
 *is* the router in the data path. Here it only serves the dashboard page
 (which then opens its own MQTT-over-WS connection, bypassing hubd entirely),
-the uplink/captive-portal probe, and (in `provisiond`) BLE day-zero Wi-Fi
-provisioning. Classroom access control (professor vs. team scoping) is
+the uplink/captive-portal probe, and **device-served Wi-Fi setup** —
+`GET /wifi/scan`, `GET /wifi/status`, `POST /wifi/connect` (nmcli glue in
+`src/wifi.rs`). A phone joins the hub's own `hub-XXXX` AP, opens
+`http://hub.local`, and picks the uplink network from the dashboard's "Set up
+Wi-Fi" panel — no app, no hosted site, no Web Bluetooth, works on iOS (this
+replaced the old Improv-over-BLE `provisiond`, deleted 2026-07-09). Classroom
+access control (professor vs. team scoping) is
 enforced by Mosquitto's own ACL, not application code — see
 `mosquitto-acl.example.conf`.
 
@@ -60,9 +65,9 @@ yet), loopback sim clients, and the ESP32 rover firmware itself
 hub-mqtt/
 ├── src/
 │   ├── lib.rs              typed envelopes + topic helpers (transport-agnostic)
+│   ├── wifi.rs             device-served Wi-Fi setup — nmcli glue for /wifi/*
 │   └── bin/
-│       ├── hubd.rs          dashboard/HTTP chassis — no MQTT client
-│       └── provisiond.rs    BLE Wi-Fi provisioning (Improv)
+│       └── hubd.rs          dashboard/HTTP chassis + Wi-Fi setup — no MQTT client
 ├── protocol/                the envelope contract, canonical here (see protocol/README.md)
 ├── public/
 │   └── dashboard.html       mqtt.js inlined — direct client, also standalone (file://)
@@ -71,7 +76,7 @@ hub-mqtt/
 ├── classroom.example.json5      the scoping intent these files implement
 ├── examples/                    classroom-mosquitto-demo.sh proves the ACL live
 ├── deploy/                  systemd units + install — the appliance's planes
-└── image/                   CI-built Pi image: hubd + provisiond baked into the rootfs
+└── image/                   CI-built Pi image: hubd + Mosquitto baked into the rootfs
 ```
 
 State, roadmap: **[hub#1](../../issues/1)**. The rover firmware the hub

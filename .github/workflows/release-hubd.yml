@@ -56,14 +56,18 @@ jobs:
         run: rustup target add ${{ matrix.target }}
       - name: Build hubd
         run: cargo build --release --target ${{ matrix.target }} --bin hubd
+      # Paths are relative to `pi` (defaults.run.working-directory), so the
+      # build output is target/… not pi/target/… — the `pi/` prefix would
+      # resolve to pi/pi/target and fail. Write the asset to $GITHUB_WORKSPACE
+      # so the workspace-relative upload-artifact below finds it.
       # tar.gz (not a bare binary) so the exec bit survives the download.
       - name: Package (tar.gz)
         if: ${{ !contains(matrix.target, 'windows') }}
-        run: tar -C pi/target/${{ matrix.target }}/release -czf ${{ matrix.asset }} hubd
+        run: tar -C target/${{ matrix.target }}/release -czf "$GITHUB_WORKSPACE/${{ matrix.asset }}" hubd
       - name: Package (zip)
         if: contains(matrix.target, 'windows')
         shell: bash
-        run: cd pi/target/${{ matrix.target }}/release && 7z a "$GITHUB_WORKSPACE/${{ matrix.asset }}" hubd.exe
+        run: cd target/${{ matrix.target }}/release && 7z a "$GITHUB_WORKSPACE/${{ matrix.asset }}" hubd.exe
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}
@@ -77,9 +81,8 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: pi
+    # No working-directory: pi here — this job only moves artifacts (dist/ at
+    # the workspace root) and pushes; a pi/ cwd would send `cd dist` to pi/dist.
     permissions:
       contents: write   # rolling release
       packages: write   # ghcr push

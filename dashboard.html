@@ -29,9 +29,13 @@
     body {
       font-family: system-ui, -apple-system, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
       font-size: 15px; background: var(--bg); color: var(--ink);
-      max-width: 44rem; margin: 0 auto; padding: 3rem 1.5rem; line-height: 1.5;
+      /* Wider than a reading column (was 44rem): the fleet is a card grid, so
+         width buys cards-per-row, not long lines. Prose blocks cap themselves
+         (.lede/.assign-help) so text stays readable on the wide canvas. */
+      max-width: 72rem; margin: 0 auto; padding: 3rem 1.5rem; line-height: 1.5;
       -webkit-font-smoothing: antialiased;
     }
+    .lede { max-width: 40rem; }
     h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 0.25rem; }
     h1 .logo-accent { font-weight: 700; color: var(--accent-text); }
     h1 .logo-base { font-weight: 400; color: color-mix(in srgb, var(--ink) 75%, transparent); }
@@ -42,7 +46,10 @@
       border-radius: var(--radius); padding: 0.6rem 1rem; margin-bottom: 1.5rem;
       color: var(--ink); font-size: 0.9rem;
     }
-    #robots { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 1rem; }
+    #robots {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+      gap: 1rem; align-items: start;  /* short cards aren't stretched to a tall row-mate */
+    }
     .robot {
       background: var(--surface); border: 1px solid var(--border-default);
       border-radius: var(--radius); padding: 1rem 1.25rem;
@@ -63,8 +70,20 @@
     #empty { color: var(--ink-muted); padding: 2rem 0; }
     footer { margin-top: 3rem; color: var(--ink-muted); font-size: 0.85rem; }
 
+    /* Controls: drive + assign share a row when the width exists, stack when it
+       doesn't (auto-fit collapses to one column below ~53rem). Each is a card,
+       so the wide canvas reads as organized panels, not a long scroll. When
+       assign is hidden (non-professor), drive is the lone item → full width. */
+    #controls {
+      display: grid; gap: 1.25rem; margin-top: 2rem; align-items: start;
+      grid-template-columns: repeat(auto-fit, minmax(26rem, 1fr));
+    }
+    #drive, #assign {
+      background: var(--surface); border: 1px solid var(--border-default);
+      border-radius: var(--radius); padding: 1.25rem 1.5rem;
+    }
+
     /* Manual control: code gate → scoped joystick + wire log. */
-    #drive { margin-top: 2rem; }
     #code-gate {
       display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
     }
@@ -115,6 +134,47 @@
     .log-line { white-space: pre-wrap; word-break: break-all; }
     .log-out { color: var(--link); }
     .log-in { color: var(--success); }
+
+    /* Assign: professor-only. Boards (not teams) are listed here — one rover per
+       row, keyed by its MAC-derived board id — because unassigned rovers all
+       share the default team topic and collapse to one card above. */
+    #assign { display: none; }
+    .section-title { font-size: 1.05rem; font-weight: 600; margin-bottom: 0.35rem; }
+    .assign-help { color: var(--ink-muted); font-size: 0.9rem; margin-bottom: 1rem; }
+    #board-list { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+    .assign-empty { color: var(--ink-muted); font-size: 0.9rem; }
+    .board {
+      font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem;
+      background: var(--surface); color: var(--ink);
+      border: 1px solid var(--border-default); border-radius: var(--radius);
+      padding: 0.45rem 0.75rem; min-height: 2.2rem;
+    }
+    .board:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+    .board.selected { border-color: var(--accent-text); box-shadow: 0 0 0 1px var(--accent-text); }
+    .board.offline { opacity: 0.5; cursor: default; }
+    .board .dot { width: 8px; height: 8px; }
+    .board.offline .dot { background: var(--ink-muted); }
+    .team-badge {
+      font-size: 0.72rem; color: var(--ink-muted); background: var(--bg);
+      border: 1px solid var(--border-default); border-radius: 999px; padding: 0.05rem 0.5rem;
+    }
+    .team-badge.unassigned { color: var(--warn); border-color: var(--warn); }
+    #assign-form { display: none; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+    #assign-selected { flex-basis: 100%; color: var(--ink); font-size: 0.9rem; margin-bottom: 0.25rem; }
+    #assign-form input {
+      font: inherit; background: var(--surface); color: var(--ink);
+      border: 1px solid var(--border-default); border-radius: var(--radius);
+      padding: 0.5rem 0.75rem; min-height: 2.5rem; min-width: 9rem;
+    }
+    #assign-form input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+    #assign-btn {
+      font: inherit; font-weight: 500; cursor: pointer; min-height: 2.5rem;
+      padding: 0.5rem 1rem; border-radius: var(--radius); border: none;
+      color: var(--accent-ink); background: var(--accent);
+    }
+    #assign-status { flex-basis: 100%; font-size: 0.85rem; margin-top: 0.25rem; }
+    #assign-status.assign-ok { color: var(--success); }
+    #assign-status.assign-err { color: var(--danger-text); }
   </style>
 </head>
 <body>
@@ -132,7 +192,10 @@
     on the <a href="https://better-robotics.github.io/provision/rover.html">rover setup page</a>.</span></p>
   <div id="robots"></div>
 
+  <div id="controls">
   <section id="drive">
+    <h2 class="section-title">Drive</h2>
+    <p class="assign-help">Enter your team code to drive. Professors can drive any robot and assign rovers to teams.</p>
     <div id="code-gate">
       <input id="code-input" type="password" placeholder="professor:code or team1:code" autocomplete="off">
       <button id="connect-btn">Drive</button>
@@ -154,6 +217,23 @@
       </div>
     </div>
   </section>
+
+  <section id="assign">
+    <h2 class="section-title">Assign a rover</h2>
+    <p class="assign-help">Every board that's online, by its hardware id. Pick one, give it a
+      team credential — the rover saves it and reconnects under that team. Rovers still on the
+      default <code>team1</code> are unassigned.</p>
+    <div id="board-list"></div>
+    <div id="assign-form">
+      <p id="assign-selected"></p>
+      <input id="assign-team" placeholder="team (e.g. team3)" autocomplete="off">
+      <input id="assign-pass" type="password" placeholder="team password" autocomplete="off">
+      <input id="assign-name" placeholder="name — optional" autocomplete="off">
+      <button id="assign-btn">Assign</button>
+      <p id="assign-status"></p>
+    </div>
+  </section>
+  </div>
 
   <footer>
     <span id="footer-served-by">Served by the hub</span> · <a href="https://better-robotics.github.io/provision/">set up a device</a>
@@ -202,6 +282,13 @@ safe-buffer/index.js:
     // subscription below, not /fleet: fleet telemetry is broker-native now
     // (2026-07-08), hubd only still knows the uplink verdict and locator.
     const robots = new Map();
+
+    // board id (rover-XXXX) -> {team, seenAt} — the assign panel's view. The
+    // `robots` map above collapses by team (topic id == team), so unassigned
+    // rovers all sharing `team1` become one card; this map keeps them distinct
+    // by the sys payload's `board` field, which is what a config's `target`
+    // addresses. Professor-only; populated from the same anonymous sys stream.
+    const boards = new Map();
 
     // Two ways to load this page (2026-07-08): served by hubd — same origin,
     // location.hostname just works, /fleet exists — or a standalone copy
@@ -277,7 +364,7 @@ safe-buffer/index.js:
       refreshUplink();
       setInterval(refreshUplink, 2000);
     }
-    setInterval(renderRobots, 2000); // re-render on a clock too, for offline aging
+    setInterval(() => { renderRobots(); renderBoards(); }, 2000); // re-render on a clock too, for offline aging
 
     // Anonymous mqtt.js connection, scoped by Mosquitto's ACL to read-only
     // robots/+/sys — the same "public fleet view, no login needed" contract
@@ -304,8 +391,11 @@ safe-buffer/index.js:
       publicClient.on("message", (topic, payload) => {
         const id = topic.split("/")[1];
         try {
-          robots.set(id, { sys: JSON.parse(payload.toString()), seenAt: Date.now() });
+          const sys = JSON.parse(payload.toString());
+          robots.set(id, { sys, seenAt: Date.now() });
+          if (sys.board) boards.set(sys.board, { team: id, seenAt: Date.now() });
           renderRobots();
+          renderBoards();
         } catch { /* a non-JSON payload on this topic isn't a valid sys sample */ }
       });
     }
@@ -342,7 +432,9 @@ safe-buffer/index.js:
         ? "Professor — pick a robot below to drive it."
         : `Driving ${myScope.robot}.`;
       if (myScope.scope === "one") selectTarget(myScope.robot);
+      if (myScope.scope === "all") document.getElementById("assign").style.display = "block";
       renderRobots(); // re-render cards now that scope is known (adds Drive buttons for "all")
+      renderBoards(); // and the professor-only board list, for the same reason
     }
 
     function selectTarget(id) {
@@ -350,6 +442,68 @@ safe-buffer/index.js:
       document.getElementById("joystick-title").textContent = `Driving ${id}`;
       document.getElementById("joystick-wrap").style.display = "block";
     }
+
+    // ---- Assign: professor names a board's team, pushed over MQTT as config ----
+    // Select-then-act (mirrors the drive panel): the board LIST re-renders on a
+    // clock, but the FORM is separate and static so a re-render never wipes a
+    // half-typed credential.
+    let assignTarget = null; // { board, team } — the board's *current* team
+
+    function renderBoards() {
+      if (!myScope || myScope.scope !== "all") return;
+      const list = document.getElementById("board-list");
+      const ids = [...boards.keys()].sort();
+      if (!ids.length) { list.innerHTML = '<p class="assign-empty">No rovers online yet.</p>'; return; }
+      list.innerHTML = ids.map(b => {
+        const { team, seenAt } = boards.get(b);
+        const offline = Date.now() - seenAt > 10000;
+        const sel = assignTarget && assignTarget.board === b ? " selected" : "";
+        const unassigned = team === "team1"; // default identity == not yet assigned
+        return `<button class="board${sel}${offline ? " offline" : ""}" data-board="${b}"
+          data-team="${team}"${offline ? " disabled" : ""}>
+          <span class="dot"></span>${b}
+          <span class="team-badge${unassigned ? " unassigned" : ""}">${team}</span>
+          ${offline ? '<span class="offline-label">offline</span>' : ""}
+        </button>`;
+      }).join("");
+    }
+
+    document.getElementById("board-list").addEventListener("click", (e) => {
+      const btn = e.target.closest(".board");
+      if (!btn || btn.disabled) return;
+      assignTarget = { board: btn.dataset.board, team: btn.dataset.team };
+      document.getElementById("assign-form").style.display = "flex";
+      document.getElementById("assign-selected").textContent =
+        `Assigning ${assignTarget.board} — currently ${assignTarget.team}.`;
+      document.getElementById("assign-status").textContent = "";
+      document.getElementById("assign-team").focus();
+      renderBoards();
+    });
+
+    document.getElementById("assign-btn").addEventListener("click", () => {
+      const status = document.getElementById("assign-status");
+      const setErr = m => { status.textContent = m; status.className = "assign-err"; };
+      if (!assignTarget) return setErr("Pick a board first.");
+      if (!driveClient || !driveClient.connected) return setErr("Connect as professor first.");
+      const team = document.getElementById("assign-team").value.trim();
+      const pass = document.getElementById("assign-pass").value;
+      const name = document.getElementById("assign-name").value.trim();
+      if (!team) return setErr("A team is required.");
+      const cfg = { target: assignTarget.board, team };
+      if (pass) cfg.pass = pass;
+      if (name) cfg.name = name;
+      // Publish on the board's CURRENT team topic — that's the subtree it's
+      // subscribed to — targeted by board id so only that rover acts. Non-
+      // retained (QoS 1): the rover is online (its telemetry is why it's listed),
+      // so a live message reaches it, and nothing lingers to re-fire on the next
+      // board that boots as team1.
+      const topic = `robots/${assignTarget.team}/cmd/config`;
+      driveClient.publish(topic, JSON.stringify(cfg), { qos: 1, retain: false });
+      logLine("out", `${topic} ${JSON.stringify(cfg)}`);
+      status.textContent = `Sent — ${assignTarget.board} → ${team}. It reboots and reappears under ${team} in a few seconds.`;
+      status.className = "assign-ok";
+      ["assign-team", "assign-pass", "assign-name"].forEach(i => document.getElementById(i).value = "");
+    });
 
     function connect(username, password) {
       if (!hubHost) return; // standalone, no hub address entered yet

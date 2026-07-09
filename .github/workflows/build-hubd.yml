@@ -3,8 +3,9 @@ name: build-hubd
 # Builds just the hubd binary (arm64 glibc, forward-compatible with the Pi's
 # Bookworm glibc 2.36) and uploads it as an artifact — the fast redeploy path
 # for a live Pi, skipping the full image bake. The Pi has no toolchain by
-# design; CI is where builds happen. No dbus: hubd is the router + fleet HTTP,
-# BLE lives in provisiond.
+# design; CI is where builds happen. Pure Rust HTTP: hubd is the router, fleet
+# HTTP, and the device-served Wi-Fi setup (/wifi/*, via nmcli at runtime) — no
+# native/dbus deps to link.
 on:
   workflow_dispatch:
 
@@ -19,7 +20,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: pi
-          key: arm64   # shared with build-image / build-provisiond (same arch, same deps)
+          key: arm64   # shared with build-image (same arch, same deps)
       - name: Build hubd (arm64 glibc)
         run: cargo build --release --bin hubd
       - uses: actions/upload-artifact@v4

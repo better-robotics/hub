@@ -19,8 +19,8 @@ name: release-hubd
 #
 # The Pi appliance keeps its own paths: build-hubd.yml (fast redeploy),
 # build-image.yml (flashable image). Linux laptop builds are static musl —
-# glibc-version-independent, and musl (≠ gnu) keeps the bluer/D-Bus dep out
-# (it's gated on linux-gnu for provisiond only; see Cargo.toml).
+# glibc-version-independent. hubd has no native deps at all (pure Rust HTTP;
+# Wi-Fi setup shells out to nmcli at runtime), so the build is lean everywhere.
 
 on:
   workflow_dispatch:

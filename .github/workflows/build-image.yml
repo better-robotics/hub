@@ -1,8 +1,9 @@
 name: build-image
 
-# Builds a flashable Raspberry Pi 4 (arm64) image with hubd + provisiond baked in.
-# Result: flash → set Wi-Fi from a phone over Improv BLE (no app) → the hub is
-# already running. USB-gadget (ssh/serial over USB-C) is the headless recovery
+# Builds a flashable Raspberry Pi 4 (arm64) image with hubd baked in.
+# Result: flash → boot → join the hub's own hub-XXXX Wi-Fi and set the uplink
+# from the dashboard → the hub is running. USB-gadget (ssh/serial over USB-C) is
+# the headless recovery
 # channel. No ethernet, no on-device build — install happens here in CI, where
 # the network lives; the offline Pi never installs anything.
 on:
@@ -31,9 +32,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: pi
-          # One cache covers the whole ./target: BOTH the musl hubd subdir and
-          # the host-glibc provisiond subdir (incl. bluer deps), plus the cargo
-          # registry. Keyed by arch only — never shared across runner archs.
+          # One cache covers the whole ./target (the musl hubd build) plus the
+          # cargo registry. Keyed by arch only — never shared across runner archs.
           key: arm64
           cache-on-failure: true     # the pi-gen step fails; still save the rust build
       # Native arm64 runner: build hubd directly, static (musl) so it's glibc-
@@ -45,14 +45,6 @@ jobs:
           rustup target add aarch64-unknown-linux-musl
           cargo build --release --target aarch64-unknown-linux-musl --bin hubd
 
-      # provisiond links libdbus (BlueZ over D-Bus), so it's a native arm64
-      # glibc binary — NOT musl. The runner is arm64 glibc 2.35; Bookworm is
-      # 2.36, so the binary runs forward-compatibly on the Pi.
-      - name: Build provisiond (arm64 glibc)
-        run: |
-          sudo apt-get install -y libdbus-1-dev pkg-config
-          cargo build --release --bin provisiond --features ble
-
       # --- stage artifacts the pi-gen custom stage installs into the rootfs ---
       - name: Stage hub files for pi-gen
         run: |
@@ -61,9 +53,7 @@ jobs:
           # checkout — create it before staging.
           mkdir -p image/stage-hub/00-hub/files
           cp target/aarch64-unknown-linux-musl/release/hubd image/stage-hub/00-hub/files/hubd
-          cp target/release/provisiond                      image/stage-hub/00-hub/files/provisiond
           cp deploy/hubd.service                            image/stage-hub/00-hub/files/hubd.service
-          cp deploy/provisiond.service                      image/stage-hub/00-hub/files/provisiond.service
           cp deploy/usb-gadget.service                      image/stage-hub/00-hub/files/usb-gadget.service
           cp deploy/usb-gadget-setup.sh                     image/stage-hub/00-hub/files/usb-gadget-setup.sh
           cp deploy/hub-login-banner.sh                     image/stage-hub/00-hub/files/hub-login-banner.sh
@@ -121,16 +111,13 @@ jobs:
           sudo mount "${LOOP}p2" /mnt/hub
           echo "=== /opt/hub ===" && sudo ls -l /mnt/hub/opt/hub
           sudo test -f /mnt/hub/opt/hub/hubd                                          # router binary baked
-          sudo test -f /mnt/hub/opt/hub/provisiond                                    # BLE provisioner baked
           sudo test -f /mnt/hub/usr/local/bin/usb-gadget-setup.sh                     # recovery channel
           sudo test -f /mnt/hub/etc/NetworkManager/system-connections/usb-gadget.nmconnection
-          sudo chroot /mnt/hub dpkg-query -W bluez network-manager                    # BLE + NM present
+          sudo chroot /mnt/hub dpkg-query -W network-manager                          # NM present (drives /wifi setup)
           sudo test -L /mnt/hub/etc/systemd/system/multi-user.target.wants/hubd.service        # hubd enabled
-          sudo test -L /mnt/hub/etc/systemd/system/multi-user.target.wants/provisiond.service  # provisiond enabled
           sudo test -L /mnt/hub/etc/systemd/system/multi-user.target.wants/usb-gadget.service  # gadget enabled
           ! sudo chroot /mnt/hub dpkg-query -W comitup 2>/dev/null                    # comitup gone
           echo "hubd:" && sudo file /mnt/hub/opt/hub/hubd                             # static musl aarch64
-          echo "provisiond:" && sudo file /mnt/hub/opt/hub/provisiond                 # dynamic glibc aarch64
           # config.txt/cmdline.txt live on the FAT boot partition (p1), not the
           # rootfs (p2): on a running Pi /boot/firmware is a mount point, but in
           # the raw image these files are on p1, so check the dwc2 overlay there.
@@ -140,7 +127,7 @@ jobs:
           sudo grep -q 'modules-load=dwc2' /mnt/boot/cmdline.txt                      # gadget modules (boot part)
           sudo umount /mnt/boot
           sudo umount /mnt/hub && sudo losetup -d "$LOOP"
-          echo "✓ image: hubd + provisiond + usb-gadget recovery, comitup removed"
+          echo "✓ image: hubd + usb-gadget recovery, comitup removed"
 
       - name: Dump pi-gen logs on failure
         if: failure()

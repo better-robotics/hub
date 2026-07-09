@@ -270,6 +270,14 @@ safe-buffer/index.js:
       none: "No internet uplink — check the hub's USB Wi-Fi dongle or the venue Wi-Fi. Robots and this page are local to the hub and unaffected.",
     };
 
+    // Escape MQTT-derived strings before they enter innerHTML or an attribute.
+    // Telemetry is semi-trusted: a team controls its own rover's firmware, so
+    // fields like sys.board / the topic id are attacker-settable, and the
+    // professor's dashboard (full robots/# access) renders every team's — an
+    // unescaped `board:"<img onerror=…>"` would run in the teacher's session.
+    const esc = s => String(s ?? "").replace(/[&<>"']/g,
+      c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
     const fmtUptime = ms => {
       const s = Math.floor(ms / 1000);
       if (s < 90) return `${s}s`;
@@ -346,8 +354,8 @@ safe-buffer/index.js:
         const ageMs = Date.now() - seenAt;
         const offline = ageMs > 10000;  /* robots publish every 2 s */
         return `<div class="robot${offline ? " offline" : ""}">
-          <h2><span class="dot"></span>${id}${offline ? '<span class="offline-label">offline</span>' : ""}</h2>
-          <div class="hw">${sys.hw || "unknown board"}</div>
+          <h2><span class="dot"></span>${esc(id)}${offline ? '<span class="offline-label">offline</span>' : ""}</h2>
+          <div class="hw">${esc(sys.hw || "unknown board")}</div>
           <dl>
             <dt>uptime</dt><dd>${sys.uptime_ms != null ? fmtUptime(sys.uptime_ms) : "—"}</dd>
             <dt>free heap</dt><dd>${sys.free_heap != null ? Math.round(sys.free_heap / 1024) + " KB" : "—"}</dd>
@@ -355,7 +363,7 @@ safe-buffer/index.js:
           </dl>
           ${offline ? '<div class="remedy">power-cycle it or check the battery</div>' : ""}
           ${myScope && myScope.scope === "all"
-            ? `<button class="btn-drive" data-robot="${id}">Drive</button>` : ""}
+            ? `<button class="btn-drive" data-robot="${esc(id)}">Drive</button>` : ""}
         </div>`;
       }).join("");
     }
@@ -459,10 +467,10 @@ safe-buffer/index.js:
         const offline = Date.now() - seenAt > 10000;
         const sel = assignTarget && assignTarget.board === b ? " selected" : "";
         const unassigned = team === "team1"; // default identity == not yet assigned
-        return `<button class="board${sel}${offline ? " offline" : ""}" data-board="${b}"
-          data-team="${team}"${offline ? " disabled" : ""}>
-          <span class="dot"></span>${b}
-          <span class="team-badge${unassigned ? " unassigned" : ""}">${team}</span>
+        return `<button class="board${sel}${offline ? " offline" : ""}" data-board="${esc(b)}"
+          data-team="${esc(team)}"${offline ? " disabled" : ""}>
+          <span class="dot"></span>${esc(b)}
+          <span class="team-badge${unassigned ? " unassigned" : ""}">${esc(team)}</span>
           ${offline ? '<span class="offline-label">offline</span>' : ""}
         </button>`;
       }).join("");

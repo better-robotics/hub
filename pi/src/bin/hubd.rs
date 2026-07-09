@@ -199,8 +199,7 @@ async fn main() {
 
     // The address students need twice (dashboard URL, rover locator) — print
     // it, and serve it in /fleet so the dashboard can show what to paste
-    // into the rover setup page (the laptop hub's stand-in for the
-    // appliance's BLE join-info). Filter by interface
+    // into the rover setup page. Filter by interface
     // KIND, not address range: real Wi-Fi can hand out CGNAT space (measured:
     // en0 at 100.110.x.x), so an RFC1918 filter rejects real LANs, while the
     // routing-table shortcut (UDP connect + local_addr) reports the tunnel

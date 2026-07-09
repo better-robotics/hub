@@ -29,5 +29,5 @@ jobs:
           path: pi/target/release/hubd
           # Fast-redeploy artifact, consumed once over serial by
           # tools/deploy-hubd.sh — no reason to ride the repo's 90-day
-          # default. Matches release-hubd/build-image.
+          # default. Matches build-image.
           retention-days: 1

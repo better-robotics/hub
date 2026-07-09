@@ -137,10 +137,37 @@ async fn uplink_device() -> Option<String> {
     None
 }
 
+/// `nmcli device wifi connect` parses its args in a keyword loop — a token is
+/// only treated as the SSID *after* it fails to match `password`, `ifname`,
+/// `bssid`, `hidden`, `name`, `private`, `wep-key-type`. So an SSID that IS one
+/// of those words makes nmcli consume the *next* argv token (our `ifname`) as
+/// that keyword's value — an argv misparse from an untrusted `/wifi/connect`
+/// body. There's no shell here (`Command::args`, one token per value — no
+/// word-splitting/`$()`/`;`), so this is the whole exposure: reject the
+/// colliding words, an over-length or empty SSID (802.11 caps it at 32 octets),
+/// and a leading `-` (belt-and-suspenders against flag smuggling). A real
+/// network almost never uses these names; a clear error beats a silent misjoin.
+const NMCLI_KEYWORDS: [&str; 7] =
+    ["password", "ifname", "bssid", "hidden", "name", "private", "wep-key-type"];
+
+fn check_ssid(ssid: &str) -> Result<(), String> {
+    if ssid.is_empty() {
+        return Err("pick a network".into());
+    }
+    if ssid.len() > 32 {
+        return Err("network name too long (max 32 characters)".into());
+    }
+    if ssid.starts_with('-') || NMCLI_KEYWORDS.contains(&ssid) {
+        return Err(format!("can't join a network named \"{ssid}\" from here — connect it manually"));
+    }
+    Ok(())
+}
+
 /// Join a venue network on the uplink radio, never the AP's. Returns Ok on a
 /// successful `nmcli` join, Err with a human message otherwise (the panel
 /// shows it verbatim).
 pub async fn connect(ssid: &str, password: &str) -> Result<(), String> {
+    check_ssid(ssid)?;
     let Some(dev) = uplink_device().await else {
         return Err("no spare Wi-Fi radio — the only one carries the classroom AP".into());
     };

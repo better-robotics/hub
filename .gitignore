@@ -12,13 +12,8 @@ pi/image/stage-hub/00-hub/files/usb-gadget-setup.sh
 pi/image/stage-hub/00-hub/files/mosquitto.conf
 pi/image/stage-hub/00-hub/files/mosquitto-acl.conf
 
-# ---- esp32 (ESP-IDF) ----
-esp32/build/
-esp32/managed_components/
-esp32/sdkconfig
-esp32/sdkconfig.old
-esp32/dependencies.lock
-esp32/main/wifi_creds.h              # REAL venue Wi-Fi creds — NEVER commit (see wifi_creds.example.h)
+# (The ESP32 hub moved to better-robotics/robot as a boot role, 2026-07-09 — its
+# build artifacts + creds are gitignored there now.)
 
 # ---- shared / session ----
 __pycache__/

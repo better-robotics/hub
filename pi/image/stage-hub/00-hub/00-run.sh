@@ -88,6 +88,17 @@ dhcp-option=tag:usb0,3
 dhcp-option=tag:usb0,6
 NOROUTEEOF
 
+# Captive Portal API pointer (RFC 8910 option 114 → hubd's RFC 8908 /captive,
+# which answers captive:false + the dashboard as venue-info-url): joining
+# phones can surface the dashboard unprompted, with NOTHING blocked — this is
+# an advertisement, not a portal (captive portals were chosen against;
+# robot/CLAUDE.md § Status). AP leg only (tag:wlan0) — the usb0 recovery link
+# must stay claim-free. Progressive nicety: RFC 8908 prefers TLS we can't
+# validly present offline, so clients that insist will just ignore it.
+cat > "${ROOTFS_DIR}/etc/NetworkManager/dnsmasq-shared.d/20-ap-capport.conf" <<'CAPPORTEOF'
+dhcp-option=tag:wlan0,114,http://10.42.0.1/captive
+CAPPORTEOF
+
 # Login banner: print the hub's IP + router status on every interactive login
 # (serial autologin and ssh both source /etc/profile.d/*.sh). This is where
 # "what's my hub's address / is it up" is answered.

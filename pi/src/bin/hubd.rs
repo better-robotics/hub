@@ -162,6 +162,21 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String) 
                 ("GET", "/codes/list") => ("200 OK", "application/json", hub::codes::list_json()),
                 ("POST", "/codes/set") => hub::codes::set_json(post_body).await,
                 ("POST", "/codes/del") => hub::codes::del_json(post_body).await,
+                // Captive Portal API (RFC 8908), pointed at by DHCP option 114
+                // (RFC 8910, dnsmasq drop-in in the image). `captive:false` is
+                // the whole point: nothing is blocked, we're only advertising
+                // the dashboard as the venue page so joining devices surface it
+                // unprompted. 10.42.0.1 = NM-shared's AP address, the same
+                // always-works fallback the docs teach. Caveat, recorded
+                // honestly: RFC 8908 wants this endpoint over TLS, which an
+                // offline LAN appliance can't validly present — some clients
+                // may ignore the plain-HTTP form. Zero blast radius either
+                // way; verify on a real phone, keep if it helps, shrug if not.
+                ("GET", "/captive") => (
+                    "200 OK",
+                    "application/captive+json",
+                    r#"{"captive":false,"venue-info-url":"http://10.42.0.1/"}"#.into(),
+                ),
                 _ => ("404 Not Found", "text/plain", "not found".into()),
             };
             // ACAO *: /fleet is public-read JSON, and the rover setup page

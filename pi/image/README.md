@@ -58,7 +58,10 @@ stages → mount-assert the artifacts → publish `.img.xz`.
 2. Card → Pi 4 → power on (no network needed).
 3. Phone → join the Pi's own **`hub-XXXX`** Wi-Fi → open `http://hub.local` (or
    `http://10.42.0.1`) → the dashboard's "Set up Wi-Fi" panel scans, pick the
-   classroom SSID + password. The Pi joins on its uplink radio.
+   classroom SSID + password. The Pi joins on its uplink radio. (The AP's DHCP
+   also advertises the dashboard via Captive Portal API `captive:false` —
+   phones that honor RFC 8910/8908 surface the page on join, unprompted and
+   with nothing blocked; the rest lose nothing.)
 4. `hubd` is already running. Pin a **static/reserved IP** so rovers can hardcode
    the broker at `mqtt://<ip>:1883`.
 

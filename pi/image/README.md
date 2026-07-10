@@ -24,6 +24,16 @@ installs everything *at build time*. The Pi never installs anything.
 - user `pi` (key-only SSH), hostname `hub`, `avahi-daemon` (`hub.local`), US
   Wi-Fi domain, `network-manager`.
 
+## What's deliberately absent
+A single-purpose appliance, dieted in `01-run-chroot.sh` (each absence is
+CI-asserted): **no swap** (`dphys-swapfile` purged — RAM is ample and a
+swapfile only wears the SD), **no Bluetooth stack** (onboarding is
+device-served Wi-Fi, never BLE), no `triggerhappy`, no apt/man-db maintenance
+timers (an offline box has no updates to fetch), and **only the contracted
+radios' firmware** — `firmware-brcm80211` (built-in AP) + `firmware-realtek`
+(the Edimax STA dongle); atheros/libertas are purged. A new dongle model means
+adding its firmware package back there — the offline Pi can't `apt install`.
+
 ## Provisioning vs recovery — two channels
 Wi-Fi setup is device-served (hubd's `/wifi/*`, no app, no Bluetooth); recovery
 is the out-of-band cable channel — the two needs split to the right tool:
@@ -65,9 +75,8 @@ they *run*. Watch:
 - **usb0 addressing** — NetworkManager must bring `usb0` up as `10.55.0.1`
   (`shared`) so the laptop gets a lease.
 
-Security: no transport auth/ACL exists yet (hub#1); hub-zenoh's shape
-(throwaway-plaintext usrpwd for classroom, TLS/mTLS for real deployments — see
-its `deploy/README.md`) is the reference. The serial console
+Security: the broker ships with the per-team ACL and PLACEHOLDER credentials
+baked in — change them with `mosquitto_passwd` before a real class. The serial console
 autologs in as `pi` (physical-cable = the auth boundary) but grants **no
 passwordless root** — it reads journals via the `adm` group; Wi-Fi (re)config is
 via the dashboard's `/wifi` panel (or the SD card).

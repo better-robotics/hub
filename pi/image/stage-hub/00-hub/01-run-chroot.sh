@@ -27,3 +27,26 @@ systemctl enable serial-getty@ttyGS0.service
 systemctl enable hub-ap.service
 systemctl enable hubd.service
 systemctl enable mosquitto.service
+
+# --- Appliance diet: a single-purpose broker/AP box, offline by design ---
+# dphys-swapfile: no swap — mosquitto+hubd use a few MB on a 1–8 GB Pi, and a
+#   swapfile on the SD card only wears it (also skips the 100 MB first-boot
+#   swap allocation).
+# triggerhappy: hotkey daemon for input devices the hub doesn't have.
+# bluetooth: the product deliberately has none (BLE onboarding was deleted
+#   for device-served Wi-Fi setup) — drop the stack and its boot services.
+# firmware-atheros/-libertas: the hub's radio contract is explicit — brcmfmac
+#   (built-in) is the AP, the Edimax RTL8188CUS the STA leg — so only
+#   firmware-brcm80211 + firmware-realtek (+ misc) earn their bytes. An
+#   unlisted future dongle needs its firmware added back HERE (the Pi is
+#   offline; it can't apt install).
+for p in dphys-swapfile triggerhappy bluez bluez-firmware pi-bluetooth \
+         modemmanager firmware-atheros firmware-libertas; do
+    apt-get -y purge "$p" 2>/dev/null || true
+done
+apt-get -y autoremove --purge
+apt-get clean
+
+# Offline appliance: the apt/man-db maintenance timers have no network and no
+# audience — they'd only spin the SD and log failures.
+systemctl disable apt-daily.timer apt-daily-upgrade.timer man-db.timer 2>/dev/null || true

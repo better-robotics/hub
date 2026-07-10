@@ -163,7 +163,7 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                 ),
                 ("GET", "/wifi/status") => ("200 OK", "application/json", wifi_status_json(&uplink).await),
                 ("POST", "/wifi/connect") => wifi_connect_json(post_body).await,
-                // Team-code management (dashboard "Team codes" panel). Reads are
+                // Team-code management (the dashboard's "Teams" panel). Reads are
                 // public (usernames = topic ids the anonymous fleet view already
                 // shows); writes re-verify the professor's code per request.
                 ("GET", "/codes/list") => ("200 OK", "application/json", hub::codes::list_json()),

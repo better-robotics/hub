@@ -1,4 +1,4 @@
-//! Team-code management — the dashboard's "Team codes" panel backend.
+//! Team-code management — the code actions on the dashboard's "Teams" panel.
 //!
 //! The professor's whole credential workflow used to be ssh + mosquitto_passwd;
 //! these endpoints make it dashboard-native: list identities, set/rotate a

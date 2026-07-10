@@ -84,7 +84,12 @@ def _on_message(client, userdata, msg):
     if channel == "imu":
         _imu[robot_id] = payload
     elif channel == "sys":
-        _sys[robot_id] = payload
+        # Key by BOARD, not topic id: every pool board publishes on
+        # robots/unassigned/sys, so keying by topic collapses them into one
+        # flapping entry (the same last-writer-wins the dashboard's per-board
+        # pool rows fixed). The topic id rides along as the board's team.
+        payload["_team"] = robot_id
+        _sys[payload.get("board") or robot_id] = payload
     elif channel == "led" and len(parts) == 4 and parts[3] == "reply":
         cid = None
         props = msg.properties
@@ -166,13 +171,16 @@ def read_imu(robot_id: str, timeout_s: float = 2.0) -> dict:
 
 @mcp.tool()
 def fleet() -> dict:
-    """Every rover currently on the hub, keyed by robot_id, with its latest sys
-    telemetry and seconds-since-last-message. This is the anonymous public view
-    (robots/+/sys) — the same data the dashboard's live fleet card shows."""
+    """Every board currently on the hub, keyed by hardware board id, each with
+    its team (the topic identity it publishes under — `unassigned` = the pool),
+    latest sys telemetry, and seconds-since-last-message. This is the anonymous
+    public view (robots/+/sys) — the same data the dashboard's fleet cards show.
+    To drive a board, target its TEAM id (pool boards all share `unassigned`)."""
     now = time.time()
     return {
-        rid: {**_clean(payload), "age_s": round(now - payload.get("_rx", now), 1)}
-        for rid, payload in _sys.items()
+        board: {**_clean(payload), "team": payload.get("_team", "?"),
+                "age_s": round(now - payload.get("_rx", now), 1)}
+        for board, payload in _sys.items()
     }
 
 

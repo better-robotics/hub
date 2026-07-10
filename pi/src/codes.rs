@@ -75,10 +75,18 @@ fn list_users() -> Vec<String> {
         .collect()
 }
 
+/// Both fields land in `mosquitto_passwd`'s argv — a leading '-' would be
+/// parsed as a flag (`-D` deletes, `-c` truncates the file), the same argv
+/// misparse `wifi.rs` guards against. First char alphanumeric kills the class.
 fn valid_name(user: &str) -> bool {
     !user.is_empty()
         && user.len() <= 32
+        && user.chars().next().is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
         && user.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
+}
+
+fn valid_pass(pass: &str) -> bool {
+    !pass.is_empty() && pass.len() <= 64 && !pass.starts_with('-')
 }
 
 async fn reload_broker() {
@@ -112,13 +120,13 @@ pub async fn set_json(body: &str) -> (&'static str, &'static str, String) {
         return err("professor code rejected");
     }
     if !valid_name(user) {
-        return err("names are 1-32 chars: a-z 0-9 - _");
+        return err("names are 1-32 chars: a-z 0-9 - _ (starting with a letter or digit)");
     }
     if user == POOL_USER {
         return err("the pool identity is fixed — it matches the firmware default");
     }
-    if pass.is_empty() || pass.len() > 64 {
-        return err("code must be 1-64 chars");
+    if !valid_pass(pass) {
+        return err("codes are 1-64 chars and can't start with '-'");
     }
     let ok = tokio::process::Command::new("mosquitto_passwd")
         .args(["-b", PASSWD, user, pass])

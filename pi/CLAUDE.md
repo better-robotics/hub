@@ -163,6 +163,14 @@ also caught two usb0 recovery-link bugs, see `image/README.md` § First
 hardware boot). Scars:
 - **brcmfmac (built-in) is the reliable AP; the Edimax RTL8188CUS is not** —
   the dongle takes the STA leg.
+- **Single-radio AP+STA (dropping the dongle) is measured-out, not assumed-out**
+  (bench 2026-07-10). brcmfmac supports 1 AP + 1 STA (`iw phy`: `#channels <= 1`),
+  but live against three AP clients: the STA leg's off-channel *scanning alone*
+  starved the AP (repeated 1.5–5.6 s gaps), a join to the uplink's different
+  channel failed outright, the retry "succeeded" incoherently (STA ch 52 vs AP
+  ch 6, kernel `chanspec failed (-52)`), and the run totaled ~47% AP-client loss
+  with a 17.9 s worst gap. Control on the two-radio split: a full uplink
+  disconnect+reconnect cost AP clients 3% loss / 0.42 s max gap. Two radios stay.
 - **Open AP for now**: ESP32-C3 WPA2 join fails against this AP (4-way
   handshake timeout; open joins in ~6 s). Interop unresolved — see
   `better-robotics/robot` CLAUDE.md.

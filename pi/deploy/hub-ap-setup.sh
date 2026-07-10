@@ -34,9 +34,14 @@ fi
 MAC=$(cat /sys/class/net/wlan0/address)
 SUFFIX=$(echo "$MAC" | awk -F: '{print $5 $6}')
 
+# powersave 2 = disable, pinned: a power-saving AP misses client frames and
+# produces associate-then-drop-before-DHCP loops. Bench scar 2026-07-10 — the
+# single-radio AP+STA experiment left wlan0's power save ON and every ESP32
+# association flapped until the profile was bounced with powersave disabled.
 nmcli con add type wifi ifname wlan0 con-name "$CON" autoconnect yes \
   connection.autoconnect-priority 10 \
   ssid "hub-${SUFFIX}" mode ap 802-11-wireless.band bg \
+  802-11-wireless.powersave 2 \
   ipv4.method shared ipv4.addresses 10.42.0.1/24 ipv6.method ignore
 nmcli con up "$CON" || true   # NM will also raise it itself via autoconnect
 

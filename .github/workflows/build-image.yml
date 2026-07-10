@@ -132,6 +132,7 @@ jobs:
           # usb0 recovery-link fixes (both hardware-discovered on the 2026-07-10 first boot):
           sudo test -f /mnt/hub/etc/NetworkManager/conf.d/10-usb0-managed.conf        # NM must manage usb0 (udev defaults g_ether to unmanaged)
           sudo test -f /mnt/hub/etc/NetworkManager/dnsmasq-shared.d/10-usb0-no-route.conf  # never capture the laptop's default route/DNS
+          sudo test -f /mnt/hub/etc/mosquitto/.placeholder-creds                    # placeholder-codes marker (dashboard nag until first rotation)
           echo "hubd:" && sudo file /mnt/hub/opt/hub/hubd                             # static musl aarch64
           # config.txt/cmdline.txt live on the FAT boot partition (p1), not the
           # rootfs (p2): on a running Pi /boot/firmware is a mount point, but in

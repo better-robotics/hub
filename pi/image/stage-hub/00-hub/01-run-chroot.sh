@@ -18,6 +18,10 @@ mosquitto_passwd -b    /etc/mosquitto/hub-passwd team1      change-me-team1
 mosquitto_passwd -b    /etc/mosquitto/hub-passwd team2      change-me-team2
 chown mosquitto:mosquitto /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 chmod 0600 /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
+# Marker = "this class still runs the seeded PLACEHOLDER codes". hubd's
+# /codes/set deletes it on the first real code change; while it exists the
+# dashboard nags the professor to rotate before class.
+touch /etc/mosquitto/.placeholder-creds
 
 # Each independently restartable: usb-gadget (recovery, before NM), serial
 # console on the gadget, the day-zero hub-XXXX AP, the dashboard chassis +

@@ -156,6 +156,12 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String) 
                 ),
                 ("GET", "/wifi/status") => ("200 OK", "application/json", wifi_status_json(&uplink).await),
                 ("POST", "/wifi/connect") => wifi_connect_json(post_body).await,
+                // Team-code management (dashboard "Team codes" panel). Reads are
+                // public (usernames = topic ids the anonymous fleet view already
+                // shows); writes re-verify the professor's code per request.
+                ("GET", "/codes/list") => ("200 OK", "application/json", hub::codes::list_json()),
+                ("POST", "/codes/set") => hub::codes::set_json(post_body).await,
+                ("POST", "/codes/del") => hub::codes::del_json(post_body).await,
                 _ => ("404 Not Found", "text/plain", "not found".into()),
             };
             // ACAO *: /fleet is public-read JSON, and the rover setup page

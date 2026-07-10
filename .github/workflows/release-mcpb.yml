@@ -69,6 +69,6 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" --verify-tag \
             --title "hub-fleet MCP $GITHUB_REF_NAME" \
-            --notes "Drag the .mcpb for your platform into Claude Desktop (Settings → Extensions), then enter your hub address and team code." \
+            --notes "Drag the .mcpb for your platform into Claude Desktop (Settings → Extensions) and enable it — no configuration needed. On the hub's Wi-Fi, ask your AI to request access and approve it from your team's signed-in dashboard (match the pairing code). Or enter your hub address and team code in Configure to skip the pairing step." \
             2>/dev/null || true
           gh release upload "$GITHUB_REF_NAME" "hub-fleet-${{ matrix.platform }}.mcpb" --clobber

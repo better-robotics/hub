@@ -28,8 +28,7 @@ copy. A breaking contract change now means: land it here, then resync in `robot`
   Wi-Fi setup, ACL).
   Contract refs point at the monorepo top level (`../CONTRACT.md`,
   `../envelopes/`); remaining `protocol/` mentions there are hub-zenoh's own.
-- The ESP32 hub role's context lives in `better-robotics/robot` (`CLAUDE.md`,
-  `DESIGN-unified.md`).
+- The ESP32 hub role's context lives in `better-robotics/robot` (`CLAUDE.md`).
 
 ## Building
 - Pi: `cd pi && cargo build` (or `sudo ./deploy/install.sh`). Build-verified 2026-07-08.

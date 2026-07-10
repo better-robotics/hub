@@ -2,10 +2,16 @@ name: build-image
 
 # Builds a flashable Raspberry Pi 4 (arm64) image with hubd baked in.
 # Result: flash → boot → join the hub's own hub-XXXX Wi-Fi and set the uplink
-# from the dashboard → the hub is running. USB-gadget (ssh/serial over USB-C) is
-# the headless recovery
-# channel. No ethernet, no on-device build — install happens here in CI, where
-# the network lives; the offline Pi never installs anything.
+# from the dashboard → the hub is running. USB-gadget (ssh/serial over USB-C)
+# is the headless recovery channel. No ethernet, no on-device build — install
+# happens here in CI, where the network lives; the offline Pi never installs
+# anything.
+#
+# No pi-gen (since 2026-07-10): the golden base already exists upstream — the
+# official Raspberry Pi OS Lite release, pinned below — so the bake is
+# download → loop-mount → customize (pi/image/customize-image.sh), minutes
+# instead of a debootstrap. The verify step is the contract that let the
+# production method change underneath it.
 on:
   workflow_dispatch:        # build on demand
   push:
@@ -17,44 +23,48 @@ permissions:
   contents: write           # to attach the .img to a Release
 
 jobs:
-  build-image:
-    # Native arm64 runner: pi-gen chroots the arm64 rootfs WITHOUT qemu/binfmt
-    # emulation (the amd64 path failed in preflight, before any stage ran).
-    # 22.04 (not 24.04): its debootstrap + debian-archive-keyring match the
-    # bookworm era — 24.04 bootstrapped a chroot whose apt rejected the Debian
-    # archive keys (NO_PUBKEY) in stage0.
-    runs-on: ubuntu-22.04-arm
+  hubd:
+    # The same reusable workflow the fast-redeploy path dispatches standalone
+    # — the image always ships the identical artifact.
+    uses: ./.github/workflows/build-hubd.yml
+
+  image:
+    needs: hubd
+    # Native arm64: chroot into the arm64 rootfs without qemu/binfmt. (The old
+    # ubuntu-22.04 pin was pi-gen's debootstrap constraint — gone with pi-gen.)
+    runs-on: ubuntu-24.04-arm
     defaults:
       run:
         working-directory: pi
+    env:
+      # Pinned official base ("golden") image. Bookworm is the
+      # hardware-verified base (glibc 2.36, first-boot 2026-07-10); it lives
+      # under oldstable since Trixie became mainline. Bumping the base — new
+      # date or Trixie — is a deliberate change here, never a rebuild side
+      # effect: update all three values from the .sha256 file next to the
+      # image on downloads.raspberrypi.com.
+      BASE_IMG: 2026-06-18-raspios-bookworm-arm64-lite
+      BASE_URL: https://downloads.raspberrypi.com/raspios_oldstable_lite_arm64/images/raspios_oldstable_lite_arm64-2026-06-19
+      BASE_SHA256: df4c6fb0b625204a09ce587f35f01b4d6375cb3ee0f05df71a0eca6c7aeb8f8f
+      # key-only login — pubkey baked, no password set
+      HUB_SSH_PUBKEY: >-
+        ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMalS/trWZcu/jbBu42I1rC8MUe5qR8A5Vnk9lloSQfW jonasneves@Jonass-MacBook-Pro.local
     steps:
       - uses: actions/checkout@v4
 
-      # --- cross-build hubd for the Pi (aarch64 glibc = Pi OS Bookworm 64-bit) ---
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v4
         with:
-          workspaces: pi
-          # One cache covers the whole ./target (the musl hubd build) plus the
-          # cargo registry. Keyed by arch only — never shared across runner archs.
-          key: arm64
-          cache-on-failure: true     # the pi-gen step fails; still save the rust build
-      # Native arm64 runner: build hubd directly, static (musl) so it's glibc-
-      # version-independent — runs on Pi OS Bookworm (glibc 2.36) regardless of
-      # the runner's newer glibc.
-      - name: Build hubd (static aarch64)
-        run: |
-          sudo apt-get update && sudo apt-get install -y musl-tools
-          rustup target add aarch64-unknown-linux-musl
-          cargo build --release --target aarch64-unknown-linux-musl --bin hubd
+          name: hubd-arm64
+          path: ${{ runner.temp }}/hubd-artifact
 
-      # --- stage artifacts the pi-gen custom stage installs into the rootfs ---
-      - name: Stage hub files for pi-gen
+      # --- stage artifacts the customization installs into the rootfs ---
+      - name: Stage hub files
         run: |
-          # files/ holds only gitignored build artifacts now (comitup.conf, its
-          # last tracked member, is gone), so git won't materialize the dir on
-          # checkout — create it before staging.
+          # files/ holds only gitignored build artifacts, so git won't
+          # materialize the dir on checkout — create it before staging.
           mkdir -p image/stage-hub/00-hub/files
-          cp target/aarch64-unknown-linux-musl/release/hubd image/stage-hub/00-hub/files/hubd
+          cp "$RUNNER_TEMP/hubd-artifact/hubd"              image/stage-hub/00-hub/files/hubd
+          chmod +x                                          image/stage-hub/00-hub/files/hubd
           cp deploy/hubd.service                            image/stage-hub/00-hub/files/hubd.service
           cp deploy/usb-gadget.service                      image/stage-hub/00-hub/files/usb-gadget.service
           cp deploy/usb-gadget-setup.sh                     image/stage-hub/00-hub/files/usb-gadget-setup.sh
@@ -65,46 +75,22 @@ jobs:
           cp deploy/mosquitto.conf                          image/stage-hub/00-hub/files/mosquitto.conf
           cp mosquitto-acl.example.conf                     image/stage-hub/00-hub/files/mosquitto-acl.conf
 
-      # --- bake the image (official RPi-Distro/pi-gen, arm64 branch) ---
-      - name: Build Pi image
-        id: build
-        uses: usimd/pi-gen-action@v1
-        with:
-          # Pinned to the maintained release tag (same build that produced the
-          # OS on the SD card) — modern pi-gen with correct signed-by keyrings,
-          # not the stale `arm64` branch whose apt sources lacked signed-by.
-          pi-gen-version: 2026-06-18-raspios-bookworm-arm64
-          image-name: hub
-          hostname: hub
-          release: bookworm
-          locale: en_US.UTF-8
-          timezone: America/New_York
-          keyboard-keymap: us
-          keyboard-layout: English (US)
-          verbose-output: true            # surface pi-gen's real failure in the log
-          enable-ssh: 1
-          username: pi
-          # key-only login — pubkey baked, no password set
-          password: ''
-          pubkey-only-ssh: 1
-          pubkey-ssh-first-user: >-
-            ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMalS/trWZcu/jbBu42I1rC8MUe5qR8A5Vnk9lloSQfW jonasneves@Jonass-MacBook-Pro.local
-          # Lite base (stage0-2) + our customizations
-          stage-list: stage0 stage1 stage2 ./pi/image/stage-hub
-          compression: xz
-          # Only export the final (stage-hub) image — skip finalizing+compressing
-          # the throwaway stage2 Lite image we never publish. Halves the export tail.
-          export-last-stage-only: true
-          # Cache the bootstrapped work/ (debootstrap + apt across stage0-2) to the
-          # Actions cache: the expensive, deterministic half of the bake. The action
-          # owns the chroot-safe tar round-trip, so this is the maintained form of
-          # work-dir caching — keyed on the build inputs, so a config change busts it.
-          enable-pigen-cache: true
+      - name: Fetch base image
+        run: |
+          curl -fSL -o "$RUNNER_TEMP/base.img.xz" "$BASE_URL/$BASE_IMG.img.xz"
+          echo "$BASE_SHA256  $RUNNER_TEMP/base.img.xz" | sha256sum -c
+          xz -d "$RUNNER_TEMP/base.img.xz"
+          mv "$RUNNER_TEMP/base.img" "$RUNNER_TEMP/hub.img"
+
+      - name: Customize image
+        run: |
+          sudo apt-get update && sudo apt-get install -y zerofree
+          sudo --preserve-env=HUB_SSH_PUBKEY image/customize-image.sh "$RUNNER_TEMP/hub.img"
 
       - name: Verify customizations are in the image
         run: |
           set -euo pipefail
-          IMGXZ="${{ steps.build.outputs.image-path }}"
+          IMGXZ="$RUNNER_TEMP/hub.img"
           echo "image: $IMGXZ"
           case "$IMGXZ" in
             *.xz) xz -dkf "$IMGXZ"; IMG="${IMGXZ%.xz}" ;;
@@ -134,6 +120,14 @@ jobs:
           sudo test -f /mnt/hub/etc/NetworkManager/dnsmasq-shared.d/10-usb0-no-route.conf  # never capture the laptop's default route/DNS
           sudo test -f /mnt/hub/etc/mosquitto/.placeholder-creds                    # placeholder-codes marker (dashboard nag until first rotation)
           sudo test -f /mnt/hub/etc/NetworkManager/dnsmasq-shared.d/20-ap-capport.conf  # option-114 dashboard advertisement (AP leg only)
+          # Base config — customize-image.sh owns what pi-gen used to (since 2026-07-10):
+          sudo chroot /mnt/hub getent passwd pi                                       # first user baked
+          sudo test -f /mnt/hub/home/pi/.ssh/authorized_keys                          # key-only ssh: key present...
+          sudo grep -q 'PasswordAuthentication no' /mnt/hub/etc/ssh/sshd_config.d/10-hub-pubkey-only.conf  # ...password auth off...
+          sudo test ! -e /mnt/hub/etc/ssh/sshd_config.d/rename_user.conf              # ...and the stock ssh-blocks-until-wizard gate gone
+          sudo test -L /mnt/hub/etc/systemd/system/multi-user.target.wants/ssh.service          # sshd enabled
+          sudo test ! -e /mnt/hub/etc/systemd/system/multi-user.target.wants/userconfig.service # first-boot wizard off
+          sudo grep -qx hub /mnt/hub/etc/hostname                                     # hub.local presupposes this
           echo "hubd:" && sudo file /mnt/hub/opt/hub/hubd                             # static musl aarch64
           # config.txt/cmdline.txt live on the FAT boot partition (p1), not the
           # rootfs (p2): on a running Pi /boot/firmware is a mount point, but in
@@ -145,23 +139,17 @@ jobs:
           sudo grep -q 'modules-load=dwc2' /mnt/boot/cmdline.txt                      # gadget modules (boot part)
           sudo umount /mnt/boot
           sudo umount /mnt/hub && sudo losetup -d "$LOOP"
-          echo "✓ image: hubd + usb-gadget recovery, comitup removed"
+          echo "✓ image: hubd + usb-gadget recovery, base config owned by customize-image.sh"
 
-      - name: Dump pi-gen logs on failure
-        if: failure()
-        run: |
-          echo "===== pi-gen build.log (tail) ====="
-          sudo find pi-gen -name build.log -exec tail -n 120 {} \; 2>/dev/null || true
-          echo "===== stage log files ====="
-          sudo find pi-gen/work -name '*.log' 2>/dev/null | while read -r f; do
-            echo "--- $f ---"; sudo tail -n 40 "$f"
-          done || true
+      # Compress after verify (verify reads the raw .img — no decompress round-trip).
+      - name: Compress image
+        run: xz -T0 "$RUNNER_TEMP/hub.img"
 
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
         with:
           name: hub-image
-          path: ${{ steps.build.outputs.image-path }}
+          path: ${{ runner.temp }}/hub.img.xz
           # The released .img lives on the Release; this copy exists only so a
           # workflow_dispatch run (no Release) is downloadable the same day.
           # ~470 MB against the 0.5 GB org quota — never let it accumulate.
@@ -171,7 +159,7 @@ jobs:
       # folder, so the released asset carries the full name the tag can omit.
       - name: Name the release asset
         if: startsWith(github.ref, 'refs/tags/pi-image-v')
-        run: cp "${{ steps.build.outputs.image-path }}" "$GITHUB_WORKSPACE/hub-${GITHUB_REF_NAME}.img.xz"
+        run: cp "$RUNNER_TEMP/hub.img.xz" "$GITHUB_WORKSPACE/hub-${GITHUB_REF_NAME}.img.xz"
 
       - name: Attach image to Release
         if: startsWith(github.ref, 'refs/tags/pi-image-v')

@@ -62,7 +62,7 @@ pi/                 the Raspberry Pi hub
 ├── src/            hubd — dashboard/HTTP chassis + device-served Wi-Fi setup (nmcli)
 ├── mosquitto*.conf broker config + per-team ACL
 ├── deploy/         systemd install: hubd · Mosquitto · day-zero hub AP · USB-gadget recovery
-├── image/          pi-gen stage — the CI-baked, flash-and-go Pi image
+├── image/          the CI-baked, flash-and-go Pi image (official Lite base + customize-image.sh)
 └── examples/       broker ACL + WebSocket transport tests (CI-gated)
 ```
 

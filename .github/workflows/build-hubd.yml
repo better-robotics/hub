@@ -1,17 +1,21 @@
 name: build-hubd
 
-# Builds just the hubd binary (arm64 glibc, forward-compatible with the Pi's
-# Bookworm glibc 2.36) and uploads it as an artifact — the fast redeploy path
-# for a live Pi, skipping the full image bake. The Pi has no toolchain by
-# design; CI is where builds happen. Pure Rust HTTP: hubd is the router, fleet
-# HTTP, and the device-served Wi-Fi setup (/wifi/*, via nmcli at runtime) — no
-# native/dbus deps to link.
+# Builds just the hubd binary and uploads it as an artifact. Two consumers:
+# dispatched standalone it's the fast redeploy path for a live Pi (consumed
+# over serial by tools/deploy-hubd.sh, skipping the image bake), and
+# build-image calls it as a job — both paths always ship the identical
+# binary. Static musl, so it's glibc-version-independent (runs on Pi OS
+# Bookworm's glibc 2.36 regardless of the runner's). The Pi has no toolchain
+# by design; CI is where builds happen. Pure Rust HTTP: hubd is the dashboard,
+# fleet HTTP, and the device-served Wi-Fi setup (/wifi/*, via nmcli at
+# runtime) — no native/dbus deps to link.
 on:
-  workflow_dispatch:
+  workflow_dispatch:      # standalone: the fast-redeploy artifact
+  workflow_call:          # as job 1 of build-image
 
 jobs:
   build:
-    runs-on: ubuntu-22.04-arm
+    runs-on: ubuntu-24.04-arm   # native arm64 — no cross toolchain
     defaults:
       run:
         working-directory: pi
@@ -20,14 +24,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: pi
-          key: arm64   # shared with build-image (same arch, same deps)
-      - name: Build hubd (arm64 glibc)
-        run: cargo build --release --bin hubd
+          # One cache covers ./target (the musl hubd build) plus the cargo
+          # registry. Keyed by arch only — never shared across runner archs.
+          key: arm64
+      - name: Build hubd (static aarch64)
+        run: |
+          sudo apt-get update && sudo apt-get install -y musl-tools
+          rustup target add aarch64-unknown-linux-musl
+          cargo build --release --target aarch64-unknown-linux-musl --bin hubd
       - uses: actions/upload-artifact@v4
         with:
           name: hubd-arm64
-          path: pi/target/release/hubd
-          # Fast-redeploy artifact, consumed once over serial by
-          # tools/deploy-hubd.sh — no reason to ride the repo's 90-day
-          # default. Matches build-image.
+          path: pi/target/aarch64-unknown-linux-musl/release/hubd
+          # Consumed within the run (build-image) or same-day (deploy-hubd.sh)
+          # — no reason to ride the repo's 90-day default.
           retention-days: 1

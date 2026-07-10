@@ -49,9 +49,14 @@ is the out-of-band cable channel — the two needs split to the right tool:
 - **Release:** push a tag `pi-image-vN` → the image is attached to a GitHub
   Release as `hub-pi-image-vN.img.xz`.
 
-Pipeline (`.github/workflows/build-image.yml`): build `hubd` (musl) → stage into
-`files/` → `pi-gen` (arm64, last stage only) appends `stage-hub` to the Lite
-stages → mount-assert the artifacts → publish `.img.xz`.
+Pipeline (`.github/workflows/build-image.yml`): build `hubd` (musl, the same
+reusable `build-hubd` workflow the fast-redeploy path dispatches standalone) →
+stage into `files/` → download the pinned **official Raspberry Pi OS Lite**
+release (sha256-checked) → loop-mount and run `customize-image.sh` (base
+config: user/ssh/hostname/locale, then the `stage-hub` payload) → mount-assert
+the artifacts → publish `.img.xz`. No pi-gen since 2026-07-10: the golden base
+is retrieved, not rebuilt — a customization change costs a download and a
+loop-mount, not a debootstrap.
 
 ## Deploy (every card, cable-free)
 1. Flash the released `.img.xz` (Raspberry Pi Imager → "Use custom").
@@ -89,7 +94,7 @@ range), and WPA2 on the hub AP (open for now — the ESP32 join scar, see
 
 Security: the broker ships with the per-team ACL and PLACEHOLDER credentials
 baked in — change them with `mosquitto_passwd` before a real class. The serial
-console autologs in as `pi`, and `pi` has passwordless sudo (pi-gen's default,
-kept deliberately): **cable possession = root**, the same boundary as holding
+console autologs in as `pi`, and `pi` has passwordless sudo (baked by
+`customize-image.sh`, deliberately): **cable possession = root**, the same boundary as holding
 the removable, unencrypted SD card — and root over the cable is what makes the
 recovery channel able to actually *fix* the box (proven on first boot).

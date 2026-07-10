@@ -1,8 +1,8 @@
 #!/bin/bash -e
-# Host context (has ROOTFS_DIR): drop hub artifacts into the target rootfs. CI
-# stages files/ before pi-gen runs — binaries cross-built, units + scripts
-# copied from deploy/ (the single source of truth, also used off-Pi by
-# deploy/install.sh).
+# Host context (has ROOTFS_DIR): drop hub artifacts into the target rootfs.
+# Run by ../customize-image.sh against the loop-mounted image; CI stages
+# files/ first — binaries cross-built, units + scripts copied from deploy/
+# (the single source of truth, also used off-Pi by deploy/install.sh).
 
 # --- hub dashboard chassis (serves the dashboard + device-served Wi-Fi setup;
 # the old BLE provisiond was deleted 2026-07-09, provisioning is /wifi/* now) ---
@@ -110,7 +110,8 @@ install -m 0644 files/hub-login-banner.sh "${ROOTFS_DIR}/etc/profile.d/hub-statu
 
 # Autologin on the USB-ACM serial console (physical-cable possession is the auth
 # boundary, same as holding the SD card): drops straight to a `pi` shell. Note
-# this IS root: pi-gen bakes NOPASSWD sudo for the first user, and we keep it —
+# this IS root: the image bakes NOPASSWD sudo for the first user
+# (customize-image.sh), deliberately —
 # the SD card is removable and unencrypted, so physical access was always root,
 # and the recovery channel being able to *fix* the box is its purpose
 # (2026-07-10: the usb0-unmanaged bug was diagnosed and repaired live over

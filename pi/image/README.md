@@ -27,8 +27,9 @@ installs everything *at build time*. The Pi never installs anything.
 ## What's deliberately absent
 A single-purpose appliance, dieted in `01-run-chroot.sh` (each absence is
 CI-asserted): **no swap** (`dphys-swapfile` purged — RAM is ample and a
-swapfile only wears the SD), **no Bluetooth stack** (onboarding is
-device-served Wi-Fi, never BLE), no `triggerhappy`, no apt/man-db maintenance
+swapfile only wears the SD), **no Bluetooth** (onboarding is device-served
+Wi-Fi, never BLE — the bluez stack is purged *and* `dtoverlay=disable-bt`
+turns the radio itself off), no `triggerhappy`, no apt/man-db maintenance
 timers (an offline box has no updates to fetch), and **only the contracted
 radios' firmware** — `firmware-brcm80211` (built-in AP) + `firmware-realtek`
 (the Edimax STA dongle); atheros/libertas are purged. A new dongle model means
@@ -64,19 +65,27 @@ If anything's wrong on first boot, plug a USB-C cable to a laptop and
 `ssh pi@10.55.0.1` (or open `/dev/ttyGS0` at 115200) — that channel works even
 with Wi-Fi down.
 
-## Known checks on first hardware boot
-The CI mount-assert proves the artifacts are *present*; only a real Pi proves
-they *run*. Watch:
-- **Wi-Fi setup panel** — join `hub-XXXX`, open `http://hub.local`, and confirm
-  the "Set up Wi-Fi" panel scans and joins (hubd's `/wifi/*`, backed by nmcli —
-  the unit runs as root for it). If it's dead, check `journalctl -u hubd`.
-- **USB gadget** — `dwc2` UDC must appear; the setup script waits 10s and logs to
-  `/boot/firmware/usb-gadget.log` (readable by popping the SD into any host).
-- **usb0 addressing** — NetworkManager must bring `usb0` up as `10.55.0.1`
-  (`shared`) so the laptop gets a lease.
+## First hardware boot — verified 2026-07-10
+The CI mount-assert proves the artifacts are *present*; the first real-Pi boot
+proved they *run*: day-zero AP on the air (`hub-a2f5`), dashboard HTTP 200 on
+:80, broker ACL answering on :1883/:9001, gadget serial + ssh live, rootfs
+auto-expanded, swap/BT/diet absences confirmed. It also caught two real bugs,
+both fixed in `00-run.sh` and CI-asserted since:
+- **usb0 sat unmanaged** — NM's udev rules default `g_ether` interfaces to
+  `NM_UNMANAGED=1`, so the baked nmconnection never activated
+  (`10-usb0-managed.conf` overrides it).
+- **the gadget captured the laptop's internet** — a stock `shared` DHCP offer
+  advertises the Pi as router+DNS, and macOS prefers wired over Wi-Fi
+  (`dnsmasq-shared.d/10-usb0-no-route.conf` suppresses both, usb0 only).
+
+Still to watch on future boots: the Wi-Fi setup panel's actual *join* of an
+uplink network (`/wifi/*` scan verified; a join needs a second network in
+range), and WPA2 on the hub AP (open for now — the ESP32 join scar, see
+`pi/CLAUDE.md`).
 
 Security: the broker ships with the per-team ACL and PLACEHOLDER credentials
-baked in — change them with `mosquitto_passwd` before a real class. The serial console
-autologs in as `pi` (physical-cable = the auth boundary) but grants **no
-passwordless root** — it reads journals via the `adm` group; Wi-Fi (re)config is
-via the dashboard's `/wifi` panel (or the SD card).
+baked in — change them with `mosquitto_passwd` before a real class. The serial
+console autologs in as `pi`, and `pi` has passwordless sudo (pi-gen's default,
+kept deliberately): **cable possession = root**, the same boundary as holding
+the removable, unencrypted SD card — and root over the cable is what makes the
+recovery channel able to actually *fix* the box (proven on first boot).

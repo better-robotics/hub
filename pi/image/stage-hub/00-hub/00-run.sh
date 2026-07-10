@@ -34,6 +34,11 @@ CMDLINE="${ROOTFS_DIR}/boot/firmware/cmdline.txt"
 # Pi 4 Model B (which matches none of the stock model-scoped dwc2 sections).
 grep -q 'dr_mode=peripheral' "$CONFIG" || \
   printf '\n[all]\ndtoverlay=dwc2,dr_mode=peripheral\n' >> "$CONFIG"
+# No Bluetooth hardware either: the bluez stack is purged in 01-run-chroot.sh,
+# and this stops the kernel's own hci0 firmware probes (journal noise on a
+# radio nothing uses). Must stay below the [all] header above.
+grep -q 'dtoverlay=disable-bt' "$CONFIG" || \
+  printf 'dtoverlay=disable-bt\n' >> "$CONFIG"
 # modules-load must ride on the single cmdline line, after rootwait.
 grep -q 'modules-load=dwc2' "$CMDLINE" || \
   sed -i 's/\brootwait\b/rootwait modules-load=dwc2,libcomposite/' "$CMDLINE"
@@ -59,18 +64,42 @@ method=ignore
 NMEOF
 chmod 600 "${ROOTFS_DIR}/etc/NetworkManager/system-connections/usb-gadget.nmconnection"
 
+# NM's udev rules mark g_ether interfaces NM_UNMANAGED=1 by default (gadget
+# interfaces usually tether INTO a device, not serve from one) — without this
+# override NM ignores usb0 entirely and the nmconnection above never activates.
+# Hardware-discovered 2026-07-10, first real-Pi boot: gadget enumerated on the
+# laptop, but usb0 sat DOWN/unmanaged and 10.55.0.1 never came up.
+install -d "${ROOTFS_DIR}/etc/NetworkManager/conf.d"
+cat > "${ROOTFS_DIR}/etc/NetworkManager/conf.d/10-usb0-managed.conf" <<'MANEOF'
+[device-usb-gadget]
+match-device=interface-name:usb0
+managed=1
+MANEOF
+
+# usb0 hands out addresses but must NOT advertise itself as the laptop's
+# default route or DNS: macOS ranks wired above Wi-Fi, so a stock `shared`
+# DHCP offer silently captures the whole laptop's traffic into an uplink-less
+# Pi (hardware-discovered 2026-07-10 — the laptop's DNS died on plug-in).
+# dnsmasq auto-tags requests with the arriving interface, so this scopes to
+# usb0 only; the wlan0 AP keeps advertising router+DNS (rovers need the NAT).
+install -d "${ROOTFS_DIR}/etc/NetworkManager/dnsmasq-shared.d"
+cat > "${ROOTFS_DIR}/etc/NetworkManager/dnsmasq-shared.d/10-usb0-no-route.conf" <<'NOROUTEEOF'
+dhcp-option=tag:usb0,3
+dhcp-option=tag:usb0,6
+NOROUTEEOF
+
 # Login banner: print the hub's IP + router status on every interactive login
 # (serial autologin and ssh both source /etc/profile.d/*.sh). This is where
 # "what's my hub's address / is it up" is answered.
 install -m 0644 files/hub-login-banner.sh "${ROOTFS_DIR}/etc/profile.d/hub-status.sh"
 
 # Autologin on the USB-ACM serial console (physical-cable possession is the auth
-# boundary, same as holding the SD card): drops straight to a `pi` shell that
-# shows boot logs + journalctl. `pi` is in the `adm` group, so it reads ALL
-# journals with NO sudo — which is the whole "see logs" need. We deliberately do
-# NOT grant passwordless root: Wi-Fi (re)config goes through the dashboard's
-# Wi-Fi setup panel or the SD card, so the recovery console stays read-oriented
-# and least-privileged.
+# boundary, same as holding the SD card): drops straight to a `pi` shell. Note
+# this IS root: pi-gen bakes NOPASSWD sudo for the first user, and we keep it —
+# the SD card is removable and unencrypted, so physical access was always root,
+# and the recovery channel being able to *fix* the box is its purpose
+# (2026-07-10: the usb0-unmanaged bug was diagnosed and repaired live over
+# exactly this console).
 install -d -m 0755 "${ROOTFS_DIR}/etc/systemd/system/serial-getty@ttyGS0.service.d"
 cat > "${ROOTFS_DIR}/etc/systemd/system/serial-getty@ttyGS0.service.d/autologin.conf" <<'AUTOEOF'
 [Service]

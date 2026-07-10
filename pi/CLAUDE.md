@@ -157,8 +157,10 @@ Not transport-specific — this is Pi/Wi-Fi-radio topology: wlan0 AP `hub-XXXX`
 locator. (Original record: archived hub-zenoh README § "Network: the hub is
 the access point".) Baked into the image since 2026-07-10:
 `deploy/hub-ap-setup.sh` + `hub-ap.service` create the NM profile on first
-boot (idempotent; suffix from wlan0's MAC) — **not yet verified on a real Pi
-flash**; verify on the next image burn. Scars:
+boot (idempotent; suffix from wlan0's MAC) — **hardware-verified 2026-07-10**
+(first real-Pi flash: `hub-a2f5` on the air, dashboard + broker up; the boot
+also caught two usb0 recovery-link bugs, see `image/README.md` § First
+hardware boot). Scars:
 - **brcmfmac (built-in) is the reliable AP; the Edimax RTL8188CUS is not** —
   the dongle takes the STA leg.
 - **Open AP for now**: ESP32-C3 WPA2 join fails against this AP (4-way

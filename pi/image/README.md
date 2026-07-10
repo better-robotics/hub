@@ -46,7 +46,8 @@ is the out-of-band cable channel — the two needs split to the right tool:
 
 ## Build it
 - **On demand:** Actions → `build-image` → *Run workflow*.
-- **Release:** push a tag `image-vN` → the `.img.xz` is attached to a GitHub Release.
+- **Release:** push a tag `pi-image-vN` → the image is attached to a GitHub
+  Release as `hub-pi-image-vN.img.xz`.
 
 Pipeline (`.github/workflows/build-image.yml`): build `hubd` (musl) → stage into
 `files/` → `pi-gen` (arm64, last stage only) appends `stage-hub` to the Lite

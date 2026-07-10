@@ -9,7 +9,9 @@ name: build-image
 on:
   workflow_dispatch:        # build on demand
   push:
-    tags: ['image-v*']      # tagging image-v1 cuts a released .img
+    tags: ['pi-image-v*']   # tagging pi-image-vN cuts a released .img
+                            # ("pi-" routes to pi/image/; "hub" would be
+                            # redundant — the repo name carries it)
 
 permissions:
   contents: write           # to attach the .img to a Release
@@ -163,8 +165,14 @@ jobs:
           # ~470 MB against the 0.5 GB org quota — never let it accumulate.
           retention-days: 1
 
+      # A downloaded .img.xz loses all repo context in someone's Downloads
+      # folder, so the released asset carries the full name the tag can omit.
+      - name: Name the release asset
+        if: startsWith(github.ref, 'refs/tags/pi-image-v')
+        run: cp "${{ steps.build.outputs.image-path }}" "$GITHUB_WORKSPACE/hub-${GITHUB_REF_NAME}.img.xz"
+
       - name: Attach image to Release
-        if: startsWith(github.ref, 'refs/tags/image-v')
+        if: startsWith(github.ref, 'refs/tags/pi-image-v')
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.build.outputs.image-path }}
+          files: hub-${{ github.ref_name }}.img.xz

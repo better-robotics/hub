@@ -1,0 +1,59 @@
+{
+  "manifest_version": "0.2",
+  "name": "hub-fleet",
+  "display_name": "Better Robotics — Hub Fleet",
+  "version": "0.2.0",
+  "description": "Drive and observe the classroom rovers from your AI, over the hub's MQTT contract.",
+  "long_description": "Connects Claude Desktop (or any MCPB-capable client) to a Better Robotics classroom hub. Your team code scopes what your AI can do — drive your own rover, watch live telemetry on the wire, blink it to find it on the desk. The professor identity additionally manages team codes, access requests, and rover assignment. Join the hub's Wi-Fi, install this, enter your team code, and ask your AI to drive.",
+  "author": {
+    "name": "Better Robotics",
+    "url": "https://github.com/better-robotics"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/better-robotics/hub"
+  },
+  "server": {
+    "type": "python",
+    "entry_point": "server/hub_mcp.py",
+    "mcp_config": {
+      "command": "python3",
+      "args": ["${__dirname}/server/hub_mcp.py"],
+      "env": {
+        "PYTHONPATH": "${__dirname}/server/lib",
+        "HUB_HOST": "${user_config.hub_host}",
+        "HUB_USER": "${user_config.hub_user}",
+        "HUB_PASS": "${user_config.hub_pass}"
+      }
+    }
+  },
+  "user_config": {
+    "hub_host": {
+      "type": "string",
+      "title": "Hub address",
+      "description": "The classroom hub, reachable once you're on its Wi-Fi. hub.local works for either hub; 10.42.0.1 is the always-works fallback on the Pi's own network.",
+      "default": "hub.local",
+      "required": true
+    },
+    "hub_user": {
+      "type": "string",
+      "title": "Team name",
+      "description": "Your team identity — the same name your dashboard sign-in uses (professors: professor).",
+      "required": true
+    },
+    "hub_pass": {
+      "type": "string",
+      "title": "Team code",
+      "description": "Your team's code, from the professor's QR card or your dashboard sign-in.",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "compatibility": {
+    "runtimes": {
+      "python": ">=3.10"
+    }
+  },
+  "keywords": ["robotics", "mqtt", "classroom", "esp32", "rover"],
+  "license": "MIT"
+}

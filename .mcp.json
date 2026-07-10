@@ -2,10 +2,13 @@
   "mcpServers": {
     "hub-fleet": {
       "command": "python3",
-      "args": ["${CLAUDE_PROJECT_DIR}/mcp-bridge/hub_mcp.py"],
+      "args": [
+        "${CLAUDE_PROJECT_DIR}/mcp-bridge/hub_mcp.py"
+      ],
       "env": {
         "HUB_HOST": "${HUB_HOST:-hub.local}",
-        "HUB_PASS": "${HUB_PASS}"
+        "HUB_PASS": "${HUB_PASS}",
+        "HUB_USER": "${HUB_USER:-professor}"
       }
     }
   }

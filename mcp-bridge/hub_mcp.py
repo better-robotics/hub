@@ -45,16 +45,20 @@ from mcp.server.fastmcp import FastMCP
 # ---- config (env-driven; defaults match mosquitto.example.conf) -------------
 HUB_HOST = os.environ.get("HUB_HOST", "localhost")
 HUB_PORT = int(os.environ.get("HUB_PORT", "1883"))          # raw MQTT, not the :9001 WS port
-HUB_USER = os.environ.get("HUB_USER", "professor")           # ACL identity with fleet write
+HUB_USER = os.environ.get("HUB_USER", "professor")           # ACL identity; scope = this credential
 HUB_PASS = os.environ.get("HUB_PASS", "")
+# hubd's HTTP side (codes/requests management — Pi hub only; the ESP32 hub
+# role has no /codes API and these tools will report that plainly).
+HUB_HTTP = os.environ.get("HUB_HTTP", f"http://{HUB_HOST}")
 MOTOR_MAX = 255                                              # 8-bit PWM magnitude; sign = direction
 
 # ---- live fabric state, kept fresh by background subscriptions --------------
 # GIL makes these plain-dict swaps atomic enough for this read/write pattern.
 _imu: dict[str, dict] = {}       # robot_id -> latest IMU envelope (+ _rx wall-clock)
-_sys: dict[str, dict] = {}       # robot_id -> latest sys envelope (+ _rx wall-clock)
+_sys: dict[str, dict] = {}       # board id -> latest sys envelope (+ _rx wall-clock, _team)
 _replies: dict[str, dict] = {}   # correlation-id -> led/reply payload
 _reply_event = threading.Event()
+_watchers: list[dict] = []       # active watch() taps: {pattern, msgs, cap}
 
 _client = mqtt.Client(
     mqtt.CallbackAPIVersion.VERSION2,
@@ -71,6 +75,16 @@ def _on_connect(client, userdata, flags, reason_code, properties):
 
 
 def _on_message(client, userdata, msg):
+    # Feed any active watch() taps first — they see every subscribed topic,
+    # including ones the fixed channel handling below doesn't parse.
+    for w in _watchers:
+        if len(w["msgs"]) < w["cap"] and mqtt.topic_matches_sub(w["pattern"], msg.topic):
+            try:
+                body = json.loads(msg.payload)
+            except (ValueError, UnicodeDecodeError):
+                body = msg.payload.decode(errors="replace")
+            w["msgs"].append({"topic": msg.topic, "payload": body, "t": round(time.time(), 3)})
+
     parts = msg.topic.split("/")            # robots/<id>/<channel>[/reply]
     if len(parts) < 3:
         return
@@ -211,6 +225,176 @@ def set_led(robot_id: str, on: bool, red: int = 0, green: int = 0, blue: int = 0
         _reply_event.wait(timeout=0.1)
     return {"status": "sent", "acked": False,
             "note": "no reply within timeout — firmware RPC reply not wired yet (hub#1)"}
+
+
+# ---- wire primitives ---------------------------------------------------------
+# The pedagogy layer, and the escape hatch: every future channel (range, imu,
+# cmd_vel) is usable through these the day firmware ships it, before any
+# dedicated tool exists. Scope is the connected credential's ACL — a team
+# identity can only publish under its own subtree; the broker enforces it,
+# not this server.
+
+@mcp.tool()
+def publish(topic: str, payload: dict) -> str:
+    """Publish a JSON payload to any MQTT topic (e.g. robots/team3/pwm).
+    Scoped by your credential's broker ACL — a team can only write its own
+    robots/<team>/... subtree; out-of-scope publishes are silently dropped by
+    the broker. Use watch() to confirm a message actually landed."""
+    _publish(topic, payload)
+    return f"published to {topic}: {json.dumps(payload)}"
+
+
+@mcp.tool()
+def watch(topic_pattern: str = "robots/#", duration_s: float = 5.0, max_messages: int = 50) -> dict:
+    """Subscribe to a topic pattern (MQTT wildcards: + one level, # rest) and
+    collect live messages for duration_s. Returns {topic, payload, t} per
+    message, oldest first. robots/# is anonymously readable, so this always
+    works for observing the fleet — your own drive commands included (watch
+    your team's subtree while your code runs to see exactly what's on the wire)."""
+    duration_s = min(max(duration_s, 0.1), 30.0)
+    tap = {"pattern": topic_pattern, "msgs": [], "cap": max(1, min(int(max_messages), 200))}
+    _client.subscribe(topic_pattern)
+    _watchers.append(tap)
+    deadline = time.time() + duration_s
+    while time.time() < deadline and len(tap["msgs"]) < tap["cap"]:
+        time.sleep(0.05)
+    _watchers.remove(tap)
+    # Only drop the extra subscription if the background channels don't need it.
+    if topic_pattern not in ("robots/+/imu", "robots/+/sys", "robots/+/led/reply"):
+        _client.unsubscribe(topic_pattern)
+    out = {"messages": tap["msgs"], "count": len(tap["msgs"])}
+    if not tap["msgs"]:
+        out["note"] = ("nothing seen — no publisher on that pattern right now, "
+                       "or it's outside your credential's read scope")
+    return out
+
+
+def _board_team(board: str) -> str | None:
+    rec = _sys.get(board)
+    return rec.get("_team") if rec else None
+
+
+@mcp.tool()
+def blink(board: str) -> str:
+    """Blink a board's LED for ~6 s so a human can find the physical rover on
+    the desk. Targets the board through its current team topic (works for pool
+    boards too, if your credential may write there — professor always can)."""
+    team = _board_team(board)
+    if not team:
+        return f"unknown board {board} — call fleet() to see who's online"
+    _publish(f"robots/{team}/cmd/identify", {"target": board})
+    return f"blink sent to {board} (via robots/{team}/cmd/identify) — watch the desk"
+
+
+# ---- professor ops -----------------------------------------------------------
+# Wrappers over hubd's HTTP /codes API plus the cmd/config publishes the
+# dashboard's professor panels make. Mutations carry HUB_PASS as the professor
+# code (hubd re-verifies it against the broker per request) — with a team
+# credential these simply come back rejected.
+
+def _hubd(path: str, body: dict | None = None) -> dict:
+    import urllib.request, urllib.error
+    try:
+        req = urllib.request.Request(
+            f"{HUB_HTTP}{path}",
+            data=json.dumps(body).encode() if body is not None else None,
+            method="POST" if body is not None else "GET",
+        )
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return {"error": f"hubd {path} -> HTTP {e.code}",
+                "hint": "this hub may not serve the /codes API (ESP32 hub role has none)"}
+    except Exception as e:  # connection refused, timeout, bad JSON
+        return {"error": f"hubd {path} unreachable: {e}"}
+
+
+@mcp.tool()
+def codes_list() -> dict:
+    """Broker identities (team names) and whether the class still runs the
+    shipped placeholder codes. Public read on the Pi hub."""
+    return _hubd("/codes/list")
+
+
+@mcp.tool()
+def codes_set(team: str, code: str = "") -> dict:
+    """Create a team or rotate its code (professor only — authenticates with
+    this server's own credential). Empty code = hub generates a readable one;
+    the code in the response is shown exactly once and cannot be recovered
+    later, only rotated."""
+    return _hubd("/codes/set", {"auth": HUB_PASS, "user": team, "pass": code})
+
+
+@mcp.tool()
+def codes_del(team: str) -> dict:
+    """Delete a team identity (professor only). Its rover and browsers lose
+    access; `professor` and the pool identity are protected."""
+    return _hubd("/codes/del", {"auth": HUB_PASS, "user": team})
+
+
+@mcp.tool()
+def requests_list() -> dict:
+    """Pending access requests from the dashboard gate: [{name, board}].
+    board is set when a team claimed a specific rover ('' = name-only)."""
+    return _hubd("/codes/requests")
+
+
+@mcp.tool()
+def approve_request(name: str) -> dict:
+    """Approve a pending access request (professor only): the hub mints the
+    team's code and delivers it to the requester's browser. If the request
+    claimed a board, this also assigns that rover to the new team (the same
+    cmd/config the dashboard publishes) — it reboots renamed."""
+    r = _hubd("/codes/approve", {"auth": HUB_PASS, "name": name})
+    if r.get("ok") and r.get("board"):
+        team = _board_team(r["board"]) or "unassigned"
+        _publish(f"robots/{team}/cmd/config",
+                 {"target": r["board"], "team": r["user"], "pass": r["pass"]})
+        r["assigned"] = f"{r['board']} -> {r['user']} (reboots in a few seconds)"
+    return r
+
+
+@mcp.tool()
+def deny_request(name: str) -> dict:
+    """Dismiss a pending access request (professor only); the requester's
+    browser is told."""
+    return _hubd("/codes/deny", {"auth": HUB_PASS, "name": name})
+
+
+@mcp.tool()
+def assign(board: str, team: str, code: str, name: str = "", hub_pin: str = "") -> dict:
+    """Manually (re)assign a board to a team — the repair path; new teams
+    normally arrive via approve_request. `code` must be the team's current
+    broker code (create it first with codes_set). Optional hub_pin locks the
+    board to one exact hub SSID ('-' clears an existing pin). The rover saves
+    the credential to NVS and reboots under the new identity."""
+    cur = _board_team(board)
+    if not cur:
+        return {"error": f"unknown board {board} — call fleet() to see who's online"}
+    cfg: dict = {"target": board, "team": team, "pass": code}
+    if name:
+        cfg["name"] = name
+    if hub_pin == "-":
+        cfg["hub"] = ""
+    elif hub_pin:
+        cfg["hub"] = hub_pin
+    _publish(f"robots/{cur}/cmd/config", cfg)
+    return {"sent": f"{board} ({cur}) -> {team}", "note": "reboots and reappears in a few seconds"}
+
+
+@mcp.tool()
+def flip(board: str, direction: str) -> dict:
+    """Fix a rover driving the wrong way without rewiring: direction is one of
+    'left' (reverse left motor), 'right' (reverse right motor), 'swap'
+    (exchange sides). Permutes the stored motor pins in NVS; the rover reboots
+    with the fix."""
+    if direction not in ("left", "right", "swap"):
+        return {"error": "direction must be left, right, or swap"}
+    team = _board_team(board)
+    if not team:
+        return {"error": f"unknown board {board} — call fleet() to see who's online"}
+    _publish(f"robots/{team}/cmd/config", {"target": board, "flip": {direction: True}})
+    return {"sent": f"flip {direction} -> {board}", "note": "reboots with the fix in a few seconds"}
 
 
 def main() -> None:

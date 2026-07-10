@@ -1,0 +1,74 @@
+# hub-fleet MCPB bundles — one-click install of the fleet MCP server into
+# Claude Desktop (or any MCPB-capable client). One bundle per platform because
+# the Python deps (pydantic-core) ship compiled wheels; each runner installs
+# natively and the manifest gets its platform stamped at build time.
+#
+# Tag `mcp-vN` to cut a release with all four assets; workflow_dispatch builds
+# artifacts without releasing.
+name: release-mcpb
+
+on:
+  push:
+    tags: ["mcp-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    strategy:
+      matrix:
+        include:
+          - runner: macos-14
+            platform: darwin-arm64
+            mcpb_platform: darwin
+          - runner: macos-13
+            platform: darwin-x64
+            mcpb_platform: darwin
+          - runner: ubuntu-24.04
+            platform: linux-x64
+            mcpb_platform: linux
+          - runner: windows-2022
+            platform: win32-x64
+            mcpb_platform: win32
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Assemble bundle
+        shell: bash
+        run: |
+          mkdir -p bundle/server
+          cp mcp-bridge/hub_mcp.py bundle/server/
+          pip install --target bundle/server/lib -r mcp-bridge/requirements.txt
+          # Stamp the platform this bundle's wheels were built for.
+          python3 - <<'EOF'
+          import json
+          m = json.load(open("mcp-bridge/manifest.json"))
+          m["compatibility"]["platforms"] = ["${{ matrix.mcpb_platform }}"]
+          json.dump(m, open("bundle/manifest.json", "w"), indent=2)
+          EOF
+      - name: Pack
+        shell: bash
+        run: npx -y @anthropic-ai/mcpb pack bundle "hub-fleet-${{ matrix.platform }}.mcpb"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hub-fleet-${{ matrix.platform }}
+          path: hub-fleet-*.mcpb
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/mcp-v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --verify-tag \
+            --title "hub-fleet MCP $GITHUB_REF_NAME" \
+            --notes "Drag the .mcpb for your platform into Claude Desktop (Settings → Extensions), then enter your hub address and team code." \
+            2>/dev/null || true
+          gh release upload "$GITHUB_REF_NAME" "hub-fleet-${{ matrix.platform }}.mcpb" --clobber

@@ -12,19 +12,43 @@ The rovers are ESP32s — they can't host an LLM, so the intelligence runs on th
    (on the hub)          (this tool,  as `professor`)   (broker)   (esp-mqtt)
 ```
 
-It connects as the `professor` ACL identity — write on `robots/+/pwm` and
-`robots/+/led`, read on `robots/#` (see `../../mosquitto-acl.example.conf`). It
-is the first real MQTT *client* in this repo (hubd is deliberately not one).
+**The credential IS the role** (same rule as the whole system): the server
+connects as whatever identity you give it, and Mosquitto's ACL does the
+scoping. A student runs it with their *team* code and their AI can only touch
+their own rover; the professor identity gets the fleet plus the management
+tools. No role logic lives in this server. It is the first real MQTT *client*
+in this repo (hubd is deliberately not one).
 
 ## Tools it exposes
 
+Fleet (any identity — reads are anonymous-public, writes ACL-scoped):
+
 | tool | topic | what it does |
 |------|-------|--------------|
+| `fleet()` | `robots/+/sys` | every board online (keyed by board id, with its team) + freshness |
 | `drive(robot_id, left_motor, right_motor, duration_ms=400)` | `robots/<id>/pwm` | signed PWM per side (±255, sign = direction); auto-expires after `duration_ms` |
 | `stop(robot_id)` | `robots/<id>/pwm` | zero PWM, immediate halt |
-| `read_imu(robot_id, timeout_s=2)` | `robots/<id>/imu` | latest accel/gyro sample, freshness-gated |
-| `fleet()` | `robots/+/sys` | every rover on the hub + seconds-since-last-message |
+| `blink(board)` | `robots/<team>/cmd/identify` | flash a board's LED ~6 s — find the physical rover |
+| `read_imu(robot_id, timeout_s=2)` | `robots/<id>/imu` | latest accel/gyro sample, freshness-gated (channel lands with next-gen electronics) |
 | `set_led(robot_id, on, red, green, blue)` | `robots/<id>/led` | RGB set via MQTT5 request/reply* |
+
+Wire primitives (the pedagogy layer — and how any future channel is usable
+before a dedicated tool exists):
+
+| tool | what it does |
+|------|--------------|
+| `publish(topic, payload)` | raw JSON publish; the broker ACL scopes what lands |
+| `watch(topic_pattern, duration_s=5, max_messages=50)` | subscribe with wildcards, collect live messages — see exactly what's on the wire while your code runs |
+
+Professor ops (mutations authenticate with this server's own credential —
+under a team identity they simply come back rejected):
+
+| tool | backend | what it does |
+|------|---------|--------------|
+| `codes_list()` / `codes_set(team, code="")` / `codes_del(team)` | hubd `/codes/*` | manage broker identities; empty code = hub generates one (shown once) |
+| `requests_list()` / `approve_request(name)` / `deny_request(name)` | hubd `/codes/*` | the dashboard gate's access requests; approving a board claim also assigns that rover |
+| `assign(board, team, code, name="", hub_pin="")` | `cmd/config` | manual (re)assign — the repair path |
+| `flip(board, direction)` | `cmd/config` | fix motor orientation: `left`, `right`, or `swap` |
 
 \* The firmware-side `led/reply` isn't wired yet (hub#1); until it lands
 `set_led` returns `acked: false` on timeout — the LED still changes, only the

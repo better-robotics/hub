@@ -83,9 +83,12 @@ async fn poll_uplink(uplink: Uplink) {
 fn fleet_json(uplink: &Uplink, locator: &str, ssid: &str) -> String {
     // `ssid`/`host` feed the dashboard's identity chip: which hub serves this
     // page (two hubs on the air render otherwise-identical dashboards).
+    let host = std::fs::read_to_string("/proc/sys/kernel/hostname")
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|_| "hub".into());
     serde_json::json!({
         "uplink": *uplink.lock().unwrap(), "locator": locator,
-        "ssid": ssid, "host": "pi",
+        "ssid": ssid, "host": host,
     })
     .to_string()
 }

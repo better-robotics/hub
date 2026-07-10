@@ -92,15 +92,17 @@ NOROUTEEOF
 # which answers captive:false + the dashboard as venue-info-url): joining
 # phones can surface the dashboard unprompted, with NOTHING blocked — this is
 # an advertisement, not a portal (captive portals were chosen against;
-# robot/CLAUDE.md § Status). AP leg only (tag:wlan0) — the usb0 recovery link
-# must stay claim-free. Progressive nicety: RFC 8908 requires TLS we can't
+# robot/CLAUDE.md § Status). Tagged by exclusion (tag:!usb0) because the AP's
+# interface NAME is a per-boot coin flip with a USB dongle present
+# (2026-07-10) — the only other dnsmasq-shared leg is the usb0 recovery link,
+# which must stay claim-free. Progressive nicety: RFC 8908 requires TLS we can't
 # validly present offline, so clients that insist ignore it — verified
 # 2026-07-10, an iPhone joining hub-a2f5 surfaced nothing. Kept because the
 # cost is these lines, non-Apple clients may differ, and the alternative that
 # would force auto-open (probe-intercept portal) stays chosen-against. The
 # real zero-instruction path is the QR sign-in card.
 cat > "${ROOTFS_DIR}/etc/NetworkManager/dnsmasq-shared.d/20-ap-capport.conf" <<'CAPPORTEOF'
-dhcp-option=tag:wlan0,114,http://10.42.0.1/captive
+dhcp-option=tag:!usb0,114,http://10.42.0.1/captive
 CAPPORTEOF
 
 # Login banner: print the hub's IP + router status on every interactive login

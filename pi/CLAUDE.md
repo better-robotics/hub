@@ -163,6 +163,15 @@ also caught two usb0 recovery-link bugs, see `image/README.md` § First
 hardware boot). Scars:
 - **brcmfmac (built-in) is the reliable AP; the Edimax RTL8188CUS is not** —
   the dongle takes the STA leg.
+- **Radio roles are selected by driver, never by interface name** (hardware-
+  discovered 2026-07-10, second flash): wlan0/wlan1 is a per-boot kernel
+  enumeration coin flip between the SDIO builtin and the USB dongle. The v2
+  image's first boot lost it — the AP came up on the Edimax as `hub-e959`
+  (suffix followed the wrong MAC, so rovers lost `hub-a2f5`) while the builtin
+  took the uplink. `hub-ap-setup.sh` now picks the brcmfmac by driver and
+  self-heals a wrong-radio profile; the capport dnsmasq option tags `!usb0`
+  instead of `wlan0`; `uplink_device()` was already role-based (it dodged the
+  bug by avoiding the AP's *device*, not a name).
 - **Single-radio AP+STA (dropping the dongle) is measured-out, not assumed-out**
   (bench 2026-07-10). brcmfmac supports 1 AP + 1 STA (`iw phy`: `#channels <= 1`),
   but live against three AP clients: the STA leg's off-channel *scanning alone*

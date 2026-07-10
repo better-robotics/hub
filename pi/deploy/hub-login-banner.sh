@@ -10,8 +10,11 @@
 
 case $- in
   *i*)
-    _hub_wlan_ip=$(ip -4 -o addr show wlan0 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1)
-    _hub_ssid=$(nmcli -t -f GENERAL.CONNECTION device show wlan0 2>/dev/null | cut -d: -f2)
+    # The AP's device by role (the hub-ap profile), never "wlan0" — interface
+    # names are a per-boot coin flip when a USB dongle is present (2026-07-10).
+    _hub_ap_dev=$(nmcli -g GENERAL.DEVICES con show hub-ap 2>/dev/null | head -n1)
+    _hub_wlan_ip=$(ip -4 -o addr show "${_hub_ap_dev:-wlan0}" 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1)
+    _hub_ssid=$(nmcli -g 802-11-wireless.ssid con show hub-ap 2>/dev/null)
     _hub_router=$(systemctl is-active hubd 2>/dev/null || echo unknown)
 
     printf '\n  %s — classroom Robotics Hub\n' "$(hostname 2>/dev/null || echo hub)"
@@ -28,6 +31,6 @@ case $- in
     printf '  Recovery: ssh pi@10.55.0.1  (over this USB cable)\n'
     printf '  Router:   hubd %s   ·   logs: journalctl -u hubd -f\n\n' "$_hub_router"
 
-    unset _hub_wlan_ip _hub_ssid _hub_router
+    unset _hub_ap_dev _hub_wlan_ip _hub_ssid _hub_router
     ;;
 esac

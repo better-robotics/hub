@@ -64,15 +64,16 @@ chmod 0600 /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 systemctl enable mosquitto.service
 systemctl restart mosquitto.service   # pick up the conf.d drop-in
 
-# ---- Day-zero hub-XXXX AP (Pi-radio-specific: needs a wlan0) ----
-if [[ -e /sys/class/net/wlan0 ]]; then
-  echo "[install] installing day-zero hub AP unit (wlan0)…"
+# ---- Day-zero hub-XXXX AP (Pi-radio-specific: needs a Wi-Fi radio; the
+# setup script selects the builtin by driver, never by interface name) ----
+if compgen -G "/sys/class/net/wlan*" > /dev/null; then
+  echo "[install] installing day-zero hub AP unit…"
   install -m 0755 "$REPO_DIR/deploy/hub-ap-setup.sh" /usr/local/bin/hub-ap-setup.sh
   install -m 0644 "$REPO_DIR/deploy/hub-ap.service"  /etc/systemd/system/hub-ap.service
   systemctl daemon-reload
   systemctl enable --now hub-ap.service
 else
-  echo "[install] no wlan0 — skipping the hub-XXXX AP unit (not a Pi/Wi-Fi host)"
+  echo "[install] no Wi-Fi radio — skipping the hub-XXXX AP unit (not a Pi/Wi-Fi host)"
 fi
 
 echo "[install] done. status:"

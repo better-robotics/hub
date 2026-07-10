@@ -220,9 +220,12 @@ fn prune(q: &mut Vec<Pending>) {
 }
 
 /// `POST /codes/request` body `{name}` → `{ok, token}`. Unauthenticated — it
-/// is the door someone with no credential knocks on. Re-requesting a waiting
-/// name replaces its token (last request wins), so a reloaded browser that
-/// lost localStorage isn't locked out for the TTL.
+/// is the door someone with no credential knocks on. A name already waiting
+/// is REJECTED, never token-replaced: the waiting list is public, so
+/// replacement would let anyone enumerate a pending name and silently
+/// redirect its approval to their own poll (caught by security review,
+/// 2026-07-10). A requester who lost their token asks the professor to
+/// dismiss the stale row, then knocks again — visible, not silent.
 pub fn request_json(body: &str) -> (&'static str, &'static str, String) {
     let v: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
     let name = v.get("name").and_then(|s| s.as_str()).unwrap_or("").trim().to_string();
@@ -238,15 +241,13 @@ pub fn request_json(body: &str) -> (&'static str, &'static str, String) {
     let token = rand_hex(16);
     let mut q = PENDING.lock().unwrap();
     prune(&mut q);
-    if let Some(p) = q.iter_mut().find(|p| p.name == name && matches!(p.state, ReqState::Waiting)) {
-        p.token = token.clone();
-        p.created = Instant::now();
-    } else {
-        if q.len() >= REQUEST_CAP {
-            return err("too many open requests — ask the professor to clear some");
-        }
-        q.push(Pending { name, token: token.clone(), created: Instant::now(), state: ReqState::Waiting });
+    if q.iter().any(|p| p.name == name) {
+        return err("that name is already requested — if that wasn't you, tell the professor");
     }
+    if q.len() >= REQUEST_CAP {
+        return err("too many open requests — ask the professor to clear some");
+    }
+    q.push(Pending { name, token: token.clone(), created: Instant::now(), state: ReqState::Waiting });
     ("200 OK", "application/json", serde_json::json!({ "ok": true, "token": token }).to_string())
 }
 

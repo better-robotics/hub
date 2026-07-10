@@ -41,13 +41,11 @@
     .topbar h1 { font-size: 17px; margin: 0; }
     /* Centered content column (was the body's own max-width). The fleet is a card
        grid, so width buys cards-per-row, not long lines; prose blocks cap
-       themselves (.lede/.assign-help) so text stays readable on the wide canvas. */
+       themselves (.assign-help) so text stays readable on the wide canvas. */
     main { max-width: 72rem; margin: 0 auto; padding: 2rem 1.5rem 3rem; }
-    .lede { max-width: 40rem; }
     h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 0.25rem; }
     h1 .logo-accent { font-weight: 700; color: var(--accent-text); }
     h1 .logo-base { font-weight: 400; color: color-mix(in srgb, var(--ink) 75%, transparent); }
-    p.lede { color: var(--ink-muted); margin-bottom: 2rem; }
     a { color: var(--link); }
     .notice {
       display: none; background: rgba(232,153,35,0.12); border: 1px solid var(--warn);
@@ -83,7 +81,6 @@
     dt { color: var(--ink-muted); }
     dd { font-variant-numeric: tabular-nums; }
     #empty { color: var(--ink-muted); padding: 2rem 0; }
-    footer { margin-top: 3rem; color: var(--ink-muted); font-size: 0.85rem; }
 
     /* Controls: drive + assign share a row when the width exists, stack when it
        doesn't (auto-fit collapses to one column below ~53rem). Each is a card,
@@ -206,7 +203,6 @@
 <body>
   <header class="topbar"><h1><span class="logo-accent">Better</span><span class="logo-base">Robotics</span></h1></header>
   <main>
-  <p class="lede">Every robot on this hub, live.</p>
   <div id="hub-host-gate" class="notice" style="gap:0.5rem; align-items:center; flex-wrap:wrap">
     <span id="hub-host-label">Standalone copy — which hub?</span>
     <input id="hub-host-input" type="text" placeholder="10.42.0.1 or hub.local">
@@ -294,10 +290,6 @@
     </div>
   </section>
   </div>
-
-  <footer>
-    <span id="footer-served-by">Served by the hub</span> · <a href="https://better-robotics.github.io/provision/">set up a device</a>
-  </footer>
   </main>
 
   <script>
@@ -370,7 +362,6 @@ safe-buffer/index.js:
     let hubHost = standalone ? (localStorage.getItem("hubHost") || "") : location.hostname;
     const hostGate = document.getElementById("hub-host-gate");
     if (standalone) {
-      document.getElementById("footer-served-by").textContent = "Standalone copy";
       // Only prompt when there's genuinely no saved host yet — a saved value
       // that's actually wrong re-shows the gate itself, from publicClient's
       // "error" handler below, tied to a real failed connection rather than

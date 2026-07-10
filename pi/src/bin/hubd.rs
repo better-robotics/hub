@@ -80,8 +80,14 @@ async fn poll_uplink(uplink: Uplink) {
     }
 }
 
-fn fleet_json(uplink: &Uplink, locator: &str) -> String {
-    serde_json::json!({ "uplink": *uplink.lock().unwrap(), "locator": locator }).to_string()
+fn fleet_json(uplink: &Uplink, locator: &str, ssid: &str) -> String {
+    // `ssid`/`host` feed the dashboard's identity chip: which hub serves this
+    // page (two hubs on the air render otherwise-identical dashboards).
+    serde_json::json!({
+        "uplink": *uplink.lock().unwrap(), "locator": locator,
+        "ssid": ssid, "host": "pi",
+    })
+    .to_string()
 }
 
 /// `GET /wifi/status` — the venue network the uplink is on (or null) plus the
@@ -112,11 +118,12 @@ async fn wifi_connect_json(body: &str) -> (&'static str, &'static str, String) {
     }
 }
 
-async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String) {
+async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, ssid: String) {
     loop {
         let Ok((mut sock, _)) = listener.accept().await else { continue };
         let uplink = uplink.clone();
         let locator = locator.clone();
+        let ssid = ssid.clone();
         tokio::spawn(async move {
             let mut buf = [0u8; 1024];
             let n = sock.read(&mut buf).await.unwrap_or(0);
@@ -143,7 +150,7 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String) 
             // of `buf` holds them).
             let post_body = req.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or("");
             let (status, ctype, body) = match (method, path) {
-                ("GET", "/fleet") => ("200 OK", "application/json", fleet_json(&uplink, &locator)),
+                ("GET", "/fleet") => ("200 OK", "application/json", fleet_json(&uplink, &locator, &ssid)),
                 ("GET", "/") | ("GET", "/index.html") => {
                     ("200 OK", "text/html; charset=utf-8", DASHBOARD_HTML.into())
                 }
@@ -191,7 +198,7 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String) 
     }
 }
 
-async fn serve_http(uplink: Uplink, addr: String, locator: String) {
+async fn serve_http(uplink: Uplink, addr: String, locator: String, ssid: String) {
     let listener = TcpListener::bind(&addr).await.expect("bind HUB_HTTP");
     // `localhost` resolves to both ::1 and 127.0.0.1; Chrome tries ::1 first
     // and (confirmed live, 07-07) does not fall back to the working IPv4
@@ -203,10 +210,10 @@ async fn serve_http(uplink: Uplink, addr: String, locator: String) {
     // unaffected if it's unavailable.
     if let Some(port) = addr.rsplit(':').next() {
         if let Ok(v6) = TcpListener::bind(format!("[::1]:{port}")).await {
-            tokio::spawn(accept_forever(v6, uplink.clone(), locator.clone()));
+            tokio::spawn(accept_forever(v6, uplink.clone(), locator.clone(), ssid.clone()));
         }
     }
-    accept_forever(listener, uplink, locator).await;
+    accept_forever(listener, uplink, locator, ssid).await;
 }
 
 #[tokio::main]
@@ -247,7 +254,8 @@ async fn main() {
 
     let uplink: Uplink = Arc::new(Mutex::new("unknown".into()));
     tokio::spawn(poll_uplink(uplink.clone()));
-    tokio::spawn(serve_http(uplink, http.clone(), locator.clone()));
+    let ap_ssid = hub::wifi::ap_ssid().await; // stable while running (MAC-derived profile)
+    tokio::spawn(serve_http(uplink, http.clone(), locator.clone(), ap_ssid));
 
     let port = http.rsplit(':').next().unwrap_or("8000");
     println!("[hubd] dashboard: http://{host}:{port} (fleet JSON at /fleet)");

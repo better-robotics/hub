@@ -68,6 +68,14 @@ fn map_auth(sec: &str) -> String {
     .to_string()
 }
 
+/// The classroom AP's own SSID (the `hub-ap` NM profile) — the dashboard's
+/// identity chip names the network the user just joined, so the page and the
+/// Wi-Fi picker agree on which hub this is (two hubs on the air is a normal
+/// bench/classroom state, and their dashboards are otherwise pixel-identical).
+pub async fn ap_ssid() -> String {
+    nmcli_out(&["-g", "802-11-wireless.ssid", "con", "show", "hub-ap"]).await.trim().to_string()
+}
+
 /// Visible networks, strongest-labelled first duplicate wins, AP's own SSID
 /// excluded is unnecessary (nmcli lists infrastructure APs, not our own AP).
 pub async fn scan() -> Vec<Net> {

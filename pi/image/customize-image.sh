@@ -82,10 +82,14 @@ echo "$TIMEZONE" > "$ROOTFS/etc/timezone"
 ln -sf "/usr/share/zoneinfo/$TIMEZONE" "$ROOTFS/etc/localtime"
 sed -i "s/^XKBLAYOUT=.*/XKBLAYOUT=\"$KEYMAP\"/" "$ROOTFS/etc/default/keyboard"
 
-# First user, no password ever set (shadow stays '!' — password auth is
-# impossible everywhere): ssh is pubkey-only, the serial console autologs in,
-# sudo is NOPASSWD. Cable/card possession is the auth boundary (image/README.md).
-in_chroot adduser --disabled-password --gecos "" "$FIRST_USER"
+# First user. The base image ships a default user pending the first-boot
+# rename wizard (disabled below) — create only if missing, and lock the
+# password either way ('!' in shadow — password auth impossible everywhere):
+# ssh is pubkey-only, the serial console autologs in, sudo is NOPASSWD.
+# Cable/card possession is the auth boundary (image/README.md).
+in_chroot getent passwd "$FIRST_USER" >/dev/null || \
+    in_chroot adduser --disabled-password --gecos "" "$FIRST_USER"
+in_chroot usermod -p '!' "$FIRST_USER"
 for grp in adm dialout cdrom sudo audio video plugdev games users input render netdev spi i2c gpio; do
     in_chroot adduser "$FIRST_USER" "$grp" || true
 done

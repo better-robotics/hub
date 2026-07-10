@@ -45,3 +45,12 @@ firmware), `workbench` (browser dev env). Different projects.
 dispatch) both **verified green** 2026-07-09 — the rehome holds. The other
 `build-*`/`release-*` workflows are `workflow_dispatch` (or tag-gated for
 `build-image`); trigger on demand with `gh workflow run <name>.yml -R better-robotics/hub`.
+
+**`build-image` builds no base OS since 2026-07-10** (verified green same day,
+~4.5 min end-to-end): it downloads the pinned official Raspberry Pi OS Lite
+release and loop-mount-customizes it (`pi/image/customize-image.sh`) — pi-gen
+is gone. `build-hubd` is a reusable workflow (`workflow_call`, static musl)
+called as `build-image`'s first job, so the fast-redeploy artifact and the
+baked binary are always identical. Bumping the base image (new date, or
+Bookworm→Trixie) is a deliberate edit to the three `BASE_*` values in
+`build-image.yml`, never a rebuild side effect.

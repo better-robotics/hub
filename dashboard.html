@@ -3308,7 +3308,7 @@ safe-buffer/index.js:
       const cfg = { target: assignTarget.board, flip: { [b.dataset.flip]: true } };
       driveClient.publish(topic, JSON.stringify(cfg), { qos: 1, retain: false });
       logLine("out", `${topic} ${JSON.stringify(cfg)}`);
-      status.textContent = `Sent — ${assignTarget.board} applies it instantly. Try driving again.`;
+      status.textContent = `Sent — ${assignTarget.board} reboots and reappears with the fix in a few seconds.`;
       status.className = "assign-ok";
     });
 

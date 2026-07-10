@@ -152,7 +152,10 @@ implement by hand (same split as hub-zenoh's `protocol/README` vs
 Not transport-specific — this is Pi/Wi-Fi-radio topology: wlan0 AP `hub-XXXX`
 / wlan1 STA uplink, NM `ipv4.method=shared`, gateway 10.42.0.1 = constant
 locator. (Original record: archived hub-zenoh README § "Network: the hub is
-the access point".) Scars:
+the access point".) Baked into the image since 2026-07-10:
+`deploy/hub-ap-setup.sh` + `hub-ap.service` create the NM profile on first
+boot (idempotent; suffix from wlan0's MAC) — **not yet verified on a real Pi
+flash**; verify on the next image burn. Scars:
 - **brcmfmac (built-in) is the reliable AP; the Edimax RTL8188CUS is not** —
   the dongle takes the STA leg.
 - **Open AP for now**: ESP32-C3 WPA2 join fails against this AP (4-way

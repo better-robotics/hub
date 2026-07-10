@@ -15,6 +15,11 @@ install -m 0644 files/hubd.service       "${ROOTFS_DIR}/etc/systemd/system/hubd.
 install -m 0644 files/mosquitto.conf     "${ROOTFS_DIR}/etc/mosquitto/conf.d/hub.conf"
 install -m 0644 files/mosquitto-acl.conf "${ROOTFS_DIR}/etc/mosquitto/hub-acl.conf"
 
+# --- Day-zero hub-XXXX AP (wlan0, open, 10.42.0.1) — a hub nobody can find
+# isn't a hub; the profile is created once on first boot, NM owns it after ---
+install -m 0755 files/hub-ap-setup.sh "${ROOTFS_DIR}/usr/local/bin/hub-ap-setup.sh"
+install -m 0644 files/hub-ap.service  "${ROOTFS_DIR}/etc/systemd/system/hub-ap.service"
+
 # --- USB-gadget recovery channel (ECM ssh + ACM serial) ---
 install -m 0755 files/usb-gadget-setup.sh "${ROOTFS_DIR}/usr/local/bin/usb-gadget-setup.sh"
 install -m 0644 files/usb-gadget.service  "${ROOTFS_DIR}/etc/systemd/system/usb-gadget.service"

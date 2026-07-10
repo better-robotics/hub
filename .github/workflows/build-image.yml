@@ -56,6 +56,8 @@ jobs:
           cp deploy/hubd.service                            image/stage-hub/00-hub/files/hubd.service
           cp deploy/usb-gadget.service                      image/stage-hub/00-hub/files/usb-gadget.service
           cp deploy/usb-gadget-setup.sh                     image/stage-hub/00-hub/files/usb-gadget-setup.sh
+          cp deploy/hub-ap.service                          image/stage-hub/00-hub/files/hub-ap.service
+          cp deploy/hub-ap-setup.sh                         image/stage-hub/00-hub/files/hub-ap-setup.sh
           cp deploy/hub-login-banner.sh                     image/stage-hub/00-hub/files/hub-login-banner.sh
           # Mosquitto broker config + ACL (passwd is generated in the chroot).
           cp deploy/mosquitto.conf                          image/stage-hub/00-hub/files/mosquitto.conf
@@ -114,8 +116,10 @@ jobs:
           sudo test -f /mnt/hub/usr/local/bin/usb-gadget-setup.sh                     # recovery channel
           sudo test -f /mnt/hub/etc/NetworkManager/system-connections/usb-gadget.nmconnection
           sudo chroot /mnt/hub dpkg-query -W network-manager                          # NM present (drives /wifi setup)
+          sudo test -f /mnt/hub/usr/local/bin/hub-ap-setup.sh                          # day-zero AP
           sudo test -L /mnt/hub/etc/systemd/system/multi-user.target.wants/hubd.service        # hubd enabled
           sudo test -L /mnt/hub/etc/systemd/system/multi-user.target.wants/usb-gadget.service  # gadget enabled
+          sudo test -L /mnt/hub/etc/systemd/system/multi-user.target.wants/hub-ap.service      # day-zero AP enabled
           ! sudo chroot /mnt/hub dpkg-query -W comitup 2>/dev/null                    # comitup gone
           echo "hubd:" && sudo file /mnt/hub/opt/hub/hubd                             # static musl aarch64
           # config.txt/cmdline.txt live on the FAT boot partition (p1), not the

@@ -1,0 +1,18 @@
+[Unit]
+Description=Day-zero hub-XXXX AP profile (NetworkManager, wlan0)
+# Needs the NM daemon up to take `nmcli con add`; creates the profile once
+# (idempotent) and NM's autoconnect owns it from then on. See
+# deploy/hub-ap-setup.sh for the radio/open-AP scars this encodes.
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hub-ap-setup.sh
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=3
+
+[Install]
+WantedBy=multi-user.target

@@ -19,9 +19,10 @@ chown mosquitto:mosquitto /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 chmod 0600 /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 
 # Each independently restartable: usb-gadget (recovery, before NM), serial
-# console on the gadget, the dashboard chassis + Wi-Fi setup (hubd), and the
-# MQTT broker (Mosquitto).
+# console on the gadget, the day-zero hub-XXXX AP, the dashboard chassis +
+# Wi-Fi setup (hubd), and the MQTT broker (Mosquitto).
 systemctl enable usb-gadget.service
 systemctl enable serial-getty@ttyGS0.service
+systemctl enable hub-ap.service
 systemctl enable hubd.service
 systemctl enable mosquitto.service

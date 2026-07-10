@@ -178,16 +178,24 @@ pub async fn del_json(body: &str) -> (&'static str, &'static str, String) {
 // professor approves from the codes panel and the requester's poll delivers
 // the minted code straight into their browser — nothing typed on either side.
 //
+// A request for a name that ALREADY has a code is a JOIN request — a new
+// client (another browser, an MCP bridge pairing from its chat) asking to act
+// as that team. Nothing is minted for it: the team's own signed-in dashboard
+// grants it (`/codes/grant`) by re-sharing the code it authenticates with, so
+// the rover's stored credential is never rotated. Every request carries a
+// short PAIRING code, shown on both the requester's screen and the approving
+// one — the human match that stops a blind approve of somebody else's knock.
+//
 // The queue is in-memory on purpose: requests are ephemeral (a hubd restart
 // resets them to "ask again"), and the token is a claim ticket — the approved
 // code is handed to whoever holds it, exactly once, then forgotten. The
-// public request list carries names only, never tokens. The professor
-// approves a NAME, not a phone: on a name dispute the code can be rotated,
-// same trust boundary as reading a QR card off a neighbour's desk.
+// public request list carries names and pairing codes, never tokens. The
+// professor approves a NAME, not a phone: on a name dispute the code can be
+// rotated, same trust boundary as reading a QR card off a neighbour's desk.
 
 enum ReqState {
     Waiting,
-    Approved(String), // the minted code, awaiting one-shot pickup
+    Approved(String), // the minted (or, join: re-shared) code, awaiting one-shot pickup
     Denied,
 }
 
@@ -199,6 +207,12 @@ struct Pending {
     /// approval (no-relay rule — hubd never touches the broker's topics).
     board: String,
     token: String,
+    /// Short display code for the human pairing check (public, not a secret).
+    pair: String,
+    /// The name already has a broker code: grantable only via `/codes/grant`
+    /// (team-auth), never professor-approve — a mint would rotate the team's
+    /// code out from under its rover.
+    join: bool,
     created: Instant,
     state: ReqState,
 }
@@ -214,26 +228,32 @@ fn rand_hex(bytes: usize) -> String {
     buf.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// Classroom-typeable code: 8 chars, no 0/O/1/l/i lookalikes.
-fn gen_code() -> String {
+/// Classroom-typeable characters: no 0/O/1/l/i lookalikes.
+fn rand_code(len: usize) -> String {
     const ALPHABET: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
     use std::io::Read;
-    let mut buf = [0u8; 8];
+    let mut buf = vec![0u8; len];
     let _ = std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut buf));
     buf.iter().map(|b| ALPHABET[*b as usize % ALPHABET.len()] as char).collect()
+}
+
+/// Team code: 8 chars.
+fn gen_code() -> String {
+    rand_code(8)
 }
 
 fn prune(q: &mut Vec<Pending>) {
     q.retain(|p| p.created.elapsed() < REQUEST_TTL);
 }
 
-/// `POST /codes/request` body `{name}` → `{ok, token}`. Unauthenticated — it
-/// is the door someone with no credential knocks on. A name already waiting
-/// is REJECTED, never token-replaced: the waiting list is public, so
-/// replacement would let anyone enumerate a pending name and silently
-/// redirect its approval to their own poll (caught by security review,
-/// 2026-07-10). A requester who lost their token asks the professor to
-/// dismiss the stale row, then knocks again — visible, not silent.
+/// `POST /codes/request` body `{name}` → `{ok, token, pair, join}`.
+/// Unauthenticated — it is the door someone with no credential knocks on. A
+/// name that already has a code becomes a JOIN request (see the queue notes
+/// above). A name already waiting is REJECTED, never token-replaced: the
+/// waiting list is public, so replacement would let anyone enumerate a
+/// pending name and silently redirect its approval to their own poll (caught
+/// by security review, 2026-07-10). A requester who lost their token asks the
+/// approver to dismiss the stale row, then knocks again — visible, not silent.
 pub fn request_json(body: &str) -> (&'static str, &'static str, String) {
     let v: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
     let name = v.get("name").and_then(|s| s.as_str()).unwrap_or("").trim().to_string();
@@ -247,20 +267,33 @@ pub fn request_json(body: &str) -> (&'static str, &'static str, String) {
     if name == "professor" || name == POOL_USER {
         return err("that name is reserved");
     }
-    if list_users().iter().any(|u| *u == name) {
-        return err("that team already has a code — ask the professor for it");
+    // Joins are name-only: the team already has a rover; a board claim riding
+    // a join would let a stranger's knock queue a reassignment of it.
+    let join = list_users().iter().any(|u| *u == name);
+    if join && !board.is_empty() {
+        return err("that team already exists — request the name alone, without a board claim");
     }
     let token = rand_hex(16);
+    let pair = rand_code(4);
     let mut q = PENDING.lock().unwrap();
     prune(&mut q);
     if q.iter().any(|p| p.name == name) {
-        return err("that name is already requested — if that wasn't you, tell the professor");
+        return err("that name is already requested — if that wasn't you, deny it from your dashboard");
     }
     if q.len() >= REQUEST_CAP {
         return err("too many open requests — ask the professor to clear some");
     }
-    q.push(Pending { name, board, token: token.clone(), created: Instant::now(), state: ReqState::Waiting });
-    ("200 OK", "application/json", serde_json::json!({ "ok": true, "token": token }).to_string())
+    q.push(Pending {
+        name,
+        board,
+        token: token.clone(),
+        pair: pair.clone(),
+        join,
+        created: Instant::now(),
+        state: ReqState::Waiting,
+    });
+    ("200 OK", "application/json",
+     serde_json::json!({ "ok": true, "token": token, "pair": pair, "join": join }).to_string())
 }
 
 /// `POST /codes/poll` body `{token}` → `{status}` and, once approved,
@@ -290,16 +323,17 @@ pub fn poll_json(body: &str) -> (&'static str, &'static str, String) {
     ("200 OK", "application/json", out)
 }
 
-/// `GET /codes/requests` → `{requests: [{name, board}]}`. Public read like
-/// `/codes/list` — a pending name is about to become a public topic id anyway,
-/// and board ids are already in the anonymous fleet view.
+/// `GET /codes/requests` → `{requests: [{name, board, pair, join}]}`. Public
+/// read like `/codes/list` — a pending name is about to become a public topic
+/// id anyway, board ids are already in the anonymous fleet view, and the
+/// pairing code is a match check, not a secret.
 pub fn requests_json() -> String {
     let mut q = PENDING.lock().unwrap();
     prune(&mut q);
     let reqs: Vec<serde_json::Value> = q
         .iter()
         .filter(|p| matches!(p.state, ReqState::Waiting))
-        .map(|p| serde_json::json!({ "name": p.name, "board": p.board }))
+        .map(|p| serde_json::json!({ "name": p.name, "board": p.board, "pair": p.pair, "join": p.join }))
         .collect();
     serde_json::json!({ "requests": reqs }).to_string()
 }
@@ -320,6 +354,9 @@ pub async fn approve_json(body: &str) -> (&'static str, &'static str, String) {
         let mut q = PENDING.lock().unwrap();
         prune(&mut q);
         match q.iter().find(|p| p.name == name && matches!(p.state, ReqState::Waiting)) {
+            Some(p) if p.join => {
+                return err("that team already has a code — only its own signed-in dashboard can grant a join (minting here would rotate the rover's credential)")
+            }
             Some(p) => p.board.clone(),
             None => return err("no such request — it may have expired"),
         }
@@ -347,14 +384,63 @@ pub async fn approve_json(body: &str) -> (&'static str, &'static str, String) {
      serde_json::json!({ "ok": true, "user": name, "pass": pass, "board": board }).to_string())
 }
 
-/// `POST /codes/deny` body `{auth, name}` — professor-gated; the requester's
-/// next poll sees `denied` and stops.
+/// `POST /codes/grant` body `{auth, name}` — the team-side twin of approve,
+/// for JOIN requests only. hubd cannot recover a team's code (the passwd file
+/// holds a hash), but the approving browser holds it in memory — it
+/// authenticates this call with it, and that broker-verified value is itself
+/// what's parked for the requester's one-shot pickup. Nothing minted, nothing
+/// rotated; the rover's stored credential is untouched. Returns `{ok, user}` —
+/// never the code (the approver already has it; the requester polls for it).
+pub async fn grant_json(body: &str) -> (&'static str, &'static str, String) {
+    let v: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
+    let auth = v.get("auth").and_then(|s| s.as_str()).unwrap_or("").to_string();
+    let name = v.get("name").and_then(|s| s.as_str()).unwrap_or("").to_string();
+    // Validate against the queue, but never hold the lock across the await.
+    {
+        let mut q = PENDING.lock().unwrap();
+        prune(&mut q);
+        match q.iter().find(|p| p.name == name && matches!(p.state, ReqState::Waiting)) {
+            Some(p) if !p.join => return err("that request needs the professor's approval, not a grant"),
+            Some(_) => {}
+            None => return err("no such join request — it may have expired"),
+        }
+    }
+    if !broker_accepts(&name, &auth).await {
+        return err("that team code was rejected — only the team itself can grant this");
+    }
+    let mut q = PENDING.lock().unwrap();
+    match q.iter_mut().find(|p| p.name == name && matches!(p.state, ReqState::Waiting) && p.join) {
+        Some(p) => {
+            p.state = ReqState::Approved(auth);
+            p.created = Instant::now(); // pickup window restarts at grant
+        }
+        None => return err("no such join request — it may have expired"),
+    }
+    ("200 OK", "application/json", serde_json::json!({ "ok": true, "user": name }).to_string())
+}
+
+/// `POST /codes/deny` body `{auth, name}` — professor-gated, except a JOIN
+/// request, which its own team may also dismiss (the same credential that
+/// could grant it); the requester's next poll sees `denied` and stops.
 pub async fn deny_json(body: &str) -> (&'static str, &'static str, String) {
     let v: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
     let auth = v.get("auth").and_then(|s| s.as_str()).unwrap_or("");
     let name = v.get("name").and_then(|s| s.as_str()).unwrap_or("");
-    if !broker_accepts("professor", auth).await {
-        return err("professor code rejected");
+    // Row lookup first (need `join` to pick the verifier), lock never held
+    // across the awaits.
+    let join = {
+        let mut q = PENDING.lock().unwrap();
+        prune(&mut q);
+        match q.iter().find(|p| p.name == name && matches!(p.state, ReqState::Waiting)) {
+            Some(p) => p.join,
+            None => return err("no such request"),
+        }
+    };
+    let allowed = broker_accepts("professor", auth).await
+        || (join && broker_accepts(name, auth).await);
+    if !allowed {
+        return err(if join { "code rejected — the team itself or the professor can deny this" }
+                   else { "professor code rejected" });
     }
     let mut q = PENDING.lock().unwrap();
     match q.iter_mut().find(|p| p.name == name && matches!(p.state, ReqState::Waiting)) {

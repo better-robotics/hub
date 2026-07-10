@@ -15,14 +15,19 @@ envelopes mirror `protocol/envelopes/*.json`:
     robots/<id>/sys        fleet       read-only presence/telemetry
     robots/<id>/led        set_led req / robots/<id>/led/reply resp (MQTT5 correlation)
 
-It connects to Mosquitto as `professor` — the ACL identity with write on
-`robots/+/pwm` and `robots/+/led` and read on `robots/#`
-(see mosquitto-acl.example.conf). It is the first real MQTT *client* in this
-repo; hubd is deliberately not one, and reprovision.py still stubs on hub#1.
+It connects to Mosquitto as whatever identity HUB_USER/HUB_PASS name — the
+broker ACL scopes everything (see mosquitto-acl.example.conf). With NO
+credential it connects anonymous (read-only fleet view) and `request_access()`
+pairs it in-chat: knock on hubd's access gate, a human approves from a browser
+(the team's own signed-in dashboard for an existing team, the professor for a
+new name), and this session reconnects with the delivered code. It is the
+first real MQTT *client* in this repo; hubd is deliberately not one, and
+reprovision.py still stubs on hub#1.
 
 Run:
     pip install "mcp[cli]" paho-mqtt        # or: uv pip install ...
     HUB_HOST=hub.local HUB_PASS=secret python hub_mcp.py
+    HUB_HOST=hub.local python hub_mcp.py    # anonymous; pair via request_access()
 
 Register with Claude Code (stdio):
     claude mcp add hub-fleet -- python /path/to/hub_mcp.py
@@ -133,6 +138,10 @@ def _clean(d: dict) -> dict:
 
 
 def _publish(topic: str, body: dict, properties: Properties | None = None) -> None:
+    if not _client.is_connected():
+        raise RuntimeError(
+            f"not connected to the hub at {HUB_HOST}:{HUB_PORT} — are you on its Wi-Fi? "
+            "(the connection keeps retrying in the background; try again in a few seconds)")
     info = _client.publish(topic, json.dumps(body), qos=0, properties=properties)
     info.wait_for_publish(timeout=2.0)
 
@@ -286,6 +295,78 @@ def blink(board: str) -> str:
     return f"blink sent to {board} (via robots/{team}/cmd/identify) — watch the desk"
 
 
+# ---- in-chat pairing -----------------------------------------------------------
+# Device-flow-shaped auth on the hub's own gate (hubd /codes/request|poll):
+# knock, show the human a short pairing code, and a browser click delivers the
+# credential — no code typed into any config screen. For an existing team the
+# approver is the team's own signed-in dashboard (/codes/grant re-shares the
+# code it holds; nothing is minted, the rover is untouched); for a new name it
+# is the professor's panel (a code is minted, exactly like a browser knock).
+
+_pending_req: dict[str, dict] = {}   # team -> {token, pair, join}; survives across tool calls
+
+
+def _reconnect_as(user: str, password: str) -> None:
+    global HUB_USER, HUB_PASS
+    HUB_USER, HUB_PASS = user, password
+    _client.username_pw_set(user, password)
+    try:
+        _client.disconnect()
+    except Exception:
+        pass
+    _client.reconnect()                  # on_connect resubscribes the channels
+
+
+@mcp.tool()
+def request_access(team: str, wait_s: float = 45.0) -> dict:
+    """Get this session authorized from a browser instead of a config screen.
+    Knocks on the hub's access gate as `team` and waits for a human click:
+    an existing team approves from its own signed-in dashboard (tell the
+    teammate the PAIRING CODE this returns — the approve banner shows the
+    same one); a brand-new name is approved by the professor. On approval
+    this session reconnects with the delivered credential and your scope
+    becomes that team's subtree. If the wait times out, call this again with
+    the same name — the request stays pending on the hub for ~30 minutes."""
+    team = team.strip()
+    req = _pending_req.get(team)
+    if req is None:
+        r = _hubd("/codes/request", {"name": team})
+        if not r.get("ok"):
+            return {"error": r.get("error", "the hub refused the request"),
+                    "hint": "an unanswered earlier knock for this name may still be pending — "
+                            "it can be denied from the dashboard, or expires on its own"}
+        req = _pending_req[team] = {"token": r["token"], "pair": r.get("pair", ""),
+                                    "join": r.get("join", False)}
+    approver = (f"{team}'s signed-in dashboard shows an Approve banner"
+                if req["join"] else "the professor's codes panel lists the request")
+    deadline = time.time() + min(max(wait_s, 2.0), 120.0)
+    while time.time() < deadline:
+        r = _hubd("/codes/poll", {"token": req["token"]})
+        status = r.get("status")
+        if status == "approved":
+            _pending_req.pop(team, None)
+            try:
+                _reconnect_as(r["user"], r["pass"])
+            except Exception as e:
+                return {"status": "approved", "error": f"reconnect failed: {e}",
+                        "hint": "the credential was delivered (one-shot) — restart the server "
+                                "with it set as HUB_USER/HUB_PASS"}
+            return {"status": "connected", "user": r["user"],
+                    "note": "scope is now this team's subtree — drive/publish will stick"}
+        if status == "denied":
+            _pending_req.pop(team, None)
+            return {"status": "denied", "note": "the approver dismissed this request"}
+        if status == "unknown":
+            _pending_req.pop(team, None)
+            return {"status": "expired", "note": "the request lapsed or the hub restarted — call again to re-knock"}
+        if status is None:                     # HTTP error — hubd unreachable
+            return {"error": r.get("error", "hub unreachable"), "pair": req["pair"]}
+        time.sleep(2.0)
+    return {"status": "waiting", "pair": req["pair"],
+            "note": f"tell the human: approve on {approver}, and ONLY if it shows "
+                    f"pairing code {req['pair']} — then call request_access('{team}') again"}
+
+
 # ---- professor ops -----------------------------------------------------------
 # Wrappers over hubd's HTTP /codes API plus the cmd/config publishes the
 # dashboard's professor panels make. Mutations carry HUB_PASS as the professor
@@ -344,7 +425,9 @@ def approve_request(name: str) -> dict:
     """Approve a pending access request (professor only): the hub mints the
     team's code and delivers it to the requester's browser. If the request
     claimed a board, this also assigns that rover to the new team (the same
-    cmd/config the dashboard publishes) — it reboots renamed."""
+    cmd/config the dashboard publishes) — it reboots renamed. JOIN requests
+    (name already has a code) can't be approved here: the team grants those
+    from its own signed-in dashboard."""
     r = _hubd("/codes/approve", {"auth": HUB_PASS, "name": name})
     if r.get("ok") and r.get("board"):
         team = _board_team(r["board"]) or "unassigned"
@@ -398,13 +481,20 @@ def flip(board: str, direction: str) -> dict:
 
 
 def main() -> None:
-    if HUB_USER and not HUB_PASS:
-        print(f"[hub_mcp] warning: HUB_USER={HUB_USER!r} but HUB_PASS is empty — "
-              "the broker will reject auth (set HUB_PASS to that user's mosquitto password)",
-              file=sys.stderr)
-    if HUB_USER:
+    if HUB_PASS:
         _client.username_pw_set(HUB_USER, HUB_PASS)
-    _client.connect(HUB_HOST, HUB_PORT, keepalive=30)
+    else:
+        # No credential = anonymous, deliberately: the broker ACL gives
+        # anonymous read on robots/#, so the fleet/watch/read_imu tools work
+        # out of the box and request_access() upgrades the session in-chat.
+        print(f"[hub_mcp] no HUB_PASS — connecting anonymous (read-only)"
+              f"{f' (HUB_USER={HUB_USER!r} ignored without a pass)' if HUB_USER else ''}; "
+              "use the request_access tool to pair for drive access",
+              file=sys.stderr)
+    # Async connect + paho's retry loop: the server must come up (and stay up)
+    # even when launched off the hub's Wi-Fi — an enabled-but-unconfigured
+    # desktop extension must not crash at spawn.
+    _client.connect_async(HUB_HOST, HUB_PORT, keepalive=30)
     _client.loop_start()                 # background network thread; tools stay sync
     try:
         mcp.run()                        # stdio transport — Claude Code speaks this

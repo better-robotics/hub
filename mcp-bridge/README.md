@@ -40,6 +40,13 @@ before a dedicated tool exists):
 | `publish(topic, payload)` | raw JSON publish; the broker ACL scopes what lands |
 | `watch(topic_pattern, duration_s=5, max_messages=50)` | subscribe with wildcards, collect live messages — see exactly what's on the wire while your code runs |
 
+In-chat pairing (no credential configured — the server starts anonymous and
+read-only):
+
+| tool | backend | what it does |
+|------|---------|--------------|
+| `request_access(team, wait_s=45)` | hubd `/codes/request` + `/codes/poll` | knock on the hub's access gate and wait for a browser click. An existing team approves from **its own signed-in dashboard** (an Approve banner appears; match the pairing code this tool returns). A new name is approved by the professor. On approval the session reconnects with the delivered code — scope becomes that team's subtree. |
+
 Professor ops (mutations authenticate with this server's own credential —
 under a team identity they simply come back rejected):
 
@@ -67,8 +74,8 @@ Environment knobs (defaults match `../pi/mosquitto.example.conf`):
 |-----|---------|------|
 | `HUB_HOST` | `localhost` | broker host (`hub.local` reaches either hub) |
 | `HUB_PORT` | `1883` | raw MQTT — **not** the `:9001` WebSocket port |
-| `HUB_USER` | `professor` | ACL identity with fleet write |
-| `HUB_PASS` | *(empty)* | password from your `mosquitto-passwd` |
+| `HUB_USER` | `professor` | ACL identity (ignored without a `HUB_PASS`) |
+| `HUB_PASS` | *(empty)* | password from your `mosquitto-passwd`; empty = connect anonymous (read-only) and pair in-chat via `request_access` |
 
 ## Register with Claude Code
 

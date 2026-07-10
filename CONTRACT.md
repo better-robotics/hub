@@ -3,8 +3,22 @@
 The transport-agnostic message contract every hub — the Pi (`pi/`) and the ESP32
 hub role (in `better-robotics/robot`) — and client (`dashboard.html`,
 `mcp-bridge/`) agrees on:
-envelopes + topic scheme. Currently the imu/pwm/led subset. `wheel_encoders`
-is a planned robot→device channel (no envelope yet); classroom/team *scoping*
+envelopes + topic scheme. Currently the imu/pwm/led subset. Planned data
+channels, in the order the kits will need them (each lands with an envelope
+file when a device first publishes it):
+
+- **`range`** (robot → device) — forward distance. Sensor-agnostic by design:
+  the current kit carries an HC-SR04 ultrasonic, the next one a VL53L0X ToF —
+  same channel, `sensor` is payload metadata (like `hw` in sys).
+- **`cmd_vel`** (device → robot) / **`odom`** (robot → device) — the
+  drive-boundary pair for the encoder+IMU kit: velocity setpoints in, derived
+  odometry (pose + velocity, fused on the MCU from wheel encoders + IMU) out.
+  This *supersedes* the raw `wheel_encoders` channel sketched earlier — the MCU
+  owns the PID/odometry math and publishes state, not ticks, matching the ROS 2
+  on-ramp (`cmd_vel`/`odom` are its native boundary). `pwm` stays: it is the
+  mission-one manual-drive channel, not a deprecation target.
+
+Classroom/team *scoping*
 is not a protocol channel but the broker's ACL identity model
 (`pi/mosquitto-acl.example.conf` + `pi/classroom.example.json5`). The Zenoh
 column below is the evaluation baseline (`better-robotics/hub-zenoh`), kept for
@@ -18,7 +32,7 @@ carry that instead, keeping identity-in-the-key. Topic scheme settled
 response on the fixed `robots/<id>/led/reply` — a stable pattern rather than a
 fully dynamic response-topic, so the broker ACL can scope it. Wiring the
 MQTT5 properties themselves (esp-mqtt's `esp_mqtt5_publish_property_config`
-on the rover side) is still hub#1 phase 3.
+on the rover side) is an open thread in the hub state tracker (#4).
 
 | Message | File | Direction | MQTT (both hubs) | Zenoh (baseline) |
 |---------|------|-----------|--------------------------|------------------|

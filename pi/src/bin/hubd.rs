@@ -169,6 +169,13 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                 ("GET", "/codes/list") => ("200 OK", "application/json", hub::codes::list_json()),
                 ("POST", "/codes/set") => hub::codes::set_json(post_body).await,
                 ("POST", "/codes/del") => hub::codes::del_json(post_body).await,
+                // Access requests: the login gate knocks, the professor's
+                // panel answers, the requester's poll collects the code.
+                ("POST", "/codes/request") => hub::codes::request_json(post_body),
+                ("POST", "/codes/poll") => hub::codes::poll_json(post_body),
+                ("GET", "/codes/requests") => ("200 OK", "application/json", hub::codes::requests_json()),
+                ("POST", "/codes/approve") => hub::codes::approve_json(post_body).await,
+                ("POST", "/codes/deny") => hub::codes::deny_json(post_body).await,
                 // Captive Portal API (RFC 8908), pointed at by DHCP option 114
                 // (RFC 8910, dnsmasq drop-in in the image). `captive:false` is
                 // the whole point: nothing is blocked, we're only advertising

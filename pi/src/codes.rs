@@ -13,6 +13,8 @@
 //! client (no session, no pub/sub — the no-relay rule stands); it is the only
 //! verifier that can never disagree with the file mosquitto actually loaded.
 
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const PASSWD: &str = "/etc/mosquitto/hub-passwd";
@@ -166,5 +168,180 @@ pub async fn del_json(body: &str) -> (&'static str, &'static str, String) {
         return err("mosquitto_passwd failed");
     }
     reload_broker().await;
+    ("200 OK", "application/json", r#"{"ok":true}"#.into())
+}
+
+// ---- Access requests: a team with no code yet asks from the login gate; the
+// professor approves from the codes panel and the requester's poll delivers
+// the minted code straight into their browser — nothing typed on either side.
+//
+// The queue is in-memory on purpose: requests are ephemeral (a hubd restart
+// resets them to "ask again"), and the token is a claim ticket — the approved
+// code is handed to whoever holds it, exactly once, then forgotten. The
+// public request list carries names only, never tokens. The professor
+// approves a NAME, not a phone: on a name dispute the code can be rotated,
+// same trust boundary as reading a QR card off a neighbour's desk.
+
+enum ReqState {
+    Waiting,
+    Approved(String), // the minted code, awaiting one-shot pickup
+    Denied,
+}
+
+struct Pending {
+    name: String,
+    token: String,
+    created: Instant,
+    state: ReqState,
+}
+
+static PENDING: Mutex<Vec<Pending>> = Mutex::new(Vec::new());
+const REQUEST_TTL: Duration = Duration::from_secs(30 * 60);
+const REQUEST_CAP: usize = 20;
+
+fn rand_hex(bytes: usize) -> String {
+    use std::io::Read;
+    let mut buf = vec![0u8; bytes];
+    let _ = std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut buf));
+    buf.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Classroom-typeable code: 8 chars, no 0/O/1/l/i lookalikes.
+fn gen_code() -> String {
+    const ALPHABET: &[u8] = b"abcdefghjkmnpqrstuvwxyz23456789";
+    use std::io::Read;
+    let mut buf = [0u8; 8];
+    let _ = std::fs::File::open("/dev/urandom").and_then(|mut f| f.read_exact(&mut buf));
+    buf.iter().map(|b| ALPHABET[*b as usize % ALPHABET.len()] as char).collect()
+}
+
+fn prune(q: &mut Vec<Pending>) {
+    q.retain(|p| p.created.elapsed() < REQUEST_TTL);
+}
+
+/// `POST /codes/request` body `{name}` → `{ok, token}`. Unauthenticated — it
+/// is the door someone with no credential knocks on. Re-requesting a waiting
+/// name replaces its token (last request wins), so a reloaded browser that
+/// lost localStorage isn't locked out for the TTL.
+pub fn request_json(body: &str) -> (&'static str, &'static str, String) {
+    let v: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
+    let name = v.get("name").and_then(|s| s.as_str()).unwrap_or("").trim().to_string();
+    if !valid_name(&name) {
+        return err("names are 1-32 chars: a-z 0-9 - _ (starting with a letter or digit)");
+    }
+    if name == "professor" || name == POOL_USER {
+        return err("that name is reserved");
+    }
+    if list_users().iter().any(|u| *u == name) {
+        return err("that team already has a code — ask the professor for it");
+    }
+    let token = rand_hex(16);
+    let mut q = PENDING.lock().unwrap();
+    prune(&mut q);
+    if let Some(p) = q.iter_mut().find(|p| p.name == name && matches!(p.state, ReqState::Waiting)) {
+        p.token = token.clone();
+        p.created = Instant::now();
+    } else {
+        if q.len() >= REQUEST_CAP {
+            return err("too many open requests — ask the professor to clear some");
+        }
+        q.push(Pending { name, token: token.clone(), created: Instant::now(), state: ReqState::Waiting });
+    }
+    ("200 OK", "application/json", serde_json::json!({ "ok": true, "token": token }).to_string())
+}
+
+/// `POST /codes/poll` body `{token}` → `{status}` and, once approved,
+/// `{status:"approved", user, pass}` — delivered exactly once; the entry is
+/// consumed. `unknown` covers expired/restarted/never-existed alike.
+pub fn poll_json(body: &str) -> (&'static str, &'static str, String) {
+    let v: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
+    let token = v.get("token").and_then(|s| s.as_str()).unwrap_or("");
+    let mut q = PENDING.lock().unwrap();
+    prune(&mut q);
+    let Some(i) = q.iter().position(|p| p.token == token && !token.is_empty()) else {
+        return ("200 OK", "application/json", r#"{"status":"unknown"}"#.into());
+    };
+    let out = match &q[i].state {
+        ReqState::Waiting => r#"{"status":"waiting"}"#.to_string(),
+        ReqState::Approved(pass) => {
+            let s = serde_json::json!({ "status": "approved", "user": q[i].name, "pass": pass })
+                .to_string();
+            q.remove(i);
+            s
+        }
+        ReqState::Denied => {
+            q.remove(i);
+            r#"{"status":"denied"}"#.to_string()
+        }
+    };
+    ("200 OK", "application/json", out)
+}
+
+/// `GET /codes/requests` → `{requests: [names]}`. Public read like
+/// `/codes/list` — a pending name is about to become a public topic id anyway.
+pub fn requests_json() -> String {
+    let mut q = PENDING.lock().unwrap();
+    prune(&mut q);
+    let names: Vec<&str> = q
+        .iter()
+        .filter(|p| matches!(p.state, ReqState::Waiting))
+        .map(|p| p.name.as_str())
+        .collect();
+    serde_json::json!({ "requests": names }).to_string()
+}
+
+/// `POST /codes/approve` body `{auth, name}` — professor-gated. Mints the
+/// code server-side, creates the broker credential immediately (the rover can
+/// be assigned before the requester even polls), parks the code for pickup.
+/// Returns `{ok, user, pass}` so the panel can mint the QR card too.
+pub async fn approve_json(body: &str) -> (&'static str, &'static str, String) {
+    let v: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
+    let auth = v.get("auth").and_then(|s| s.as_str()).unwrap_or("");
+    let name = v.get("name").and_then(|s| s.as_str()).unwrap_or("").to_string();
+    if !broker_accepts("professor", auth).await {
+        return err("professor code rejected");
+    }
+    // Validate against the queue, but never hold the lock across the awaits.
+    {
+        let mut q = PENDING.lock().unwrap();
+        prune(&mut q);
+        if !q.iter().any(|p| p.name == name && matches!(p.state, ReqState::Waiting)) {
+            return err("no such request — it may have expired");
+        }
+    }
+    let pass = gen_code();
+    let ok = tokio::process::Command::new("mosquitto_passwd")
+        .args(["-b", PASSWD, &name, &pass])
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false);
+    if !ok {
+        return err("mosquitto_passwd failed");
+    }
+    let _ = std::fs::remove_file(PLACEHOLDER_MARKER);
+    reload_broker().await;
+    let mut q = PENDING.lock().unwrap();
+    if let Some(p) = q.iter_mut().find(|p| p.name == name) {
+        p.state = ReqState::Approved(pass.clone());
+        p.created = Instant::now(); // pickup window restarts at approval
+    }
+    ("200 OK", "application/json", serde_json::json!({ "ok": true, "user": name, "pass": pass }).to_string())
+}
+
+/// `POST /codes/deny` body `{auth, name}` — professor-gated; the requester's
+/// next poll sees `denied` and stops.
+pub async fn deny_json(body: &str) -> (&'static str, &'static str, String) {
+    let v: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
+    let auth = v.get("auth").and_then(|s| s.as_str()).unwrap_or("");
+    let name = v.get("name").and_then(|s| s.as_str()).unwrap_or("");
+    if !broker_accepts("professor", auth).await {
+        return err("professor code rejected");
+    }
+    let mut q = PENDING.lock().unwrap();
+    match q.iter_mut().find(|p| p.name == name && matches!(p.state, ReqState::Waiting)) {
+        Some(p) => p.state = ReqState::Denied,
+        None => return err("no such request"),
+    }
     ("200 OK", "application/json", r#"{"ok":true}"#.into())
 }

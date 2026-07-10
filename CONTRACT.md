@@ -34,14 +34,59 @@ fully dynamic response-topic, so the broker ACL can scope it. Wiring the
 MQTT5 properties themselves (esp-mqtt's `esp_mqtt5_publish_property_config`
 on the rover side) is an open thread in the hub state tracker (#4).
 
-| Message | File | Direction | MQTT (both hubs) | Zenoh (baseline) |
-|---------|------|-----------|--------------------------|------------------|
-| IMU sample | `envelopes/imu.json` | robot → device | pub/sub `robots/<id>/imu` | pub/sub `robots/<id>/imu` |
-| PWM drive | `envelopes/pwm.json` | device → robot | pub/sub `robots/<id>/pwm` | pub/sub `robots/<id>/pwm` |
-| set_led (req/resp) | `envelopes/rpc_set_led.json` | device ↔ robot | `robots/<id>/led` req, `robots/<id>/led/reply` resp (MQTT5 correlation-data) | queryable `robots/<id>/led` |
+| Message | File | Direction | MQTT (both hubs) | Zenoh (baseline) | BLE (workbench) |
+|---------|------|-----------|--------------------------|------------------|-----------------|
+| IMU sample | `envelopes/imu.json` | robot → device | pub/sub `robots/<id>/imu` | pub/sub `robots/<id>/imu` | — (no IMU in those kits) |
+| PWM drive | `envelopes/pwm.json` | device → robot | pub/sub `robots/<id>/pwm` | pub/sub `robots/<id>/pwm` | MOTOR char write |
+| set_led (req/resp) | `envelopes/rpc_set_led.json` | device ↔ robot | `robots/<id>/led` req, `robots/<id>/led/reply` resp (MQTT5 correlation-data) | queryable `robots/<id>/led` | LED char (on/off) + RGB char (r,g,b); no reply |
 
 Language bindings (which mirror these envelopes): Rust in `pi/src/lib.rs`; the
 ESP32 firmware hardcodes the same topics in C.
+
+## The BLE transport (workbench)
+
+[`workbench`](https://github.com/better-robotics/workbench) speaks the same
+contract semantics over Web Bluetooth GATT — one characteristic per channel
+instead of one topic per channel. The mapping, with the unit differences that
+make a blind rename wrong:
+
+- **Drive**: MOTOR char, binary. 4-byte pulse `[l, r, dur_hi, dur_lo]` —
+  signed int8 **percent** (±100), big-endian uint16 `duration_ms`; a 2-byte
+  `[l, r]` form is the joystick's persistent shape, bounded by a 500 ms
+  firmware watchdog. Scale conversion to this contract's `pwm`:
+  `duty = percent * 255 / 100`. Same safety floor, same 4000 ms cap
+  (`workbench protocol/constants.json` `LLM_MAX_DURATION_MS`).
+- **led**: two chars — LED (1 byte on/off) and RGB (3 bytes, 0–255/channel) —
+  covering `set_led`'s `{on, red, green, blue}` split in two; write-ack via
+  GATT, no application-level reply.
+- **`sys` ≈ workbench telemetry**: its TELEMETRY char notifies the same
+  vitals JSON shape (`free_heap`, `rssi_dbm`, uptime, per-kit sensors);
+  field names already overlap where the hardware does.
+
+**Identity converges by construction**: both projects suffix device names
+with the last two MAC bytes as 4 hex digits — `rover-a3f2` here,
+`ESP-A3F2` there — so one physical board is recognizable across both
+dashboards without a registry.
+
+## Safety floor — every drive self-expires
+
+Enforced in the rover firmware, *below* every client (dashboard joystick,
+mcp-bridge, user code) — a malformed or malicious payload cannot bypass it:
+
+- A `pwm` command is a bounded pulse: the firmware stops the motors
+  `duration_ms` after the last command (watchdog re-armed per message).
+- `duration_ms` absent → **400 ms** default. Non-zero drive with
+  `duration_ms <= 0` gets the default too — "no expiry" is not encodable.
+- Upper clamp **4000 ms**: an oversized value can't defeat the watchdog. The
+  value matches workbench's `LLM_MAX_DURATION_MS`, so one planner-issued
+  command is bounded the same on every transport.
+- Zero drive (stop) is always honored, any `duration_ms`.
+
+Sustained motion is therefore a *refreshing command stream* — the human
+joystick shape (the dashboard republishes while held). A seconds-latency
+planner gets one capped pulse per decision; a dropped session coasts to a
+stop. (The openpilot-panda layering: safety under the intelligent layer,
+never inside it. Enforcement: `robot/src/rover_role.c` `motor_apply`.)
 
 ## Discovery & isolation — how a client reaches *either* hub
 

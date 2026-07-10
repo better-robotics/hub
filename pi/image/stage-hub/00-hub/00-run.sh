@@ -93,8 +93,12 @@ NOROUTEEOF
 # phones can surface the dashboard unprompted, with NOTHING blocked — this is
 # an advertisement, not a portal (captive portals were chosen against;
 # robot/CLAUDE.md § Status). AP leg only (tag:wlan0) — the usb0 recovery link
-# must stay claim-free. Progressive nicety: RFC 8908 prefers TLS we can't
-# validly present offline, so clients that insist will just ignore it.
+# must stay claim-free. Progressive nicety: RFC 8908 requires TLS we can't
+# validly present offline, so clients that insist ignore it — verified
+# 2026-07-10, an iPhone joining hub-a2f5 surfaced nothing. Kept because the
+# cost is these lines, non-Apple clients may differ, and the alternative that
+# would force auto-open (probe-intercept portal) stays chosen-against. The
+# real zero-instruction path is the QR sign-in card.
 cat > "${ROOTFS_DIR}/etc/NetworkManager/dnsmasq-shared.d/20-ap-capport.conf" <<'CAPPORTEOF'
 dhcp-option=tag:wlan0,114,http://10.42.0.1/captive
 CAPPORTEOF

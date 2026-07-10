@@ -113,6 +113,8 @@ pub fn list_json() -> String {
 }
 
 /// `POST /codes/set` body `{auth, user, pass}` — create or rotate an identity.
+/// An empty `pass` means "generate one for me" (same alphabet as approve);
+/// the pass actually used is echoed back so the panel can mint the QR card.
 pub async fn set_json(body: &str) -> (&'static str, &'static str, String) {
     let v: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
     let auth = v.get("auth").and_then(|s| s.as_str()).unwrap_or("");
@@ -127,11 +129,12 @@ pub async fn set_json(body: &str) -> (&'static str, &'static str, String) {
     if user == POOL_USER {
         return err("the pool identity is fixed — it matches the firmware default");
     }
-    if !valid_pass(pass) {
+    let pass = if pass.is_empty() { gen_code() } else { pass.to_string() };
+    if !valid_pass(&pass) {
         return err("codes are 1-64 chars and can't start with '-'");
     }
     let ok = tokio::process::Command::new("mosquitto_passwd")
-        .args(["-b", PASSWD, user, pass])
+        .args(["-b", PASSWD, user, &pass])
         .status()
         .await
         .map(|s| s.success())
@@ -141,7 +144,7 @@ pub async fn set_json(body: &str) -> (&'static str, &'static str, String) {
     }
     let _ = std::fs::remove_file(PLACEHOLDER_MARKER);
     reload_broker().await;
-    ("200 OK", "application/json", r#"{"ok":true}"#.into())
+    ("200 OK", "application/json", serde_json::json!({ "ok": true, "pass": pass }).to_string())
 }
 
 /// `POST /codes/del` body `{auth, user}` — remove a team identity.
@@ -190,6 +193,11 @@ enum ReqState {
 
 struct Pending {
     name: String,
+    /// Board id the request claims (e.g. "rover-a044"), or empty for a
+    /// name-only request. hubd only carries it: the assignment itself is
+    /// published by the professor's browser over its own MQTT session on
+    /// approval (no-relay rule — hubd never touches the broker's topics).
+    board: String,
     token: String,
     created: Instant,
     state: ReqState,
@@ -229,8 +237,12 @@ fn prune(q: &mut Vec<Pending>) {
 pub fn request_json(body: &str) -> (&'static str, &'static str, String) {
     let v: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
     let name = v.get("name").and_then(|s| s.as_str()).unwrap_or("").trim().to_string();
+    let board = v.get("board").and_then(|s| s.as_str()).unwrap_or("").trim().to_string();
     if !valid_name(&name) {
         return err("names are 1-32 chars: a-z 0-9 - _ (starting with a letter or digit)");
+    }
+    if !board.is_empty() && !valid_name(&board) {
+        return err("bad board id");
     }
     if name == "professor" || name == POOL_USER {
         return err("that name is reserved");
@@ -247,7 +259,7 @@ pub fn request_json(body: &str) -> (&'static str, &'static str, String) {
     if q.len() >= REQUEST_CAP {
         return err("too many open requests — ask the professor to clear some");
     }
-    q.push(Pending { name, token: token.clone(), created: Instant::now(), state: ReqState::Waiting });
+    q.push(Pending { name, board, token: token.clone(), created: Instant::now(), state: ReqState::Waiting });
     ("200 OK", "application/json", serde_json::json!({ "ok": true, "token": token }).to_string())
 }
 
@@ -278,17 +290,18 @@ pub fn poll_json(body: &str) -> (&'static str, &'static str, String) {
     ("200 OK", "application/json", out)
 }
 
-/// `GET /codes/requests` → `{requests: [names]}`. Public read like
-/// `/codes/list` — a pending name is about to become a public topic id anyway.
+/// `GET /codes/requests` → `{requests: [{name, board}]}`. Public read like
+/// `/codes/list` — a pending name is about to become a public topic id anyway,
+/// and board ids are already in the anonymous fleet view.
 pub fn requests_json() -> String {
     let mut q = PENDING.lock().unwrap();
     prune(&mut q);
-    let names: Vec<&str> = q
+    let reqs: Vec<serde_json::Value> = q
         .iter()
         .filter(|p| matches!(p.state, ReqState::Waiting))
-        .map(|p| p.name.as_str())
+        .map(|p| serde_json::json!({ "name": p.name, "board": p.board }))
         .collect();
-    serde_json::json!({ "requests": names }).to_string()
+    serde_json::json!({ "requests": reqs }).to_string()
 }
 
 /// `POST /codes/approve` body `{auth, name}` — professor-gated. Mints the
@@ -303,13 +316,14 @@ pub async fn approve_json(body: &str) -> (&'static str, &'static str, String) {
         return err("professor code rejected");
     }
     // Validate against the queue, but never hold the lock across the awaits.
-    {
+    let board = {
         let mut q = PENDING.lock().unwrap();
         prune(&mut q);
-        if !q.iter().any(|p| p.name == name && matches!(p.state, ReqState::Waiting)) {
-            return err("no such request — it may have expired");
+        match q.iter().find(|p| p.name == name && matches!(p.state, ReqState::Waiting)) {
+            Some(p) => p.board.clone(),
+            None => return err("no such request — it may have expired"),
         }
-    }
+    };
     let pass = gen_code();
     let ok = tokio::process::Command::new("mosquitto_passwd")
         .args(["-b", PASSWD, &name, &pass])
@@ -327,7 +341,10 @@ pub async fn approve_json(body: &str) -> (&'static str, &'static str, String) {
         p.state = ReqState::Approved(pass.clone());
         p.created = Instant::now(); // pickup window restarts at approval
     }
-    ("200 OK", "application/json", serde_json::json!({ "ok": true, "user": name, "pass": pass }).to_string())
+    // `board` echoed so the professor's browser can publish the assignment
+    // (cmd/config) over its own MQTT session in the same tap.
+    ("200 OK", "application/json",
+     serde_json::json!({ "ok": true, "user": name, "pass": pass, "board": board }).to_string())
 }
 
 /// `POST /codes/deny` body `{auth, name}` — professor-gated; the requester's

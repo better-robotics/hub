@@ -26,7 +26,7 @@ PORT=18830  # non-default: don't collide with a real broker on this machine
 # so this must be a fresh file each run. Throwaway demo secrets, gitignored,
 # matching classroom.example.json5's placeholder values.
 rm -f mosquitto-passwd.example
-mosquitto_passwd -b -c mosquitto-passwd.example rover rover-secret
+mosquitto_passwd -b -c mosquitto-passwd.example unassigned unassigned-secret
 mosquitto_passwd -b mosquitto-passwd.example professor change-me
 mosquitto_passwd -b mosquitto-passwd.example team1 change-me-team1
 mosquitto_passwd -b mosquitto-passwd.example team2 change-me-team2
@@ -50,7 +50,7 @@ fail() { echo "  ✗ $1"; FAILS=$((FAILS + 1)); }
 empty_or_timeout() { [[ -z "$1" || "$1" == *"Timed out"* ]]; }
 
 echo "===== PHASE 1 — authorized paths ====="
-pub rover rover-secret "robots/team1/sys" '{"hw":"esp32"}' -r
+pub team1 change-me-team1 "robots/team1/sys" '{"hw":"esp32"}' -r   # a device authenticates AS its team
 ANON=$(sub '' '' 'robots/+/sys')
 [[ "$ANON" == *esp32* ]] && pass "anonymous reads public sys telemetry" || fail "anonymous sys read got: '$ANON'"
 if pub professor change-me "robots/team1/pwm" '{"left_motor":50}'; then
@@ -63,7 +63,7 @@ T1=$(sub team1 change-me-team1 'robots/team1/#')
 
 echo
 echo "===== PHASE 2 — cross-team denial ====="
-pub rover rover-secret "robots/team2/sys" '{"hw":"esp32"}' -r
+pub team2 change-me-team2 "robots/team2/sys" '{"hw":"esp32"}' -r
 # Retained (-r): if the ACL wrongly let this through, it sits on the topic for
 # team2 to find later — a non-retained publish would time out either way and
 # prove nothing.

@@ -1,61 +1,95 @@
 # hub — the classroom Robotics Hub
 
-One wire contract, two ways to host it. Students join the hub's Wi-Fi, open a
-dashboard, and drive ESP32 rovers over MQTT — from a Raspberry Pi appliance
-(this repo), or from a single ESP32 that *is* the whole hub (a boot role of the
-rover firmware in [`better-robotics/robot`](https://github.com/better-robotics/robot)).
+Students join the hub's Wi-Fi, open a dashboard, and drive ESP32 rovers over
+MQTT. This repo is the **contract** (topics, envelopes, the dashboard) and the
+**Raspberry Pi hub** that hosts it at classroom scale; the rover firmware — and
+the ESP32 that can *become* a hub — lives at
+[`better-robotics/robot`](https://github.com/better-robotics/robot).
+
+## One contract, three room sizes
+
+The room grows; the wire never changes — `robots/<team>/…` over MQTT, one
+`dashboard.html`. The robot firmware picks its shape **per boot**, nothing is
+configured:
 
 ```
-             shared contract (top level of this repo)
-   envelopes/  ·  dashboard.html  ·  mcp-bridge/  ·  CONTRACT.md
-        │                                    │
-        ▼                                    ▼
-   ┌──────────┐                        ┌───────────────┐
-   │   pi/    │  Raspberry Pi          │  ESP32 hub    │  one ESP32 =
-   │          │  Rust hubd (HTTP) +    │  role (in the │  AP + NAT + broker +
-   │          │  Mosquitto broker      │  robot repo)  │  WS bridge + dashboard
-   └──────────┘                        └───────────────┘
-   production target                   small-classroom, no Pi
+ ISLAND                    ESP32 HUB                  PI HUB
+ solo / home               small group · demo         full classroom
+
+ ┌──────────────┐          ┌──────────────┐           ┌──────────────┐
+ │  rover-XXXX  │          │   hub-XXXX   │           │  hub-pi-XXXX │
+ │ the rover is │          │  any board,  │           │  Mosquitto + │
+ │ its own hub: │          │  role = hub: │           │  hubd (pi/): │
+ │ AP + broker  │          │  AP + broker │           │  per-team ACL│
+ │ + dashboard  │          │  + dashboard │           │  ENFORCED    │
+ └──────┬───────┘          └──────┬───────┘           └──────┬───────┘
+        ▲                     ▲ ▲ ▲                     ▲ ▲ ▲ ▲ ▲
+   one phone —             rovers & phones           the whole room —
+   rover.local             join hub-XXXX —           rovers, phones,
+                           hub.local                 laptops — hub.local
+
+ isolation: single driver  connect-auth (honor)      broker-enforced ACL
+ capacity:  1 + a phone    ~8–10 Wi-Fi clients       room-scale
+ ──────────────────────────────────────────────────────────────────────
+ a room resizes LIVE: an island yields when any hub-… appears, and every
+ board prefers the Pi · a board can be locked to ONE hub (the hub pin),
+ so a rogue hub-… can't absorb it
 ```
 
-Both hosts serve the **same** `dashboard.html` and speak the **same** `envelopes/`
-— a single source of truth at the top of this repo. The Pi embeds it directly;
-the ESP32 hub role **vendors** a drift-checked copy into the `robot` firmware. A
-breaking contract change lands here, then resyncs there
-(`robot/tools/sync-dashboard.sh`).
+## The dashboard
+
+One self-contained `dashboard.html` (mqtt.js inlined; also runs from `file://`
+with the hub's address typed once), three tiers — each enforced by the
+**broker**, not by page logic:
+
+| tier | credential | can |
+|---|---|---|
+| public fleet view | none (anonymous read) | watch every robot live: telemetry, cameras, per-board settings |
+| team | `teamN:password` | drive **its own** rover — joystick / D-pad, wire log visible (it's a teaching surface) |
+| professor | `professor:password` | drive any robot · **Assign**: Blink 💡 a board's LED to find it on the desk, then give it a team, name, hub pin, motor pins |
+
+Fresh boards arrive in an **unassigned** pool only the professor can drive.
 
 ## Layout
 
 ```
-hub/
-├── CONTRACT.md         the wire contract — topic scheme, envelope table, directions
-├── envelopes/          message shapes (imu, pwm, rpc_set_led) — language bindings live in each impl
-├── dashboard.html      the browser client (mqtt.js + favicon inlined; also runs standalone from file://)
-├── mcp-bridge/         MCP tool server — drive the fleet from an LLM over the same contract
-└── pi/                 Raspberry Pi implementation — Rust hubd + Mosquitto + Pi image (was hub-mqtt)
-    ├── src/            hubd (dashboard/HTTP chassis) + provisiond (BLE)
-    ├── mosquitto*.conf broker config + ACL (classroom scoping)
-    ├── deploy/ image/  systemd install + CI-baked Pi image
-    └── examples/       broker ACL + WebSocket transport tests (CI-gated)
+CONTRACT.md         the wire contract — topics, envelopes, identity/ACL model, cmd/* channels
+envelopes/          message shapes (imu, pwm, rpc_set_led)
+dashboard.html      the browser client — CANONICAL copy (the ESP32 hub vendors it;
+                    robot/tools/sync-dashboard.sh --check gates drift)
+mcp-bridge/         MCP tool server — drive the fleet from an LLM over the same contract
+pi/                 the Raspberry Pi hub
+├── src/            hubd — dashboard/HTTP chassis + device-served Wi-Fi setup (nmcli)
+├── mosquitto*.conf broker config + per-team ACL
+├── deploy/         systemd install: hubd · Mosquitto · day-zero hub AP · USB-gadget recovery
+├── image/          pi-gen stage — the CI-baked, flash-and-go Pi image
+└── examples/       broker ACL + WebSocket transport tests (CI-gated)
 ```
-
-The **ESP32 hub** is not a directory here — it's the hub *role* of the unified
-rover firmware in [`better-robotics/robot`](https://github.com/better-robotics/robot)
-(one image; a rover that finds no `hub-*` can become one).
 
 ## Run
 
-**Pi** (needs a Linux/Pi host):
+**Pi, from the baked image** (recommended): take `hub.img.xz` from Releases
+(or run the `build-image` workflow), flash an SD card, boot. The Pi raises an
+open `hub-XXXX` network with the dashboard at `http://hub.local`; set its
+internet uplink from the dashboard's Wi-Fi panel. A USB-C cable to a laptop is
+the headless recovery console.
+
+**Pi, onto an existing OS:**
 ```sh
-cd pi && sudo ./deploy/install.sh          # hubd + Mosquitto as systemd services
+cd pi && sudo ./deploy/install.sh    # hubd + Mosquitto (+ the hub AP on a wlan0 host)
 ```
 
-**ESP32 hub** — flash the `robot` firmware and force the hub role; see that
-repo's README. Then join the hub's Wi-Fi and open `http://hub.local/` (or the
-printed IP).
+**ESP32 hub:** flash the robot firmware
+([browser flasher](https://better-robotics.github.io/)), flip the board's role
+to *hub* on its `rover.local` settings page, join its Wi-Fi, open
+`http://hub.local`.
+
+Placeholder classroom credentials ship in `pi/classroom.example.json5` —
+change them before a real class (`mosquitto_passwd`).
 
 ## The other repos
 
-`robot` (the rover firmware — and now the ESP32 hub role), `hub-zenoh` (a Zenoh
-evaluation baseline, receding), and `workbench` (a browser dev environment) live
-separately.
+[`robot`](https://github.com/better-robotics/robot) — the unified rover +
+ESP32-hub firmware · [`better-robotics.github.io`](https://github.com/better-robotics/better-robotics.github.io)
+— the browser flasher · `hub-zenoh` — archived (the Zenoh evaluation baseline
+MQTT won against) · `workbench` — a browser dev environment.

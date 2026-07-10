@@ -1,14 +1,12 @@
-# hub-mqtt — project context
+# pi/ — Raspberry Pi hub context
 
-The classroom Robotics Hub, **MQTT transport variant** — the preferred/target
-implementation (2026-07-08: MQTT is canonical going forward; Zenoh is kept as
-the evaluation baseline it's measured against, not a symmetric contender).
-Split off from a sibling
+The Raspberry Pi implementation of the classroom Robotics Hub. Was the
+standalone `better-robotics/hub-mqtt` repo until the 2026-07-08 monorepo merge
+(hub-mqtt → `hub`, this directory); MQTT won the transport bake-off and
 [`better-robotics/hub-zenoh`](https://github.com/better-robotics/hub-zenoh)
-(2026-07-08, greenfield evaluation origin:
-[hub-zenoh#4](https://github.com/better-robotics/hub-zenoh/issues/4)). A third
-variant, hand-rolled WebSocket, lost an earlier round and is kept experimental
-at [`better-robotics/hub-ws`](https://github.com/better-robotics/hub-ws).
+(the evaluation baseline, greenfield origin
+[hub-zenoh#4](https://github.com/better-robotics/hub-zenoh/issues/4)) was
+archived read-only 2026-07-09 as the baseline record.
 Rover firmware: [`better-robotics/robot`](https://github.com/better-robotics/robot).
 
 **Broker chosen, no-relay architecture landed (2026-07-08) — see [hub#1](../../issues/1)
@@ -22,8 +20,8 @@ relay itself was removed.
 
 ## Source of truth
 - **Contract:** `../CONTRACT.md` + `../envelopes/` (monorepo top level) is
-  canonical (flipped 2026-07-08, hub#1) — MQTT is the target implementation;
-  hub-zenoh's copy is now the synced evaluation-baseline reference.
+  canonical (flipped 2026-07-08, hub#1) — hub-zenoh's copy is frozen with that
+  archived repo.
 - **Broker: Mosquitto, not embedded `rumqttd`.** Decided after concrete
   research, not familiarity: `rumqttd` runs MQTT v4 and v5 on **fully separate
   queues** by default (a v4 client and a v5 client never see each other's
@@ -47,10 +45,11 @@ traffic — it's a plain HTTP server sitting *beside* the broker:
 - **ESP32 rover** — `esp-mqtt` (first-party ESP-IDF component, actively
   maintained, supports MQTT 3.1.1 and 5.0 natively including
   `esp_mqtt5_publish_property_config`'s `response_topic`/`correlation_data`
-  fields — exactly what the RPC binding below needs). Not yet wired into
-  `better-robotics/robot`'s firmware (hub#1 phase 5). Note: this is the
-  native C component, not the separate Rust `esp-idf-svc` MQTT binding, which
-  is v3-only.
+  fields — exactly what the RPC binding below needs). Shipped in
+  `better-robotics/robot`'s unified firmware (2026-07-09): sys telemetry,
+  pwm drive, and the `cmd/config` assign flow all run over esp-mqtt against
+  this broker. Note: this is the native C component, not the separate Rust
+  `esp-idf-svc` MQTT binding, which is v3-only.
 - **Mosquitto** (`mosquitto.example.conf`, a separate process from hubd) —
   the actual broker. Raw MQTT on 1883 (rover, sim clients, `mosquitto_pub`/
   `sub`), MQTT-over-WebSocket on 9001 (the browser dashboard's `mqtt.js`,
@@ -59,7 +58,7 @@ traffic — it's a plain HTTP server sitting *beside* the broker:
   directly into `dashboard.html` (2026-07-08, no CDN — the classroom Pi may
   have no internet uplink, which is exactly what the uplink probe below
   exists to detect). Inlining also makes the page a genuine **standalone
-  artifact**: download `public/dashboard.html` on its own, open it as
+  artifact**: download the top-level `../dashboard.html` on its own, open it as
   `file://`, type in a hub address (remembered in `localStorage`), and it
   works with no hubd behind it at all — verified live, a `file://` origin can
   open a plain `ws://` connection with no mixed-content block (unlike an
@@ -78,11 +77,11 @@ commands are planned on the **command plane** `robots/<id>/cmd/<verb>` (first
 verb in hub-zenoh: `reprovision`) — not yet wired here.
 
 **Fleet HTTP (dashboard):** hubd serves plain HTTP — `/` is the embedded
-`public/dashboard.html` (mqtt.js inlined — no separate `/mqtt.min.js` route),
-`/fleet` just `{uplink, locator}` now. The live per-robot fleet table is **not**
-server-aggregated any more: `dashboard.html` opens its own anonymous
+top-level `../dashboard.html` (mqtt.js inlined — no separate `/mqtt.min.js`
+route), `/fleet` just `{uplink, locator}` now. The live per-robot fleet table
+is **not** server-aggregated any more: `dashboard.html` opens its own anonymous
 `mqtt.js` connection and subscribes `robots/+/sys` directly — Mosquitto's ACL
-scopes anonymous clients to that one read-only topic (public by design, same
+grants anonymous clients read-only `robots/#` (public by design, same
 contract `/fleet`'s `robots` array used to serve). HTTP for the page itself
 because the audience is any browser on the hub's network, and because an
 `https:`-served page can't open a plain `ws://` connection (mixed content) —
@@ -107,8 +106,7 @@ the uplink radio, never the AP's (the 2026-07-04 outage lesson; see
   (verified on iPhone against the hub-esp32 build — `.local` is the reliable
   Apple path), so the dnsmasq-hub-name machinery was a whole moving part
   serving only some Android clients. Trade recorded: an *older* Android with
-  no mDNS now falls back to the IP. (hub-zenoh still carries the dnsmasq
-  drop-in — mirror the removal there if it earns it.)
+  no mDNS now falls back to the IP.
 - **Uplink probe:** background task, `GET generate_204` (IPv4 only) every
   10 s — 204 → `full`, any other answer → `portal`, none → `none`. Downgrades
   debounced (3 agreeing probes). *Not nmcli* — deliberately: hubd runs root now
@@ -127,34 +125,34 @@ mirroring hub-zenoh's `acl-demo.sh`: authorized paths, cross-team denial, bad
 password rejection — all verified live against a real Mosquitto instance,
 not just written).
 
-- **Anonymous clients** get read-only `robots/+/sys` only — the public fleet
-  view, same contract as the old `/fleet`'s public-read JSON.
-- **`rover`** — one shared demo credential for the whole fleet (mirrors
-  hub-zenoh's ACL demo pattern: one identity, not per-device). Real per-device
-  identity is still open (hub#1 future work), but unlike hub-zenoh, MQTT
-  starts from a stricter baseline for free: **`esp-mqtt` supports
-  username/password natively**, so there's no equivalent of zenoh-pico's
-  missing-`usrpwd` gap forcing an open router.
-- **`professor`** — read `robots/#`, write `robots/+/pwm` and `robots/+/led`
-  (matches hubd's old `Scope::All`).
-- **Each team** (`classroom.example.json5`) — read `robots/<their-robot>/#`,
-  write only `pwm`/`led` on their own robot (matches the old `Scope::One`).
-  **MQTT username IS the identity, and for a team it's always that team's
-  robot id** — no separate token/robot mapping, so `dashboard.html` can infer
-  scope from the username alone. The "code" a browser types is
-  `username:password` (e.g. `team1:change-me-team1`); professor's username is
-  always literally `"professor"`.
+- **Anonymous clients** — read-only `robots/#` (top-level rule, no
+  `user`/`pattern` block): the public fleet view, same contract as the old
+  `/fleet`'s public-read JSON.
+- **Each team** — one `pattern readwrite robots/%u/#` rule: an authenticated
+  identity owns exactly the subtree named by its username, and BOTH the
+  team's browser and its rover connect as that identity (**username IS the
+  robot id** — hardware MAC is telemetry metadata, never a name). No
+  per-team blocks, no edits as the class grows; provisioning the credential
+  is the only step. Directional per-channel rules (imu robot→device, pwm
+  device→robot) were deliberately dropped — they'd guard a team spoofing its
+  OWN rover, not a classroom threat. The "code" a browser types is
+  `username:password` (e.g. `team1:change-me-team1`).
+- **`professor`** — `readwrite robots/#`, the only named user block.
+- Rovers get their team credential post-join over `robots/<team>/cmd/config`
+  (published from the dashboard's assign panel, target-filtered by board id) —
+  `esp-mqtt` supports username/password natively, so there's no equivalent of
+  zenoh-pico's missing-`usrpwd` gap forcing an open broker.
 
 `classroom.example.json5`'s role changed accordingly: it's no longer loaded
 by any binary, just the human-readable intent that the ACL/passwd files
 implement by hand (same split as hub-zenoh's `protocol/README` vs
 `zenoh-acl.example.json5`) — keep all three in sync on touch.
 
-## Hub-AP mode (inherited from hub-zenoh, live on the classroom Pi since 2026-07-04)
-Not transport-specific — this is Pi/Wi-Fi-radio topology, unchanged here.
-Topology is canonical in hub-zenoh's README § "Network: the hub is the access
-point" (wlan0 AP `hub-XXXX` / wlan1 STA uplink, NM `ipv4.method=shared`,
-gateway 10.42.0.1 = constant locator). Scars:
+## Hub-AP mode (live on the classroom Pi since 2026-07-04)
+Not transport-specific — this is Pi/Wi-Fi-radio topology: wlan0 AP `hub-XXXX`
+/ wlan1 STA uplink, NM `ipv4.method=shared`, gateway 10.42.0.1 = constant
+locator. (Original record: archived hub-zenoh README § "Network: the hub is
+the access point".) Scars:
 - **brcmfmac (built-in) is the reliable AP; the Edimax RTL8188CUS is not** —
   the dongle takes the STA leg.
 - **Open AP for now**: ESP32-C3 WPA2 join fails against this AP (4-way

@@ -11,10 +11,11 @@ raspi-config nonint do_wifi_country US || true
 # Config + ACL were staged by 00-run.sh; generate the passwd here where
 # mosquitto_passwd exists, and lock down the cred/acl files (mosquitto refuses
 # world-readable ones).
-mosquitto_passwd -b -c /etc/mosquitto/hub-passwd rover     rover-secret
-mosquitto_passwd -b    /etc/mosquitto/hub-passwd professor change-me
-mosquitto_passwd -b    /etc/mosquitto/hub-passwd team1     change-me-team1
-mosquitto_passwd -b    /etc/mosquitto/hub-passwd team2     change-me-team2
+# `unassigned` = the fresh-board pool identity (firmware MQTT_USER default).
+mosquitto_passwd -b -c /etc/mosquitto/hub-passwd unassigned unassigned-secret
+mosquitto_passwd -b    /etc/mosquitto/hub-passwd professor  change-me
+mosquitto_passwd -b    /etc/mosquitto/hub-passwd team1      change-me-team1
+mosquitto_passwd -b    /etc/mosquitto/hub-passwd team2      change-me-team2
 chown mosquitto:mosquitto /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 chmod 0600 /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 

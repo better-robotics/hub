@@ -53,8 +53,17 @@ whole ACL:
 | identity | scope | why |
 |----------|-------|-----|
 | team | `robots/<id>/#` rw | drive/read only your own rover |
+| `unassigned` | `robots/unassigned/#` rw | the fresh-board pool: the firmware's flash-time default identity; no student holds this credential, so only the professor can drive a board nobody has assigned yet |
 | professor | `robots/#` rw | oversight + drive any |
 | anonymous | `robots/#` read | the read-only fleet view (dashboard) |
+
+**Control channels** (`robots/<id>/cmd/*`, device → robot, ad-hoc JSON — no
+envelope files; the firmware is the schema): `cmd/config` assigns a board's
+team/name/motor-pins post-join, `cmd/identify` blinks the board's LED (~6 s) so
+a physical board can be matched to its on-screen id, `cmd/reprovision` reboots
+it (the BOOT button's remote twin). Boards sharing one identity all see these
+topics, so each payload takes an optional `"target": "<board-id>"` (the sys
+payload's MAC-derived `board` field) to address exactly one.
 
 Directional per-channel rules (imu robot→device, pwm device→robot) are dropped:
 they guard a team spoofing *its own* rover's telemetry — not a classroom threat.

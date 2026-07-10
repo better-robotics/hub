@@ -139,7 +139,10 @@ not just written).
   `username:password` (e.g. `team1:change-me-team1`).
 - **`professor`** — `readwrite robots/#`, the only named user block.
 - Rovers get their team credential post-join over `robots/<team>/cmd/config`
-  (published from the dashboard's assign panel, target-filtered by board id) —
+  (published from the dashboard's assign panel, target-filtered by board id);
+  until then a fresh board authenticates as **`unassigned`** — the pool
+  identity (seeded in install.sh/the image; no student holds it, so only the
+  professor can drive an unassigned board) —
   `esp-mqtt` supports username/password natively, so there's no equivalent of
   zenoh-pico's missing-`usrpwd` gap forcing an open broker.
 

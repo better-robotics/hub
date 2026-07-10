@@ -1,10 +1,10 @@
 // Classroom scoping SPEC — who gets what scope, and why. No longer loaded by
 // any binary (2026-07-08): scoping moved from hubd's Rust /ws relay to
 // Mosquitto's own ACL, so this file's role changed from runtime config to
-// human-readable intent. mosquitto-acl.example.conf + mosquitto-passwd.example
-// are the mechanical implementation — keep all three in sync on touch, same
-// split as hub-zenoh's protocol/README (contract) vs zenoh-acl.example.json5
-// (enforcement).
+// human-readable intent. mosquitto-acl.example.conf + the passwd seeds in
+// deploy/install.sh are the mechanical implementation — keep them in sync on
+// touch, same split as hub-zenoh's protocol/README (contract) vs
+// zenoh-acl.example.json5 (enforcement).
 //
 // MQTT username IS the identity, and for a team it's always that team's robot
 // id — no separate token/robot mapping, so the dashboard can infer scope
@@ -14,6 +14,13 @@
 // slide — now it happens to double as an actual MQTT credential.
 {
   professor: { username: "professor", password: "change-me" },
+
+  // The fresh-board pool: every board flashes with this identity (firmware
+  // MQTT_USER default) and appears in the dashboard's "Unassigned rovers" card.
+  // Deliberately NOT a team — no student is given this password, so only the
+  // professor (robots/# rw) can drive an unassigned board; the ACL's pattern
+  // rule scopes the boards themselves to robots/unassigned/# like any identity.
+  pool: { username: "unassigned", password: "unassigned-secret" },
 
   teams: [
     { username: "team1", password: "change-me-team1" },

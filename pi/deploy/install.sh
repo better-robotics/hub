@@ -50,10 +50,12 @@ install -m 0644 "$REPO_DIR/mosquitto-acl.example.conf"      /etc/mosquitto/hub-a
 # (Only created if absent, so re-running install.sh won't clobber real creds.)
 if [[ ! -f /etc/mosquitto/hub-passwd ]]; then
   echo "[install] seeding placeholder MQTT creds — CHANGE THESE before a real class"
-  mosquitto_passwd -b -c /etc/mosquitto/hub-passwd rover     rover-secret
-  mosquitto_passwd -b    /etc/mosquitto/hub-passwd professor change-me
-  mosquitto_passwd -b    /etc/mosquitto/hub-passwd team1     change-me-team1
-  mosquitto_passwd -b    /etc/mosquitto/hub-passwd team2     change-me-team2
+  # `unassigned` = the fresh-board pool identity (firmware MQTT_USER default):
+  # boards flash as it, no student holds it, the professor assigns real teams.
+  mosquitto_passwd -b -c /etc/mosquitto/hub-passwd unassigned unassigned-secret
+  mosquitto_passwd -b    /etc/mosquitto/hub-passwd professor  change-me
+  mosquitto_passwd -b    /etc/mosquitto/hub-passwd team1      change-me-team1
+  mosquitto_passwd -b    /etc/mosquitto/hub-passwd team2      change-me-team2
 fi
 # mosquitto runs as the `mosquitto` user and refuses world-readable cred/acl files.
 chown mosquitto:mosquitto /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf

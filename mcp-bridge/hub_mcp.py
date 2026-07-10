@@ -315,6 +315,15 @@ def _reconnect_as(user: str, password: str) -> None:
     except Exception:
         pass
     _client.reconnect()                  # on_connect resubscribes the channels
+    # reconnect() only initiates: the CONNACK lands on the loop thread, and the
+    # clean disconnect above can race it into paho's retry path (~seconds).
+    # Don't report success until the session is actually up.
+    deadline = time.time() + 8.0
+    while time.time() < deadline:
+        if _client.is_connected():
+            return
+        time.sleep(0.1)
+    raise RuntimeError("session did not come back up with the delivered credential")
 
 
 @mcp.tool()

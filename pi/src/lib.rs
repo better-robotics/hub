@@ -1,9 +1,9 @@
 //! hub — shared contract: typed envelopes + topic helpers, transport-agnostic.
 //!
 //! The broker is Mosquitto (a separate process, not hubd); these types are for
-//! MQTT clients — rover firmware, sim clients. Envelopes mirror `protocol/`
-//! (canonical here — see `protocol/README.md`). Identity is the topic
-//! (`robots/<id>/<channel>`), never the body.
+//! MQTT clients — rover firmware, sim clients. Envelopes mirror the monorepo
+//! top-level contract (`../CONTRACT.md` + `../envelopes/`, canonical there).
+//! Identity is the topic (`robots/<id>/<channel>`), never the body.
 
 use serde::{Deserialize, Serialize};
 
@@ -18,21 +18,7 @@ pub mod wifi;
 /// CONNECT/CONNACK probe of the professor's current code.
 pub mod codes;
 
-/// Default robot id for the demos. Override with `ROBOT_ID`.
-pub const ROBOT_ID: &str = "rover_01";
-
-// ---- key expressions (identity lives here, not in the body) ----
-pub fn imu_key(id: &str) -> String {
-    format!("robots/{id}/imu")
-}
-pub fn pwm_key(id: &str) -> String {
-    format!("robots/{id}/pwm")
-}
-pub fn led_key(id: &str) -> String {
-    format!("robots/{id}/led")
-}
-
-// ---- envelopes (mirror of protocol/envelopes/*.json) ----
+// ---- envelopes (mirror of the top-level envelopes/*.json) ----
 
 /// IMU sample — robot → device. `synthetic` is set only by the demo rover
 /// (no hardware); a real board omits it.
@@ -77,17 +63,4 @@ pub struct SetLedResponse {
     pub status: String, // "ok" | "error"
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
-}
-
-// ---- config helpers ----
-// The MQTT session/broker config (connect endpoint, auth, ACL) goes here
-// once the transport is chosen — see hub#1 (fka better-robotics/hub#5).
-
-/// Epoch seconds (float) — matches the envelope `timestamp` contract.
-pub fn now_secs() -> f64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock before 1970")
-        .as_secs_f64()
 }

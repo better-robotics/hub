@@ -8,6 +8,5 @@ TODO(hub#1): MQTT transport not yet implemented. hub-zenoh's version of this
 script (Zenoh client, `pip install eclipse-zenoh`) is the reference shape —
 port it to an MQTT publish once the client library is chosen.
 """
-import sys
 
 raise NotImplementedError("MQTT transport not yet implemented — see hub#1")

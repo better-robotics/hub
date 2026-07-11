@@ -90,12 +90,8 @@ jobs:
       - name: Verify customizations are in the image
         run: |
           set -euo pipefail
-          IMGXZ="$RUNNER_TEMP/hub.img"
-          echo "image: $IMGXZ"
-          case "$IMGXZ" in
-            *.xz) xz -dkf "$IMGXZ"; IMG="${IMGXZ%.xz}" ;;
-            *)    IMG="$IMGXZ" ;;
-          esac
+          IMG="$RUNNER_TEMP/hub.img"
+          echo "image: $IMG"
           LOOP=$(sudo losetup -fP --show "$IMG")
           sudo mkdir -p /mnt/hub
           sudo mount "${LOOP}p2" /mnt/hub

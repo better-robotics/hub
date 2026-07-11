@@ -102,6 +102,11 @@ pub async fn scan() -> Vec<Net> {
     nets
 }
 
+/// Is this NM connection profile an access point (`802-11-wireless.mode=ap`)?
+async fn is_ap_profile(name: &str) -> bool {
+    nmcli_out(&["-g", "802-11-wireless.mode", "connection", "show", name]).await.trim() == "ap"
+}
+
 /// A Wi-Fi device the AP does not own — the uplink join must be pinned to
 /// one. Unpinned `nmcli device wifi connect` grabs whichever radio NM
 /// fancies; on 2026-07-04 that was wlan0, and the classroom AP silently
@@ -116,8 +121,7 @@ async fn uplink_device() -> Option<String> {
         if f.len() < 3 || f[1] != "802-11-wireless" {
             continue;
         }
-        let mode = nmcli_out(&["-g", "802-11-wireless.mode", "connection", "show", &f[0]]).await;
-        if mode.trim() == "ap" {
+        if is_ap_profile(&f[0]).await {
             ap_devs.push(f[2].clone());
         }
     }
@@ -126,8 +130,7 @@ async fn uplink_device() -> Option<String> {
         if f.len() < 2 || f[1] != "802-11-wireless" {
             continue;
         }
-        let mode = nmcli_out(&["-g", "802-11-wireless.mode", "connection", "show", &f[0]]).await;
-        if mode.trim() != "ap" {
+        if !is_ap_profile(&f[0]).await {
             continue;
         }
         let dev = nmcli_out(&["-g", "connection.interface-name", "connection", "show", &f[0]]).await;
@@ -201,8 +204,7 @@ pub async fn uplink_ssid() -> Option<String> {
         if f.len() < 2 || f[1] != "802-11-wireless" {
             continue;
         }
-        let mode = nmcli_out(&["-g", "802-11-wireless.mode", "connection", "show", &f[0]]).await;
-        if mode.trim() == "ap" {
+        if is_ap_profile(&f[0]).await {
             continue;
         }
         let ssid = nmcli_out(&["-g", "802-11-wireless.ssid", "connection", "show", &f[0]]).await;

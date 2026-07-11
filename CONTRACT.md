@@ -116,6 +116,14 @@ whole ACL:
 | professor | `robots/#` rw | oversight + drive any |
 | anonymous | `robots/#` read | the read-only fleet view (dashboard) |
 
+**`pair/#` sits outside the robot scoping** — an open rendezvous namespace
+(anonymous + every identity, rw) for WebRTC signaling: workbench's
+phone↔desktop pairing exchanges offer/answer/ICE over `pair/<room>/…`, then
+media flows LAN-direct. The signaling transport is untrusted by design —
+peers authenticate end-to-end via the ECDSA P-256 pair ceremony, and rooms are
+unguessable UUIDs carried by the pairing QR. The ESP32 hub role grants this
+for free (connect-auth only, no per-topic ACL).
+
 **Control channels** (`robots/<id>/cmd/*`, device → robot, ad-hoc JSON — no
 envelope files; the firmware is the schema): `cmd/config` assigns a board's
 team/name/motor-pins post-join — plus an optional `"hub":"hub-XXXX"` **pin**

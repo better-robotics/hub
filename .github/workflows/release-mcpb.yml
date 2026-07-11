@@ -23,7 +23,9 @@ jobs:
           - runner: macos-14
             platform: darwin-arm64
             mcpb_platform: darwin
-          - runner: macos-13
+          # Intel: macos-13 retired 2025-12; macos-15-intel is GitHub's last
+          # x86_64 image, available until 2027-08 — the natural end of this leg.
+          - runner: macos-15-intel
             platform: darwin-x64
             mcpb_platform: darwin
           - runner: ubuntu-24.04

@@ -9,7 +9,8 @@
 //! (nmcli, `src/wifi.rs`) — the day-zero provisioning that used to be a
 //! separate BLE `provisiond` binary (deleted 2026-07-09).
 //!
-//! `GET /` is the embedded dashboard; `GET /fleet` is `{uplink, locator}`.
+//! `GET /` is the embedded dashboard; `GET /fleet` is `{uplink, locator}`;
+//! `GET /ide/` serves the workbench bundle from disk when installed.
 //! The dashboard has `mqtt.js` inlined directly (2026-07-08) rather than
 //! served as a separate file — that's also what makes it a genuine
 //! standalone artifact: download the top-level `dashboard.html` on its own, open it
@@ -28,6 +29,87 @@ use tokio::net::TcpListener;
 
 const DASHBOARD_HTML: &str = include_str!("../../../dashboard.html");
 const ICON_SVG: &str = include_str!("../../public/icon.svg");
+
+/// The workbench IDE bundle (better-robotics/workbench `docs/` tree),
+/// served at `/ide/`. On-disk rather than embedded: it's ~100 files with
+/// binary assets, ships on its own release cadence, and the image/installer
+/// drop it in place — hubd needs no rebuild when the IDE updates. Serving
+/// it from the hub is what makes the IDE reachable over plain http on the
+/// classroom LAN: same protocol as the broker (ws://) and the rovers'
+/// camera endpoints, so no mixed-content wall — the only shape that works
+/// on iOS phones (no insecure-content override exists there).
+fn ide_dir() -> std::path::PathBuf {
+    std::env::var("HUB_IDE_DIR").unwrap_or_else(|_| "/usr/share/hub/ide".into()).into()
+}
+
+fn ide_mime(path: &std::path::Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()).unwrap_or("") {
+        "html" => "text/html; charset=utf-8",
+        "js" => "application/javascript; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "json" | "map" => "application/json; charset=utf-8",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "ico" => "image/x-icon",
+        "webmanifest" => "application/manifest+json",
+        "woff2" => "font/woff2",
+        "wasm" => "application/wasm",
+        "md" | "txt" => "text/plain; charset=utf-8",
+        _ => "application/octet-stream",
+    }
+}
+
+/// Build the full HTTP response bytes for a `/ide` request. Bytes, not
+/// String — the bundle has binary assets (png/ico/woff2) that the string
+/// response path used by the API routes would corrupt.
+async fn ide_serve(raw_path: &str) -> Vec<u8> {
+    let path = raw_path.split('?').next().unwrap_or(raw_path);
+    if path == "/ide" {
+        // Trailing slash matters: the page's relative module imports resolve
+        // against the directory, not the bare segment.
+        return b"HTTP/1.1 301 Moved Permanently\r\nLocation: /ide/\r\n\
+                 Content-Length: 0\r\nConnection: close\r\n\r\n"
+            .to_vec();
+    }
+    let rel = path.trim_start_matches("/ide/");
+    let rel = if rel.is_empty() { "index.html" } else { rel };
+    let dir = ide_dir();
+    // Bundle filenames are plain ASCII; rejecting dot-dot segments is the
+    // whole traversal surface (no percent-decoding happens above).
+    if rel.split('/').any(|seg| seg == "..") || rel.starts_with('/') {
+        return b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec();
+    }
+    match tokio::fs::read(dir.join(rel)).await {
+        Ok(bytes) => {
+            let mut resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\
+                 Cache-Control: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n",
+                ide_mime(std::path::Path::new(rel)),
+                bytes.len()
+            )
+            .into_bytes();
+            resp.extend_from_slice(&bytes);
+            resp
+        }
+        Err(_) => {
+            let body: &[u8] = if dir.exists() {
+                b"not found"
+            } else {
+                b"IDE bundle not installed \xe2\x80\x94 run deploy/install.sh --with-ide, \
+                  or place better-robotics/workbench's docs/ tree at /usr/share/hub/ide"
+            };
+            let mut resp = format!(
+                "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain; charset=utf-8\r\n\
+                 Content-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            )
+            .into_bytes();
+            resp.extend_from_slice(body);
+            resp
+        }
+    }
+}
 
 /// Uplink verdict: "full" | "portal" | "none" | "unknown" (pre-first-probe
 /// only — the dashboard hides the pill for it).
@@ -146,6 +228,12 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                             Access-Control-Allow-Headers: Content-Type\r\n\
                             Connection: close\r\n\r\n";
                 let _ = sock.write_all(resp.as_bytes()).await;
+                return;
+            }
+            // Workbench IDE bundle — binary-safe path, bypasses the string
+            // response builder below.
+            if method == "GET" && (path == "/ide" || path.starts_with("/ide/")) {
+                let _ = sock.write_all(&ide_serve(path).await).await;
                 return;
             }
             // The Wi-Fi setup panel POSTs `{ssid, password}` here; the body is
@@ -272,6 +360,9 @@ async fn main() {
 
     let port = http.rsplit(':').next().unwrap_or("8000");
     println!("[hubd] dashboard: http://{host}:{port} (fleet JSON at /fleet)");
+    if ide_dir().exists() {
+        println!("[hubd] workbench IDE: http://{host}:{port}/ide/?hub={host}");
+    }
     println!("[hubd] rovers/sim clients: point at the broker, {locator} (see mosquitto.example.conf)");
 
     // hubd holds no transport session — Mosquitto is a separate process.

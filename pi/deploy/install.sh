@@ -64,6 +64,25 @@ chmod 0600 /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 systemctl enable mosquitto.service
 systemctl restart mosquitto.service   # pick up the conf.d drop-in
 
+# ---- Workbench IDE bundle (optional — needs internet at install time) ----
+# hubd serves better-robotics/workbench's docs/ tree at /ide/ when present
+# (HUB_IDE_DIR, default /usr/share/hub/ide). Best-effort: a classroom Pi
+# being (re)installed offline keeps its existing bundle, or runs without one.
+IDE_DIR=/usr/share/hub/ide
+echo "[install] fetching workbench IDE bundle…"
+if curl -fsSL https://github.com/better-robotics/workbench/archive/refs/heads/main.tar.gz \
+     -o /tmp/workbench.tar.gz 2>/dev/null; then
+  rm -rf "$IDE_DIR.new"
+  mkdir -p "$IDE_DIR.new"
+  tar -xzf /tmp/workbench.tar.gz -C "$IDE_DIR.new" --strip-components=2 "workbench-main/docs"
+  rm -rf "$IDE_DIR"
+  mv "$IDE_DIR.new" "$IDE_DIR"
+  rm -f /tmp/workbench.tar.gz
+  echo "[install] IDE bundle installed → http://<this-host-ip>/ide/"
+else
+  echo "[install] no internet — skipped the IDE bundle ($([[ -d $IDE_DIR ]] && echo 'existing copy kept' || echo 'not installed'))"
+fi
+
 # ---- Day-zero hub-XXXX AP (Pi-radio-specific: needs a Wi-Fi radio; the
 # setup script selects the builtin by driver, never by interface name) ----
 if compgen -G "/sys/class/net/wlan*" > /dev/null; then

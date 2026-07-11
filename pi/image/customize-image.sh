@@ -121,6 +121,16 @@ install -m 0755 "$STEP_DIR/01-run-chroot.sh" "$ROOTFS/tmp/01-run-chroot.sh"
 in_chroot bash /tmp/01-run-chroot.sh
 rm -f "$ROOTFS/tmp/01-run-chroot.sh"
 
+# ---- Workbench IDE bundle — hubd serves it at /ide/ (see hubd.rs) ----
+# Fetched on the CI host (the chroot has DNS but this needs no chroot):
+# better-robotics/workbench's docs/ tree IS the static site, no build step.
+curl -fsSL https://github.com/better-robotics/workbench/archive/refs/heads/main.tar.gz \
+  -o /tmp/workbench.tar.gz
+install -d "$ROOTFS/usr/share/hub/ide"
+tar -xzf /tmp/workbench.tar.gz -C "$ROOTFS/usr/share/hub/ide" \
+  --strip-components=2 "workbench-main/docs"
+rm -f /tmp/workbench.tar.gz
+
 # Offline appliance: the apt lists our `apt-get update` fetched are dead
 # weight in the shipped image (the Pi can't apt install anyway).
 rm -rf "$ROOTFS"/var/lib/apt/lists/*

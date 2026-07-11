@@ -9,7 +9,9 @@ one implementation.
 - **Top level = the shared contract**: `CONTRACT.md` (topic scheme), `envelopes/`
   (message shapes), `dashboard.html` (browser client), `mcp-bridge/` (LLM client).
 - **`pi/`** — Raspberry Pi implementation (Rust `hubd` + Mosquitto + Pi image).
-  Was `better-robotics/hub-mqtt`.
+  Was `better-robotics/hub-mqtt`. hubd also serves the workbench IDE bundle
+  (workbench `docs/` tree) at `/ide/` from `HUB_IDE_DIR` (default
+  `/usr/share/hub/ide`; installed by deploy/install.sh + baked by build-image).
 
 The Pi build-embeds the top-level `dashboard.html`
 (`include_str!("../../../dashboard.html")`) and speaks the `envelopes/` contract.

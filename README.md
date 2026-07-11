@@ -60,6 +60,7 @@ dashboard.html      the browser client — CANONICAL copy (the ESP32 hub vendors
 mcp-bridge/         MCP tool server — drive the fleet from an LLM over the same contract
 pi/                 the Raspberry Pi hub
 ├── src/            hubd — dashboard/HTTP chassis + device-served Wi-Fi setup (nmcli)
+│                   + serves the workbench IDE at /ide/ when the bundle is installed
 ├── mosquitto*.conf broker config + per-team ACL
 ├── deploy/         systemd install: hubd · Mosquitto · day-zero hub AP · USB-gadget recovery
 ├── image/          the CI-baked, flash-and-go Pi image (official Lite base + customize-image.sh)
@@ -78,6 +79,11 @@ the headless recovery console.
 ```sh
 cd pi && sudo ./deploy/install.sh    # hubd + Mosquitto (+ the hub AP on a wlan0 host)
 ```
+
+Both paths also install the [workbench](https://github.com/better-robotics/workbench)
+IDE bundle, served at `http://hub.local/ide/` — code robots from any device
+on the hub's network, phones included (plain-http origin: no mixed-content
+wall between the page, the broker, and the rovers).
 
 **ESP32 hub:** flash the robot firmware
 ([browser flasher](https://better-robotics.github.io/)), flip the board's role

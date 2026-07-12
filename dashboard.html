@@ -340,8 +340,12 @@
     #wire-pause[aria-pressed="true"], #wire-beacons[aria-pressed="true"] { background: var(--accent-soft); color: var(--link); }
     #wire-filter { font-size: 0.78rem; padding: 0.2rem 0.4rem; border-radius: var(--radius-sm);
       border: 1px solid var(--border-strong); background: var(--inset); color: var(--ink); max-width: 9rem; }
-    /* The log gets the grid's full width — it's the verbose surface. */
-    .wire-wrap { grid-column: 1 / -1; }
+    #drive-target { background: var(--inset); color: var(--ink); font: inherit;
+      border: 0.5px solid var(--border-default); border-radius: var(--radius);
+      padding: 0.5rem 0.7rem; min-height: var(--tap); max-width: 20rem; width: 100%; }
+    /* Team scope reads pad-first: their whole world is one rover. */
+    body.scope-one main { display: flex; flex-direction: column; }
+    body.scope-one #robots { order: 2; }
     #wire-log, #tel-feed {
       height: 11rem; overflow-y: auto; background: var(--inset);
       border: 0.5px solid var(--border-default); border-radius: var(--radius);
@@ -594,6 +598,12 @@
 
     <div id="drive-panel">
       <p id="scope-label"></p>
+      <!-- Target picker (professor): driving is self-contained here — pick a
+           rover, drive it. The cards carry no Drive buttons; this is the one
+           steering wheel and this is where it points. -->
+      <div id="drive-target-row" style="display:none">
+        <select id="drive-target" aria-label="Rover to drive"><option value="">— pick a rover —</option></select>
+      </div>
       <!-- Plain toggle buttons (aria-pressed), not a tablist: the full tabs
            contract (aria-controls, roving tabindex, arrow keys) isn't
            implemented, and claiming the role without it misleads AT. -->
@@ -624,15 +634,23 @@
             <div id="dpad-readout">hold a direction to drive</div>
           </div>
         </div>
-        <div class="wire-wrap">
-          <div class="wire-head"><span>Wire log — <span class="log-out">→ you send</span> · <span class="log-in">← the rover answers</span></span>
-            <span class="spacer"></span>
-            <select id="wire-filter" aria-label="Filter log to one rover"><option value="">all rovers</option></select>
-            <button id="wire-beacons" aria-pressed="false" title="sys beacons are most of the traffic — shown only on demand">Beacons</button>
-            <button id="wire-pause" aria-pressed="false">Pause</button></div>
-          <div id="wire-log" role="log" tabindex="0" aria-label="Live command and telemetry log"></div>
-        </div>
       </div>
+    </div>
+  </section>
+
+  <!-- The bus view: everything this session's subscription carries, its own
+       full-width card — a verbose surface deserves the whole column. Per-rover
+       reading lives in each card's telemetry sheet; this is the classroom's
+       raw wire, the teaching tap. -->
+  <section id="wire" style="display:none">
+    <h2 class="section-title">Wire log</h2>
+    <div class="wire-wrap">
+      <div class="wire-head"><span><span class="log-out">→ you send</span> · <span class="log-in">← the rover answers</span></span>
+        <span class="spacer"></span>
+        <select id="wire-filter" aria-label="Filter log to one rover"><option value="">all rovers</option></select>
+        <button id="wire-beacons" aria-pressed="false" title="sys beacons are most of the traffic — shown only on demand">Beacons</button>
+        <button id="wire-pause" aria-pressed="false">Pause</button></div>
+      <div id="wire-log" role="log" tabindex="0" aria-label="Live command and telemetry log"></div>
     </div>
   </section>
 
@@ -3376,8 +3394,6 @@ safe-buffer/index.js:
         actions.push(`<button class="btn-tile" data-blink="${esc(board)}" data-bteam="${esc(team)}">${icon("zap")} Blink</button>`);
         if (!isPool)
           actions.push(`<button class="btn-tile" data-unassign="${esc(board)}" data-uteam="${esc(team)}">Unassign</button>`);
-        const driving = target === team && (!targetBoard || targetBoard === board);
-        actions.push(`<button class="btn-drive${driving ? " driving" : ""}" data-robot="${esc(team)}" data-board="${esc(board)}">${driving ? "Driving" : "Drive"}</button>`);
       }
       // Claim: the signed-out arrival path, on the pool device itself. The
       // .pool-row class stays — the claim Enter handler anchors on it.
@@ -3595,6 +3611,8 @@ safe-buffer/index.js:
       document.getElementById("id-menu-scope").textContent = myScope.scope === "all"
         ? "Professor — full fleet control." : `Team scope — drives ${myScope.robot} only.`;
       document.getElementById("drive-panel").style.display = "block";
+      document.getElementById("wire").style.display = "block";
+      document.getElementById("drive-target-row").style.display = myScope.scope === "all" ? "block" : "none";
       applyDriveMode(); // panel just appeared: sync the mode switch to the no-target state
       document.getElementById("scope-label").textContent = myScope.scope === "all"
         ? "Professor — pick a rover below to drive it."
@@ -3623,16 +3641,42 @@ safe-buffer/index.js:
       const label = board ? `${board} (${id})` : id;
       document.getElementById("joystick-title").textContent = `Driving ${label}`;
       applyDriveMode();  // reveal whichever input (joystick / D-pad) is active
-      if (myScope && myScope.scope === "all") {
-        // The Drive tap happened on a card below; the pad appeared up here —
-        // bring it to the finger (the Assign flow's own pattern), and retire
-        // the now-stale "pick a robot" instruction.
+      syncDriveTarget(); // keep the picker agreeing with whoever set the target
+      if (myScope && myScope.scope === "all")
         document.getElementById("scope-label").textContent =
-          `Driving ${label} — tap Drive on another rover to switch.`;
-        document.getElementById("drive").scrollIntoView({ behavior: SCROLL, block: "center" });
-        renderRobots(); // repaint cards so the chosen one shows its Driving state
-      }
+          `Driving ${label} — pick another rover above to switch.`;
     }
+
+    // The Drive card's target picker (professor): live boards only, options
+    // refreshed on the 2 s clock — never under an open dropdown, and only
+    // when the set changed. value = "<team>|<board>" (names are lowercase
+    // a-z0-9-_ by contract, so "|" can't collide).
+    function syncDriveTarget() {
+      if (!myScope || myScope.scope !== "all") return;
+      const sel = document.getElementById("drive-target");
+      if (document.activeElement === sel) return;
+      const opts = [...boards.entries()]
+        .filter(([, r]) => Date.now() - r.seenAt < 10000)
+        .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+        .map(([b, r]) => ({ v: `${r.team}|${b}`, label: `${b} — ${r.team}` }));
+      const want = opts.map(o => o.v).join(",");
+      if (sel.dataset.have !== want) {
+        sel.dataset.have = want;
+        sel.innerHTML = '<option value="">— pick a rover —</option>' +
+          opts.map(o => `<option value="${esc(o.v)}">${esc(o.label)}</option>`).join("");
+      }
+      sel.value = target && targetBoard ? `${target}|${targetBoard}` : "";
+    }
+    document.getElementById("drive-target").addEventListener("change", (e) => {
+      if (!e.target.value) {
+        target = null; targetBoard = null;
+        applyDriveMode();
+        document.getElementById("scope-label").textContent = "Professor — pick a rover above to drive it.";
+        return;
+      }
+      const [team, board] = e.target.value.split("|");
+      selectTarget(team, board);
+    });
 
     // Drive input mode — the segmented control switches between the analog
     // joystick and the discrete D-pad. Only reveal an input once a target is
@@ -4182,7 +4226,7 @@ safe-buffer/index.js:
       closeChipPop();         // the logout button lives in the account popover
       document.getElementById("req-badge").style.display = "none";
       localStorage.removeItem("hubCred");
-      for (const id of ["drive-panel", "teams", "join-req"])
+      for (const id of ["drive-panel", "teams", "join-req", "wire"])
         document.getElementById(id).style.display = "none";
       document.getElementById("code-gate").style.display = "";
       document.getElementById("code-input").value = "";
@@ -4572,7 +4616,6 @@ safe-buffer/index.js:
       // are rebuilt every 2s, so we match on closest, not the exact target.
       const cam = e.target.closest("[data-cam-ip]");
       const cfg = e.target.closest("[data-cfg-ip]");
-      const drv = e.target.closest(".btn-drive");
       const blk = e.target.closest("[data-blink]");
       const asg = e.target.closest("[data-assign]");
       const una = e.target.closest("[data-unassign]");
@@ -4584,7 +4627,6 @@ safe-buffer/index.js:
       if (cam) openCamera(cam.dataset.id, cam.dataset.camIp, cam.dataset.board);
       else if (tel) openTelemetry(tel.dataset.tel, tel.dataset.telBoard);
       else if (cfg) openConfig(cfg.dataset.id, cfg.dataset.cfgIp, cfg.dataset.board);
-      else if (drv) selectTarget(drv.dataset.robot, drv.dataset.board);
       else if (blk) blinkBoard(blk.dataset.blink, blk.dataset.bteam);
       else if (una) unassignBoard(una.dataset.unassign, una.dataset.uteam);
       else if (rot) rotateTeam(rot.dataset.rotate);

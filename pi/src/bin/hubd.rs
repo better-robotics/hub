@@ -203,6 +203,22 @@ async fn wifi_connect_json(body: &str) -> (&'static str, &'static str, String) {
     }
 }
 
+/// Devices that tapped "Accept" on /welcome. From then on their OS probes
+/// get the genuine success answers, so the captive sheet's button turns into
+/// "Done" and the user can finish in a real browser — the public-Wi-Fi
+/// splash-then-release flow. Per-device opt-in on purpose: a device that
+/// never accepts keeps honest "captive" answers, so an offline hub never
+/// tricks it into believing the uplink works (that lie is what breaks
+/// phones' cellular fallback — the reason blanket fake-success stayed
+/// chosen-against). Cleared by hubd restart; classroom-day scale.
+static ACKED: Mutex<Vec<std::net::IpAddr>> = Mutex::new(Vec::new());
+
+/// The captive sheet's landing page (probe 302s point here, NOT at the
+/// dashboard): Apple's CNA sandboxes localStorage away from Safari, so a
+/// sign-in done inside the sheet would silently vanish — this page's whole
+/// job is to release the sheet and hand the user to a real browser.
+const WELCOME_HTML: &str = include_str!("../welcome.html");
+
 /// Is this request addressed to some other server than us? True means the
 /// captive-capture NAT dropped it in our lap (see hub-ap-setup.sh). Every
 /// name the hub legitimately answers to — the AP address, mDNS, loopback dev
@@ -231,7 +247,7 @@ fn foreign_host(req: &str) -> bool {
 
 async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, ssid: String) {
     loop {
-        let Ok((mut sock, _)) = listener.accept().await else { continue };
+        let Ok((mut sock, peer)) = listener.accept().await else { continue };
         let uplink = uplink.clone();
         let locator = locator.clone();
         let ssid = ssid.clone();
@@ -266,6 +282,9 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
             // whatever follows the header terminator (creds are tiny — one read
             // of `buf` holds them).
             let post_body = req.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or("");
+            // Did this device already tap Accept on /welcome? Decides whether
+            // its OS probes get "captive" (302) or genuine success answers.
+            let acked = ACKED.lock().unwrap().contains(&peer.ip());
             let (status, ctype, body) = match (method, path) {
                 ("GET", "/fleet") => ("200 OK", "application/json", fleet_json(&uplink, &locator, &ssid)),
                 ("GET", "/") | ("GET", "/index.html") => {
@@ -338,6 +357,37 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                 //     versions than Apple/Android's — sometimes it's only a
                 //     taskbar toast, not an auto-opened browser. Don't
                 //     overclaim it "just works" there.
+                // The captive sheet's own flow: the splash page the probe
+                // 302s land on, and the Accept that releases the sheet.
+                ("GET", "/welcome") => {
+                    ("200 OK", "text/html; charset=utf-8", WELCOME_HTML.into())
+                }
+                ("POST", "/captive/ack") => {
+                    let mut acks = ACKED.lock().unwrap();
+                    if !acks.contains(&peer.ip()) {
+                        acks.push(peer.ip());
+                    }
+                    ("200 OK", "application/json", r#"{"ok":true}"#.into())
+                }
+                // An acked device's probes get the exact "network is clean"
+                // answer each OS expects — that's what flips the sheet's
+                // Cancel into Done and lets it close. Only ever per-device,
+                // post-Accept (see ACKED above).
+                ("GET", "/hotspot-detect.html") | ("GET", "/library/test/success.html")
+                    if acked =>
+                {
+                    ("200 OK", "text/html",
+                     "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>".into())
+                }
+                ("GET", "/generate_204") if acked => {
+                    ("204 No Content", "text/plain", String::new())
+                }
+                ("GET", "/connecttest.txt") if acked => {
+                    ("200 OK", "text/plain", "Microsoft Connect Test".into())
+                }
+                ("GET", "/ncsi.txt") if acked => {
+                    ("200 OK", "text/plain", "Microsoft NCSI".into())
+                }
                 ("GET", "/hotspot-detect.html") | ("GET", "/library/test/success.html")
                 | ("GET", "/generate_204")
                 | ("GET", "/connecttest.txt") | ("GET", "/ncsi.txt") => {
@@ -346,23 +396,31 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                 // Any other GET that arrives asking for a FOREIGN host can
                 // only be here because the AP's captive-capture NAT
                 // (hub-ap-setup.sh) steered it in — the client thinks it's
-                // talking to the internet. Redirect to the dashboard instead
-                // of 404ing: this is what catches probe hostnames/paths the
-                // explicit arms above don't enumerate (Firefox's
-                // detectportal, Android's /gen_204, whatever ships next).
-                // Requests addressed to US by name (10.42.0.1, hub.local,
-                // localhost dev) keep their honest 404 below — a typo'd
-                // dashboard URL should fail loudly, not bounce home.
+                // talking to the internet. This is what catches probe
+                // hostnames/paths the explicit arms above don't enumerate
+                // (Firefox's detectportal, Android's /gen_204, whatever
+                // ships next): unacked devices get the captive redirect,
+                // acked ones a quiet no-content (their real traffic isn't
+                // ours to bounce around). Requests addressed to US by name
+                // (10.42.0.1, hub.local, localhost dev) keep their honest
+                // 404 below — a typo'd dashboard URL should fail loudly,
+                // not bounce home.
                 ("GET", _) if foreign_host(&req) => {
-                    ("302 Found", "text/plain", String::new())
+                    if acked {
+                        ("204 No Content", "text/plain", String::new())
+                    } else {
+                        ("302 Found", "text/plain", String::new())
+                    }
                 }
                 _ => ("404 Not Found", "text/plain", "not found".into()),
             };
             // Optional Location header, minimally bolted onto the response
             // builder below (same hand-rolled style, no framework) — every
-            // 302 this server issues points at the dashboard.
+            // 302 this server issues is captive steering, and it points at
+            // the welcome/release page, NOT the dashboard: the sheet's
+            // sandbox is a dead end for sign-ins (see WELCOME_HTML).
             let location = (status == "302 Found")
-                .then_some("Location: http://10.42.0.1/\r\n")
+                .then_some("Location: http://10.42.0.1/welcome\r\n")
                 .unwrap_or_default();
             // ACAO *: /fleet is public-read JSON, and the rover setup page
             // (better-robotics.github.io) prefills the hub address from it.

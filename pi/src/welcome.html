@@ -1,0 +1,60 @@
+<!doctype html>
+<!-- The captive sheet's landing page (probe 302s point here — hubd.rs).
+     One job: release the OS sheet and hand the user to a real browser.
+     The dashboard deliberately does NOT load here: Apple's CNA sandboxes
+     localStorage away from Safari, so anything a student signs into inside
+     the sheet silently vanishes when it closes. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hub Wi-Fi</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0; min-height: 100dvh; display: grid; place-items: center;
+    font: 1rem/1.5 -apple-system, system-ui, sans-serif;
+    background: Canvas; color: CanvasText;
+  }
+  main { max-width: 26rem; padding: 1.5rem; text-align: center; }
+  h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+  h1 small { font-weight: 400; opacity: .6; }
+  p { margin: .75rem 0; }
+  button {
+    font: inherit; font-weight: 600; color: inherit;
+    min-height: 44px; padding: .7rem 2rem; margin-top: .5rem;
+    border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+    border-radius: 12px; background: color-mix(in srgb, CanvasText 8%, transparent);
+    cursor: pointer;
+  }
+  #after { display: none; }
+  #after strong { white-space: nowrap; }
+  .quiet { font-size: .85rem; opacity: .65; }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <h1>BetterRobotics <small>hub Wi-Fi</small></h1>
+  <div id="before">
+    <p>You’re connected to the classroom robotics hub.</p>
+    <button id="go">Accept &amp; continue</button>
+  </div>
+  <div id="after" role="status">
+    <p>✓ Accepted.</p>
+    <p>Tap <strong>Done</strong> above, then open<br>
+       <strong>hub.local</strong> in your browser.</p>
+    <p class="quiet">No Done button? Open <a href="http://10.42.0.1/">the
+       dashboard right here</a> — but sign-ins made in this window won’t be
+       remembered by your browser.</p>
+  </div>
+</main>
+<script>
+  document.getElementById('go').addEventListener('click', async () => {
+    try { await fetch('/captive/ack', { method: 'POST' }); } catch (e) {}
+    document.getElementById('before').style.display = 'none';
+    document.getElementById('after').style.display = 'block';
+  });
+</script>
+</body>
+</html>

@@ -62,13 +62,17 @@ loop-mount, not a debootstrap.
 1. Flash the released `.img.xz` (Raspberry Pi Imager → "Use custom").
 2. Card → Pi 4 → power on (no network needed).
 3. Phone → join the Pi's own **`hub-XXXX`** Wi-Fi → the OS's captive-portal
-   popup opens the dashboard on join (probe DNS + plain HTTP from AP clients
-   are steered to the hub itself — dnsmasq overrides for clients that use the
-   network's DNS, an nftables capture in `hub-ap-setup.sh` for those that
-   bring their own; HTTPS passes through untouched). Manual fallback:
-   `http://hub.local` or `http://10.42.0.1`. Either way, the dashboard's
-   "Set up Wi-Fi" panel scans, pick the classroom SSID + password; the Pi
-   joins on its uplink radio.
+   popup opens on join (probe DNS + plain HTTP from AP clients are steered
+   to the hub itself — dnsmasq overrides for clients that use the network's
+   DNS, an nftables capture in `hub-ap-setup.sh` for those that bring their
+   own; HTTPS passes through untouched). The popup lands on a welcome page;
+   tapping **Accept** releases the sheet (that device's probes get genuine
+   success answers from then on) and points the user at `http://hub.local`
+   in their real browser — the OS sheet's sandbox forgets sign-ins, so the
+   dashboard lives outside it. Manual fallback: `http://hub.local` or
+   `http://10.42.0.1`. Either way, the dashboard's "Set up Wi-Fi" panel
+   scans, pick the classroom SSID + password; the Pi joins on its uplink
+   radio.
 4. `hubd` is already running. Pin a **static/reserved IP** so rovers can hardcode
    the broker at `mqtt://<ip>:1883`.
 

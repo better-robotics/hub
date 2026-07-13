@@ -130,17 +130,6 @@
       grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
     }
     .robot { max-width: 26rem; }
-    #fleet-overview { display: none; margin-bottom: 1rem; }
-    .summary-row { display: grid; grid-template-columns: repeat(2, minmax(0, 14rem)); gap: 0.6rem; }
-    .summary-card { min-height: var(--tap); text-align: left;
-      padding: 0.7rem 0.85rem; border: 0.5px solid var(--border-default);
-      border-radius: var(--radius); background: var(--surface); color: var(--ink); }
-    .summary-card strong { display: block; font-size: 1.2rem; line-height: 1.1; }
-    .summary-card span { color: var(--ink-muted); font-size: 0.78rem; }
-    button.summary-card { cursor: pointer; }
-    button.summary-card:hover { border-color: var(--border-strong); }
-    button.summary-card[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--border-strong); }
-    button.summary-card[aria-pressed="true"] span { color: var(--link); }
     .robot {
       background: var(--surface); border: 0.5px solid var(--border-default);
       border-radius: var(--radius-lg); padding: 1.1rem 1.2rem; box-shadow: var(--shadow-card);
@@ -198,11 +187,10 @@
       display: grid; gap: 1rem; margin-top: 2rem; align-items: start;
       grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr));
     }
-    #drive, #teams {
+    #signin, #teams {
       background: var(--surface); border: 0.5px solid var(--border-default);
       border-radius: var(--radius-lg); padding: 1.25rem 1.4rem; box-shadow: var(--shadow-card);
     }
-    .section-title { font-size: 1.2rem; font-weight: 700; letter-spacing: -0.015em; margin-bottom: 0.35rem; }
     .assign-help { color: var(--ink-muted); font-size: 0.88rem; margin-bottom: 1rem; }
 
     /* --- Form controls: iOS-style fills, 44px tap targets, filled/tinted buttons --- */
@@ -302,9 +290,7 @@
     #orient-row { flex-basis: 100%; border-top: 0.5px solid var(--border-default);
       padding-top: 0.8rem; margin: 0.4rem 0; }
     .orient-btns { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.4rem; }
-    #drive-panel { display: none; }
-    #scope-label { color: var(--ink-muted); font-size: 0.92rem; margin: 0.85rem 0; }
-    /* Status sentence (team scope) — the fleet cards' dot language, promoted
+    /* Status sentence — the fleet cards' dot language, promoted
        to a headline. .offline reuses the card rule that flattens the dot. */
     #drive-status { display: flex; align-items: center; gap: 0.7rem; margin: 0.85rem 0; }
     #drive-status-line { font-weight: 600; }
@@ -351,7 +337,6 @@
        live-status column aboard, a hard 15rem × 2 would overflow a 320px phone. */
     .drive-grid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr)); }
     #joystick-wrap, #dpad-wrap { display: none; text-align: center; }
-    #joystick-title { font-weight: 600; margin-bottom: 0.75rem; }
     .stick-pad {
       position: relative; width: 11rem; height: 11rem; margin: 0 auto;
       border-radius: 50%; background: var(--inset); border: 0.5px solid var(--border-default);
@@ -395,16 +380,10 @@
     #wire-pause[aria-pressed="true"], #wire-beacons[aria-pressed="true"] { background: var(--accent-soft); color: var(--link); }
     #wire-filter { font-size: 0.78rem; padding: 0.2rem 0.4rem; border-radius: var(--radius-sm);
       border: 0.5px solid var(--border-strong); background: var(--inset); color: var(--ink); max-width: 9rem; }
-    #drive-target { background: var(--inset); color: var(--ink); font: inherit;
-      border: 0.5px solid var(--border-default); border-radius: var(--radius);
-      padding: 0.5rem 0.7rem; min-height: var(--tap); max-width: 20rem; width: 100%; }
-    /* The target picker and the input-mode switch are separate decisions —
-       give them the panel's 0.85rem beat (scope-label's rhythm) between them. */
-    #drive-target-row { margin-bottom: 0.85rem; }
-    /* Team scope reads pad-first: their whole world is one rover. */
+    /* Team scope reads card-first: their whole world is one rover. */
     body.scope-one main { display: flex; flex-direction: column; }
     body.scope-one #robots { order: 2; }
-    /* Their rover card rides right under the pad; diagnostics close the page. */
+    /* Their rover card is the page; diagnostics close it. */
     body.scope-one #student-details { order: 3; }
     /* The rover card sits in the drive card's column: same track math as
        #controls, auto-fill so the phantom second track holds the half width
@@ -511,16 +490,6 @@
 
     /* Per-card action row: Camera / Wi-Fi & role / Drive as tinted tiles. */
     .card-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.85rem; }
-    .card-more { position: relative; margin-left: auto; }
-    .card-more > summary { list-style: none; cursor: pointer; min-height: 2.2rem; display: inline-flex;
-      align-items: center; padding: 0.35rem 0.8rem; border: 0.5px solid var(--border-default);
-      border-radius: var(--radius); background: var(--inset); font-weight: 700; }
-    .card-more > summary::-webkit-details-marker { display: none; }
-    .card-more-menu { position: absolute; right: 0; bottom: calc(100% + 0.35rem); z-index: 10;
-      min-width: 11rem; display: grid; gap: 0.35rem; padding: 0.45rem;
-      background: var(--surface); border: 0.5px solid var(--border-strong);
-      border-radius: var(--radius); box-shadow: var(--shadow-card); }
-    .card-more-menu .btn-tile { width: 100%; text-align: left; }
     .btn-danger { color: var(--danger-text); }
     #student-details { display: none; margin-top: 1rem; }
     #student-details > summary, #prof-advanced > summary { cursor: pointer; color: var(--ink-muted);
@@ -586,7 +555,6 @@
       #chip-pop { left: 0.75rem; right: 0.75rem; width: auto;
         box-shadow: 0 10px 30px -12px rgba(0,0,0,0.6), 0 0 0 100vmax rgba(0,0,0,0.4); }
       #robots { grid-template-columns: 1fr; }
-      .summary-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
       /* auto-fit's 24rem min track (#controls) exceeds a phone's width and would
          force a horizontal scroll — collapse to one column below 32rem. */
       #controls { grid-template-columns: 1fr; }
@@ -600,8 +568,7 @@
       .segmented button { flex: 1; }
       /* Full 44px tap targets on touch — including the secondary controls the
          professor taps most (tiles, Approve/Rotate/✕, Log out, modal close). */
-      .btn-accent, .btn-tile, .codes-row button, .segmented button,
-      .card-more > summary { min-height: var(--tap); }
+      .btn-accent, .btn-tile, .codes-row button, .segmented button { min-height: var(--tap); }
       #modal-close { width: var(--tap); height: var(--tap); }
       .dpad { grid-template-columns: repeat(3, 4rem); grid-template-rows: repeat(3, 4rem); }
     }
@@ -611,7 +578,7 @@
        switch, and the diagnostics controls all clear 44pt on the iPad too. */
     @media (pointer: coarse) {
       .btn-accent, .btn-tile, .codes-row button, .segmented button,
-      .card-more > summary, #wire-filter, #wire-beacons, #wire-pause { min-height: var(--tap); }
+      #wire-filter, #wire-beacons, #wire-pause { min-height: var(--tap); }
     }
   </style>
 </head>
@@ -671,22 +638,10 @@
   </div>
   <p id="empty">No rovers yet — power one on near the hub and it appears here within seconds.
     <span class="hint">New board with no firmware? <a href="https://better-robotics.github.io/">Flash it over USB</a>.</span></p>
-  <!-- Two numbers, one interaction: online is orientation, unassigned is the
-       only bucket with a workflow behind it (tap = filter toggle). Everything
-       else lives on the cards themselves — warn tints carry attention at
-       classroom scale, claim requests land on the claimed rover's card, and
-       the sticky req-badge stays the mid-scroll hook for the rest. -->
-  <section id="fleet-overview" aria-label="Class readiness">
-    <div class="summary-row">
-      <div class="summary-card"><strong id="sum-online">0</strong><span>online</span></div>
-      <button class="summary-card" id="sum-unassigned-card" aria-pressed="false"><strong id="sum-unassigned">0</strong><span>unassigned</span></button>
-    </div>
-  </section>
   <div id="robots"></div>
 
   <div id="controls">
-  <section id="drive">
-    <h2 class="section-title" id="drive-title">Drive</h2>
+  <section id="signin">
     <p class="assign-help" id="gate-help">Pick who you are and enter your team's code.</p>
     <div id="code-gate">
       <!-- Claim-first gate (Pi-served only): the lede replaces the manual
@@ -722,24 +677,19 @@
       <button id="join-approve">Approve</button>
       <button id="join-deny" title="Dismiss this request" aria-label="Dismiss this request">&#10005;</button>
     </div>
+  </section>
 
+  <!-- Drive controls: parked here, hidden, until a card's Drive button moves them
+       into the modal (openDrive()) — same "move into sheets on demand, returning
+       here on close" pattern as #teams' assign-form/codes-share. -->
+  <div id="drive-store" hidden>
     <div id="drive-panel">
-      <!-- Team scope: one status sentence answers "am I connected?" before
-           anything technical — it replaces scope-label (which named the team
-           a third time, after the section title and the joystick title). -->
-      <div id="drive-status" style="display:none">
+      <div id="drive-status">
         <span class="dot"></span>
         <div>
           <p id="drive-status-line">Waiting for your rover…</p>
           <p id="drive-status-sub"></p>
         </div>
-      </div>
-      <p id="scope-label"></p>
-      <!-- Target picker (professor): driving is self-contained here — pick a
-           rover, drive it. The cards carry no Drive buttons; this is the one
-           steering wheel and this is where it points. -->
-      <div id="drive-target-row" style="display:none">
-        <select id="drive-target" aria-label="Rover to drive"><option value="">— pick a rover —</option></select>
       </div>
       <!-- Plain toggle buttons (aria-pressed), not a tablist: the full tabs
            contract (aria-controls, roving tabindex, arrow keys) isn't
@@ -751,7 +701,6 @@
       <div class="drive-grid">
         <div class="drive-input">
           <div id="joystick-wrap">
-            <div id="joystick-title"></div>
             <div class="stick-pad" id="stick-pad" tabindex="0" role="application"
                  aria-label="Drive joystick — drag, or use arrow keys">
               <div class="stick-knob" id="stick-knob"></div>
@@ -781,6 +730,7 @@
         </div>
       </div>
     </div>
+  </div>
   </section>
 
   <!-- Professor-only. One roster for the whole classroom: requests arrive at
@@ -1187,11 +1137,8 @@ safe-buffer/index.js:
     // can't nuke a code while meaning "swap the robot".
     function teamOps(id, deletable) {
       if (!codesApi || !myScope || myScope.scope !== "all" || id === "unassigned") return "";
-      return `<details class="card-more"><summary aria-label="Manage ${esc(id)}">•••</summary>
-        <div class="card-more-menu">
-          <button class="btn-tile" data-rotate="${esc(id)}">Rotate team code…</button>
-          ${deletable && knownTeams.includes(id) ? `<button class="btn-tile btn-danger" data-delcode="${esc(id)}">Delete team…</button>` : ""}
-        </div></details>`;
+      return `<button class="btn-tile" data-rotate="${esc(id)}">Rotate team code…</button>
+        ${deletable && knownTeams.includes(id) ? `<button class="btn-tile btn-danger" data-delcode="${esc(id)}">Delete team…</button>` : ""}`;
     }
     // A team whose code exists but whose robot is silent — the class exists
     // while the cabinet is closed; code hygiene must not wait for power-on.
@@ -1224,6 +1171,7 @@ safe-buffer/index.js:
       zap: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
       claim: '<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>',
       warn: '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+      drive: '<path d="M12 2v6M12 16v6M2 12h6M16 12h6"/><circle cx="12" cy="12" r="3"/>',
     };
     const icon = (n, s = 13) =>
       `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[n]}</svg>`;
@@ -1259,20 +1207,20 @@ safe-buffer/index.js:
       const actions = [];
       if (!offline && sys.cam && sys.ip)
         actions.push(`<button class="btn-tile" data-cam-ip="${esc(sys.ip)}" data-id="${esc(team)}" data-board="${esc(board)}">${icon("camera")} Camera</button>`);
+      // Drive opens the joystick/D-pad in the same per-board modal as Camera —
+      // no separate Drive card, no target picker; the button IS the target.
+      if (!offline && !isPool)
+        actions.push(`<button class="btn-accent" data-drive-open="${esc(team)}" data-drive-board="${esc(board)}">${icon("drive")} Drive</button>`);
       if (prof && isPool) {
         // A fresh board's two jobs, surfaced as buttons instead of a note:
         // blink it to find which board on the desk it is, then name it.
-        // Telemetry stays in the ••• overflow — the diagnostic path, not the
-        // first move.
         if (!offline) actions.push(`<button class="btn-tile" data-blink="${esc(board)}" data-bteam="${esc(team)}">${icon("zap")} Identify</button>`);
         actions.push(`<button class="btn-accent btn-warn" data-assign="${esc(board)}" data-bteam="${esc(team)}">${icon("claim")} Assign to team</button>`);
-        actions.push(`<details class="card-more"><summary aria-label="More rover actions">•••</summary><div class="card-more-menu"><button class="btn-tile" data-tel="${esc(team)}" data-tel-board="${esc(board)}">${icon("activity")} Telemetry</button></div></details>`);
+        actions.push(`<button class="btn-tile" data-tel="${esc(team)}" data-tel-board="${esc(board)}">${icon("activity")} Telemetry</button>`);
       } else if (prof) {
-        const more = [];
-        more.push(`<button class="btn-tile" data-tel="${esc(team)}" data-tel-board="${esc(board)}">${icon("activity")} Telemetry</button>`);
-        if (!offline) more.push(`<button class="btn-tile" data-blink="${esc(board)}" data-bteam="${esc(team)}">${icon("zap")} Identify rover</button>`);
-        more.push(`<button class="btn-tile btn-danger" data-unassign="${esc(board)}" data-uteam="${esc(team)}">Unassign rover…</button>`);
-        actions.push(`<details class="card-more"><summary aria-label="More rover actions">•••</summary><div class="card-more-menu">${more.join("")}</div></details>`);
+        actions.push(`<button class="btn-tile" data-tel="${esc(team)}" data-tel-board="${esc(board)}">${icon("activity")} Telemetry</button>`);
+        if (!offline) actions.push(`<button class="btn-tile" data-blink="${esc(board)}" data-bteam="${esc(team)}">${icon("zap")} Identify rover</button>`);
+        actions.push(`<button class="btn-tile btn-danger" data-unassign="${esc(board)}" data-uteam="${esc(team)}">Unassign rover…</button>`);
       } else if (mine) {
         actions.push(`<button class="btn-tile" data-tel="${esc(team)}" data-tel-board="${esc(board)}">Details</button>`);
       }
@@ -1311,29 +1259,12 @@ safe-buffer/index.js:
     }
 
     let lastRobotsHtml = "";
-    let fleetFilter = "all";
     let pendingRequests = [];   // the /codes/requests queue — cards render board-matched claim rows
-    document.getElementById("sum-unassigned-card").addEventListener("click", (e) => {
-      fleetFilter = fleetFilter === "unassigned" ? "all" : "unassigned";
-      e.currentTarget.setAttribute("aria-pressed", String(fleetFilter === "unassigned"));
-      lastRobotsHtml = "";
-      renderRobots();
-    });
-    // ••• menus are <details> — the platform gives no light-dismiss, so an
-    // abandoned open menu would hold the repaint guard forever. Any tap
-    // outside an open menu closes it; so does picking one of its actions.
-    document.addEventListener("click", (e) => {
-      for (const d of document.querySelectorAll(".card-more[open]"))
-        if (!d.contains(e.target) || e.target.closest(".card-more-menu button")) d.removeAttribute("open");
-    });
     function renderRobots() {
-      // Cards repaint every 2 s, which would wipe an inline claim input mid-
-      // typing or snap an open ••• menu shut — hold the repaint while either
-      // is live inside the grid (outside-click below closes abandoned menus,
-      // so the hold can't stick).
+      // Cards repaint every 2 s, which would wipe an inline claim input mid-typing
+      // — hold the repaint while one is live inside the grid.
       const active = document.activeElement;
       if (active && active.tagName === "INPUT" && document.getElementById("robots").contains(active)) return;
-      if (document.querySelector("#robots .card-more[open]")) return;
       let entries = [...boards.entries()];
       // A signed-in student sees one stable mental model: their rover, not the classroom fleet.
       if (myScope && myScope.scope === "one") entries = entries.filter(([, r]) => r.team === myScope.robot);
@@ -1357,29 +1288,18 @@ safe-buffer/index.js:
       // reshuffles under a reaching hand on the 2 s clock; warn tints on the
       // cards carry attention at classroom scale.
       entries.sort((a, b) => (a[0] < b[0] ? -1 : 1));
-      const prof = myScope && myScope.scope === "all";
-      if (prof) {
-        document.getElementById("sum-online").textContent =
-          entries.filter(([, r]) => Date.now() - r.seenAt <= 10000).length;
-        document.getElementById("sum-unassigned").textContent =
-          entries.filter(([, r]) => r.team === "unassigned").length;
-        if (fleetFilter === "unassigned") entries = entries.filter(([, r]) => r.team === "unassigned");
-      }
-      const visibleGhosts = prof && fleetFilter === "all" ? ghosts : [];
       document.getElementById("empty").style.display =
-        entries.length || legacy.length || visibleGhosts.length ? "none" : "block";
+        entries.length || legacy.length || ghosts.length ? "none" : "block";
       document.getElementById("empty").firstChild.textContent = myScope && myScope.scope === "one"
         ? "Your rover is not online yet. Check its power or ask your professor for help. "
-        : prof && fleetFilter !== "all"
-          ? "No unassigned rovers — every board wears a team. "
-          : "No rovers yet — power one on near the hub and it appears here within seconds. ";
+        : "No rovers yet — power one on near the hub and it appears here within seconds. ";
       // The flash-a-new-board hint serves arrivals, not a signed-in student.
       document.querySelector("#empty .hint").style.display =
         myScope && myScope.scope === "one" ? "none" : "";
       const html =
         entries.map(([b, rec]) => deviceCard(b, rec, teamCounts)).join("") +
         legacy.map(([t, rec]) => deviceCard(t, { sys: rec.sys, team: t, seenAt: rec.seenAt }, teamCounts)).join("") +
-        visibleGhosts.map(teamOnlyCard).join("");
+        ghosts.map(teamOnlyCard).join("");
       // Skip identical repaints: innerHTML assignment resets scroll, CSS
       // animations, and — for keyboard users — whichever button held focus.
       if (html !== lastRobotsHtml) {
@@ -1405,16 +1325,8 @@ safe-buffer/index.js:
       const cutoff = Date.now() - EVICT_MS;
       for (const [id, rec] of robots) if (rec.seenAt < cutoff) robots.delete(id);
       for (const [b, rec] of boards) if (rec.seenAt < cutoff) boards.delete(b);
-      // Driving something that stopped answering deserves a flag, not silence.
-      if (target) {
-        const rec = targetBoard ? boards.get(targetBoard) : robots.get(target);
-        const stale = !rec || Date.now() - rec.seenAt > 10000;
-        const title = document.getElementById("joystick-title");
-        const base = title.textContent.replace(/ — offline\?$/, "");
-        title.textContent = stale ? `${base} — offline?` : base;
-      }
       renderRobots(); renderChips(); watchAssign(); syncPinsPanel(false);
-      syncWireFilter(); syncDriveTarget(); telemetrySync?.();
+      syncWireFilter(); telemetrySync?.();
       renderDriveStatus(); renderLiveStatus(); renderDetailsAge(); renderFleetDiag();
     }, 2000);
 
@@ -1542,34 +1454,18 @@ safe-buffer/index.js:
       closeChipPop();   // the sign-in popover's job is done
       document.getElementById("id-menu-scope").textContent = myScope.scope === "all"
         ? "Professor — full fleet control." : `Team scope — drives ${myScope.robot} only.`;
-      document.getElementById("drive-panel").style.display = "block";
       document.getElementById("wire").style.display = "block";
       document.getElementById("student-details").style.display = "block";
       document.getElementById("details-label").textContent =
         myScope.scope === "all" ? "Advanced diagnostics" : "Live messages";
-      document.getElementById("fleet-overview").style.display = myScope.scope === "all" ? "block" : "none";
-      document.getElementById("drive-title").textContent = myScope.scope === "all" ? "Drive" : "Drive my rover";
-      document.getElementById("drive-target-row").style.display = myScope.scope === "all" ? "block" : "none";
-      applyDriveMode(); // panel just appeared: sync the mode switch to the no-target state
-      if (myScope.scope === "all") {
-        document.getElementById("scope-label").textContent = "Pick a rover to test its controls.";
-      } else {
-        // The status row is the team scope's one sentence about the rover —
-        // scope-label would only repeat the name it already carries.
-        document.getElementById("scope-label").style.display = "none";
-        document.getElementById("drive-status").style.display = "flex";
-      }
-      // Team scope reorders the page around the driver (CSS .scope-one): pad
-      // first, then their own rover — renderRobots filters the rest of the
-      // fleet out of a student's view entirely — and lands them on it,
-      // the same bring-to-the-finger the professor's Drive tap already gets.
+      // Team scope reorders the page around the driver (CSS .scope-one):
+      // renderRobots filters the rest of the fleet out of a student's view
+      // entirely and lands them on their own card, where Drive is a tap away.
       document.body.classList.toggle("scope-one", myScope.scope === "one");
-      if (myScope.scope === "one") {
-        selectTarget(myScope.robot);
-        document.getElementById("drive").scrollIntoView({ behavior: SCROLL, block: "start" });
-      }
+      if (myScope.scope === "one")
+        document.getElementById("robots").scrollIntoView({ behavior: SCROLL, block: "start" });
       if (myScope.scope === "all" && !standalone) loadCodes(); // codes flows arm when /codes exists
-      renderRobots(); // re-render cards now that scope is known (adds Drive buttons for "all")
+      renderRobots(); // re-render cards now that scope is known (adds the Drive button)
     }
 
     function selectTarget(id, board) {
@@ -1578,17 +1474,7 @@ safe-buffer/index.js:
       // carry this board id and the firmware ignores commands addressed
       // elsewhere. Null = whole-team drive, the normal single-rover case.
       targetBoard = board || null;
-      const label = board ? `${board} (${id})` : id;
-      document.getElementById("joystick-title").textContent = `Driving ${label}`;
-      // Team scope: the status sentence above already names the rover — a
-      // "Driving jonas2" title under it would be the third repeat.
-      document.getElementById("joystick-title").style.display =
-        myScope && myScope.scope === "one" ? "none" : "";
       applyDriveMode();  // reveal whichever input (joystick / D-pad) is active
-      syncDriveTarget(); // keep the picker agreeing with whoever set the target
-      if (myScope && myScope.scope === "all")
-        document.getElementById("scope-label").textContent =
-          `Driving ${label} — pick another rover above to switch.`;
       renderDriveStatus(); renderLiveStatus(); // paint now, not at the next tick
     }
 
@@ -1602,7 +1488,6 @@ safe-buffer/index.js:
     }
     function renderDriveStatus() {
       const el = document.getElementById("drive-status");
-      if (el.style.display === "none") return;
       const line = document.getElementById("drive-status-line");
       const sub = document.getElementById("drive-status-sub");
       const rec = driveRec();
@@ -1624,7 +1509,7 @@ safe-buffer/index.js:
     }
     function renderLiveStatus() {
       const wrap = document.getElementById("live-status");
-      if (!target || document.getElementById("drive-panel").style.display !== "block") {
+      if (!target || modal.hidden) {
         wrap.style.display = "none";
         return;
       }
@@ -1684,37 +1569,6 @@ safe-buffer/index.js:
         : `<p class="hint">No rovers online.</p>`;
       if (html !== lastDiagHtml) { lastDiagHtml = html; box.innerHTML = html; }
     }
-
-    // The Drive card's target picker (professor): live boards only, options
-    // refreshed on the 2 s clock — never under an open dropdown, and only
-    // when the set changed. value = "<team>|<board>" (names are lowercase
-    // a-z0-9-_ by contract, so "|" can't collide).
-    function syncDriveTarget() {
-      if (!myScope || myScope.scope !== "all") return;
-      const sel = document.getElementById("drive-target");
-      if (document.activeElement === sel) return;
-      const opts = [...boards.entries()]
-        .filter(([, r]) => Date.now() - r.seenAt < 10000)
-        .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-        .map(([b, r]) => ({ v: `${r.team}|${b}`, label: `${b} — ${r.team}` }));
-      const want = opts.map(o => o.v).join(",");
-      if (sel.dataset.have !== want) {
-        sel.dataset.have = want;
-        sel.innerHTML = '<option value="">— pick a rover —</option>' +
-          opts.map(o => `<option value="${esc(o.v)}">${esc(o.label)}</option>`).join("");
-      }
-      sel.value = target && targetBoard ? `${target}|${targetBoard}` : "";
-    }
-    document.getElementById("drive-target").addEventListener("change", (e) => {
-      if (!e.target.value) {
-        target = null; targetBoard = null;
-        applyDriveMode();
-        document.getElementById("scope-label").textContent = "Professor — pick a rover above to drive it.";
-        return;
-      }
-      const [team, board] = e.target.value.split("|");
-      selectTarget(team, board);
-    });
 
     // Drive input mode — the segmented control switches between the analog
     // joystick and the discrete D-pad. Only reveal an input once a target is
@@ -2277,12 +2131,10 @@ safe-buffer/index.js:
     document.getElementById("logout-btn").addEventListener("click", () => {
       try { driveClient.end(true); } catch {}
       driveClient = null; myCred = null; myScope = null; target = null; targetBoard = null;
+      if (!modal.hidden) closeModal();   // an open Drive/Camera/Telemetry sheet must not survive sign-out
       setConnPill("");
       document.body.classList.remove("scope-one");   // back to the fleet-first order
-      document.getElementById("fleet-overview").style.display = "none";
       document.getElementById("student-details").style.display = "none";
-      fleetFilter = "all";   // a filter must not survive into the next sign-in
-      document.getElementById("sum-unassigned-card").setAttribute("aria-pressed", "false");
       pendingRequests = [];
       document.getElementById("id-chip").classList.remove("show");
       document.getElementById("signin-chip").classList.add("show");
@@ -2290,7 +2142,7 @@ safe-buffer/index.js:
       document.getElementById("req-badge").style.display = "none";
       localStorage.removeItem("hubCred");
       document.getElementById("menu-newteam").style.display = "none";
-      for (const id of ["drive-panel", "join-req", "wire"])
+      for (const id of ["join-req", "wire"])
         document.getElementById(id).style.display = "none";
       document.getElementById("code-gate").style.display = "";
       document.getElementById("code-input").value = "";
@@ -2736,9 +2588,11 @@ safe-buffer/index.js:
       const rot = e.target.closest("[data-rotate]");
       const del = e.target.closest("[data-delcode]");
       const tel = e.target.closest("[data-tel]");
+      const drv = e.target.closest("[data-drive-open]");
       const clm = e.target.closest("[data-claim]");
       const cls = e.target.closest("[data-claimsend]");
       if (cam) openCamera(cam.dataset.id, cam.dataset.camIp, cam.dataset.board);
+      else if (drv) openDrive(drv.dataset.driveOpen, drv.dataset.driveBoard);
       else if (tel) openTelemetry(tel.dataset.tel, tel.dataset.telBoard);
       else if (cfg) openConfig(cfg.dataset.id, cfg.dataset.cfgIp, cfg.dataset.board);
       else if (blk) blinkBoard(blk.dataset.blink, blk.dataset.bteam);
@@ -2850,6 +2704,25 @@ safe-buffer/index.js:
       };
       openModal(`${board || team} — telemetry`, wrap);
       modalRestore = () => { telemetryHook = null; telemetrySync = null; };
+    }
+
+    // Drive opens the same per-board modal as Camera/Telemetry, parented with
+    // #drive-panel moved out of its hidden store (#drive-store) — the button
+    // IS the target, so there's no picker to sync. Closing it — the ✕, the
+    // backdrop, Escape, or another modal taking over — must not leave motors
+    // running: a held joystick drag or D-pad button doesn't get a pointerup
+    // just because the sheet went away, so both stops are called unconditionally
+    // (each is a no-op if that input wasn't engaged).
+    function openDrive(team, board) {
+      selectTarget(team, board);
+      const panel = document.getElementById("drive-panel");
+      openModal(`${board || team} — drive`, panel);
+      modalRestore = () => {
+        stopStick(); dpadStop();
+        target = null; targetBoard = null;
+        applyDriveMode();
+        document.getElementById("drive-store").appendChild(panel);
+      };
     }
 
     function openCamera(id, ip, board) {

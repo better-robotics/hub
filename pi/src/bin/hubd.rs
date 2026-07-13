@@ -22,7 +22,7 @@
 //! uplink probe below exists to detect.
 
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -203,15 +203,78 @@ async fn wifi_connect_json(body: &str) -> (&'static str, &'static str, String) {
     }
 }
 
-/// Devices that tapped "Accept" on /welcome. From then on their OS probes
-/// get the genuine success answers, so the captive sheet's button turns into
-/// "Done" and the user can finish in a real browser — the public-Wi-Fi
-/// splash-then-release flow. Per-device opt-in on purpose: a device that
-/// never accepts keeps honest "captive" answers, so an offline hub never
-/// tricks it into believing the uplink works (that lie is what breaks
-/// phones' cellular fallback — the reason blanket fake-success stayed
-/// chosen-against). Cleared by hubd restart; classroom-day scale.
-static ACKED: Mutex<Vec<std::net::IpAddr>> = Mutex::new(Vec::new());
+/// Devices that tapped "Accept" on /welcome, with when they were last seen
+/// on the network. From then on their OS probes get the genuine success
+/// answers, so the captive sheet's button turns into "Done" and the user can
+/// finish in a real browser — the public-Wi-Fi splash-then-release flow.
+/// Per-device opt-in on purpose: a device that never accepts keeps honest
+/// "captive" answers, so an offline hub never tricks it into believing the
+/// uplink works (that lie is what breaks phones' cellular fallback — the
+/// reason blanket fake-success stayed chosen-against). An Accept means "this
+/// visit", not "this device forever" — `reap_acks` forgets devices that
+/// leave, so the popup greets every fresh join and a DHCP-reused address
+/// can't inherit a stranger's Accept. Classroom-day scale.
+static ACKED: Mutex<Vec<(std::net::IpAddr, Instant)>> = Mutex::new(Vec::new());
+
+/// Presence reaper for ACKED. Every minute, poke each acked address (`ping`
+/// is only the ARP trigger — the kernel resolves the neighbor before ICMP,
+/// and ARP is the one layer nothing opts out of: sleeping iPhones keep ARP
+/// offload, Windows firewalls drop ICMP but must still answer ARP) and read
+/// the kernel neighbor table's verdict; a device unreachable for the whole
+/// grace window is gone and forgets its ack. The grace is deliberately
+/// generous: iPhones drop off the AP while asleep in a pocket, and an ack
+/// expiring under a still-present device would flip its probes back to
+/// "captive" and re-summon the sheet mid-class. Tool failure never expires
+/// anyone. (`iw station dump` would be the authoritative association check,
+/// but the appliance image doesn't carry `iw` — neighbor reachability is
+/// the same answer one layer up.)
+async fn reap_acks() {
+    const POLL: Duration = Duration::from_secs(60);
+    const GRACE: Duration = Duration::from_secs(15 * 60);
+    loop {
+        tokio::time::sleep(POLL).await;
+        let ips: Vec<std::net::IpAddr> =
+            ACKED.lock().unwrap().iter().map(|(ip, _)| *ip).collect();
+        if ips.is_empty() {
+            continue;
+        }
+        let pokes: Vec<_> = ips
+            .iter()
+            .map(|ip| {
+                let ip = ip.to_string();
+                tokio::spawn(async move {
+                    let _ = tokio::process::Command::new("ping")
+                        .args(["-c", "1", "-W", "1", &ip])
+                        .output()
+                        .await;
+                })
+            })
+            .collect();
+        for p in pokes {
+            let _ = p.await;
+        }
+        let Ok(out) =
+            tokio::process::Command::new("ip").args(["neigh", "show"]).output().await
+        else {
+            continue;
+        };
+        let neigh = String::from_utf8_lossy(&out.stdout);
+        let now = Instant::now();
+        let mut acks = ACKED.lock().unwrap();
+        for (ip, seen) in acks.iter_mut() {
+            let ip_s = ip.to_string();
+            let reachable = neigh.lines().any(|l| {
+                l.starts_with(&ip_s)
+                    && l.as_bytes().get(ip_s.len()) == Some(&b' ')
+                    && l.trim_end().ends_with("REACHABLE")
+            });
+            if reachable {
+                *seen = now;
+            }
+        }
+        acks.retain(|(_, seen)| now.duration_since(*seen) < GRACE);
+    }
+}
 
 /// The captive sheet's landing page (probe 302s point here, NOT at the
 /// dashboard): Apple's CNA sandboxes localStorage away from Safari, so a
@@ -284,7 +347,7 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
             let post_body = req.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or("");
             // Did this device already tap Accept on /welcome? Decides whether
             // its OS probes get "captive" (302) or genuine success answers.
-            let acked = ACKED.lock().unwrap().contains(&peer.ip());
+            let acked = ACKED.lock().unwrap().iter().any(|(ip, _)| *ip == peer.ip());
             let (status, ctype, body) = match (method, path) {
                 ("GET", "/fleet") => ("200 OK", "application/json", fleet_json(&uplink, &locator, &ssid)),
                 ("GET", "/") | ("GET", "/index.html") => {
@@ -364,8 +427,10 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                 }
                 ("POST", "/captive/ack") => {
                     let mut acks = ACKED.lock().unwrap();
-                    if !acks.contains(&peer.ip()) {
-                        acks.push(peer.ip());
+                    let ip = peer.ip();
+                    match acks.iter_mut().find(|(a, _)| *a == ip) {
+                        Some((_, seen)) => *seen = Instant::now(),
+                        None => acks.push((ip, Instant::now())),
                     }
                     ("200 OK", "application/json", r#"{"ok":true}"#.into())
                 }
@@ -490,6 +555,7 @@ async fn main() {
 
     let uplink: Uplink = Arc::new(Mutex::new("unknown".into()));
     tokio::spawn(poll_uplink(uplink.clone()));
+    tokio::spawn(reap_acks());
     let ap_ssid = hub::wifi::ap_ssid().await; // stable while running (MAC-derived profile)
     tokio::spawn(serve_http(uplink, http.clone(), locator.clone(), ap_ssid));
 

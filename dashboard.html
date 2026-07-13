@@ -3541,7 +3541,6 @@ safe-buffer/index.js:
       const isPool = team === "unassigned";
       const mine = myScope && myScope.scope === "one" && team === myScope.robot;
       const claimable = isPool && !myCred && codesApi;
-      const net = sys.net || sys.ip || "";   /* "net" ships in newer beacons; ip is the fallback */
       // The corner is the rover's own topbar — network + identity, the same
       // grammar the page chrome taught. A claimed board wears its team in
       // plain ink (settled); an unclaimed board wears its "Unassigned" state,
@@ -3558,7 +3557,7 @@ safe-buffer/index.js:
             ? `<button class="cchip cchip-claim" data-claim="${esc(board)}">${icon("claim", 11)}<span>Claim</span></button>`
             : `<span class="cchip cchip-team pool">${PERSON_SVG}<span>Unassigned</span></span>`;
       const chips = `<span class="card-chips">
-        ${net && sys.ip && prof ? `<button class="cchip" data-cfg-ip="${esc(sys.ip)}" data-id="${esc(team)}" data-board="${esc(board)}" title="Rover Wi-Fi settings">${WIFI_SVG}<span>${esc(net)}</span></button>` : ""}
+        ${sys.ip && prof ? `<button class="cchip" data-cfg-ip="${esc(sys.ip)}" data-id="${esc(team)}" data-board="${esc(board)}" title="Rover Wi-Fi settings">${WIFI_SVG}<span>${esc(sys.ip)}</span></button>` : ""}
         ${idChip}
       </span>`;
       const actions = [];

@@ -1984,6 +1984,17 @@ safe-buffer/index.js:
     document.getElementById("pins-test-fwd").addEventListener("click", () => testPulse(130, 130, "roll forward"));
     document.getElementById("pins-test-spin").addEventListener("click", () => testPulse(-130, 130, "spin in place to the LEFT"));
 
+    // #signin has no content of its own once signed in — #drive-panel moved
+    // out to its own store (openDrive()), so the section would otherwise sit
+    // there as an empty padded box. Show it only while there's something in
+    // it: the gate itself (not yet signed in), an active error, or a pending
+    // join request (a second device asking to join this same team identity).
+    function updateSigninVisibility() {
+      const show = !myScope
+        || document.getElementById("gate-error").style.display !== "none"
+        || document.getElementById("join-req").style.display !== "none";
+      document.getElementById("signin").style.display = show ? "" : "none";
+    }
     function gateMsg(text) {
       // While the professor sign-in popover is open, messages belong to it
       // alone — a professor's typo must not paint the students' gate red.
@@ -1992,6 +2003,7 @@ safe-buffer/index.js:
       const el = document.getElementById("gate-error");
       el.textContent = text;
       el.style.display = text ? "block" : "none";
+      updateSigninVisibility();
     }
 
     // ---- Who-are-you chips: identities come from the live fleet (anonymous
@@ -2146,6 +2158,7 @@ safe-buffer/index.js:
         document.getElementById(id).style.display = "none";
       document.getElementById("code-gate").style.display = "";
       document.getElementById("code-input").value = "";
+      updateSigninVisibility();
       if (codesApi) { document.getElementById("req-access").style.display = "block"; refreshKnownTeams(); }
       renderChips(); renderRobots();
     });
@@ -2320,7 +2333,7 @@ safe-buffer/index.js:
       const box = document.getElementById("join-req");
       if (joinShown === "hold" || joinBusy) return;
       if (!codesApi || !myCred || myCred.user === "professor") {
-        box.style.display = "none"; joinShown = null; return;
+        box.style.display = "none"; joinShown = null; updateSigninVisibility(); return;
       }
       joinBusy = true;
       let r;
@@ -2328,7 +2341,7 @@ safe-buffer/index.js:
       catch { joinBusy = false; return; }
       joinBusy = false;
       const mine = r.requests.find(q => q.join && q.name === myCred.user);
-      if (!mine) { box.style.display = "none"; joinShown = null; return; }
+      if (!mine) { box.style.display = "none"; joinShown = null; updateSigninVisibility(); return; }
       if (joinShown === mine.pair) return;
       joinShown = mine.pair;
       document.getElementById("join-req-text").innerHTML =
@@ -2336,6 +2349,7 @@ safe-buffer/index.js:
         `Approve only if their screen shows the pairing code <b class="pair-code">${esc(mine.pair)}</b>.`;
       box.querySelectorAll("button").forEach(b => b.style.display = "");
       box.style.display = "flex";
+      updateSigninVisibility();
     }
     setInterval(watchJoinRequests, 4000);
     async function answerJoin(endpoint, doneMsg) {
@@ -2347,7 +2361,7 @@ safe-buffer/index.js:
       document.getElementById("join-req-text").textContent = r.ok ? doneMsg : r.error;
       box.querySelectorAll("button").forEach(b => b.style.display = "none");
       joinShown = "hold";
-      setTimeout(() => { box.style.display = "none"; joinShown = null; }, 5000);
+      setTimeout(() => { box.style.display = "none"; joinShown = null; updateSigninVisibility(); }, 5000);
     }
     document.getElementById("join-approve").addEventListener("click", () =>
       answerJoin("/codes/grant", "Granted — they're in, with this team's scope."));

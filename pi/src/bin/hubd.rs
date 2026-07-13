@@ -280,18 +280,61 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                 // offline LAN appliance can't validly present — some clients
                 // may ignore the plain-HTTP form. Zero blast radius either
                 // way; verify on a real phone, keep if it helps, shrug if not.
+                // This is the MDM/classroom-safe path (unmanaged AND managed
+                // devices); it stays exactly as it was — untouched by the
+                // probe-intercept handlers below.
                 ("GET", "/captive") => (
                     "200 OK",
                     "application/captive+json",
                     r#"{"captive":false,"venue-info-url":"http://10.42.0.1/"}"#.into(),
                 ),
+                // OS captive-portal auto-popup, personal/unmanaged devices only —
+                // see 00-run.sh's `30-ap-captive-probes.conf` heredoc for the
+                // audience split. The dnsmasq drop-in there resolves each OS's
+                // connectivity-check
+                // hostname to this hub's AP address, so these specific paths
+                // are the only requests that can ever land here for them.
+                // Each OS's checker expects an exact "network is clean"
+                // answer; deliberately failing that expectation is what makes
+                // the OS treat the network as captive and auto-launch its own
+                // mini-browser, which the Location header then points at the
+                // dashboard instead of leaving it blank.
+                //   Apple  (captive.apple.com): expects an exact
+                //     `<HTML>...Success...</HTML>` body — a 302 fails that
+                //     comparison and the CNA mini-browser follows Location.
+                //   Android (connectivitycheck.{gstatic,android}.com):
+                //     expects a bare 204 — a 302 trips the "sign in to
+                //     network" notification, which opens Location.
+                //   Windows (www.msftconnecttest.com / www.msftncsi.com):
+                //     expects exact plaintext bodies; a 302 fails NCSI's
+                //     check too, but note honestly: NCSI's auto-launch-a-
+                //     browser behavior is less consistent across Windows
+                //     versions than Apple/Android's — sometimes it's only a
+                //     taskbar toast, not an auto-opened browser. Don't
+                //     overclaim it "just works" there.
+                ("GET", "/hotspot-detect.html") | ("GET", "/library/test/success.html")
+                | ("GET", "/generate_204")
+                | ("GET", "/connecttest.txt") | ("GET", "/ncsi.txt") => {
+                    ("302 Found", "text/plain", String::new())
+                }
                 _ => ("404 Not Found", "text/plain", "not found".into()),
             };
+            // Optional Location header, minimally bolted onto the response
+            // builder below (same hand-rolled style, no framework) — only the
+            // captive-probe redirects above ever set it; every other route's
+            // response is unchanged.
+            let location = matches!(
+                path,
+                "/hotspot-detect.html" | "/library/test/success.html" | "/generate_204"
+                    | "/connecttest.txt" | "/ncsi.txt"
+            )
+            .then_some("Location: http://10.42.0.1/\r\n")
+            .unwrap_or_default();
             // ACAO *: /fleet is public-read JSON, and the rover setup page
             // (better-robotics.github.io) prefills the hub address from it.
             let resp = format!(
                 "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\n\
-                 Access-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{body}",
+                 {location}Access-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{body}",
                 body.len()
             );
             let _ = sock.write_all(resp.as_bytes()).await;

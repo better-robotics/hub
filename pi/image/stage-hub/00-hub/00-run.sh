@@ -90,20 +90,50 @@ NOROUTEEOF
 
 # Captive Portal API pointer (RFC 8910 option 114 → hubd's RFC 8908 /captive,
 # which answers captive:false + the dashboard as venue-info-url): joining
-# phones can surface the dashboard unprompted, with NOTHING blocked — this is
-# an advertisement, not a portal (captive portals were chosen against;
-# robot/CLAUDE.md § Status). Tagged by exclusion (tag:!usb0) because the AP's
+# phones can surface the dashboard unprompted, with NOTHING blocked — an
+# advertisement, not a portal. Tagged by exclusion (tag:!usb0) because the AP's
 # interface NAME is a per-boot coin flip with a USB dongle present
 # (2026-07-10) — the only other dnsmasq-shared leg is the usb0 recovery link,
 # which must stay claim-free. Progressive nicety: RFC 8908 requires TLS we can't
 # validly present offline, so clients that insist ignore it — verified
 # 2026-07-10, an iPhone joining hub-a2f5 surfaced nothing. Kept because the
-# cost is these lines, non-Apple clients may differ, and the alternative that
-# would force auto-open (probe-intercept portal) stays chosen-against. The
-# real zero-instruction path is the QR sign-in card.
+# cost is these lines and non-Apple clients may differ. The zero-instruction
+# fallback for anyone this doesn't reach is the dashboard's own Claim flow /
+# sign-in link (dashboard.html), not a QR code — the sign-in card dropped its
+# QR 2026-07-13.
 cat > "${ROOTFS_DIR}/etc/NetworkManager/dnsmasq-shared.d/20-ap-capport.conf" <<'CAPPORTEOF'
 dhcp-option=tag:!usb0,114,http://10.42.0.1/captive
 CAPPORTEOF
+
+# OS captive-portal auto-popup domains → this hub's AP address. Each OS
+# probes a fixed hostname on join to decide whether it's behind a captive
+# portal; resolving that lookup to 10.42.0.1 instead of the real internet
+# means hubd (not the venue) answers it, and hubd's handlers for these exact
+# paths (see `accept_forever` in `hubd.rs`) reply in a way that trips each
+# OS's "this network is captive" detection on purpose — which is what makes
+# Apple's CNA / Android's sign-in notification / Windows' NCSI toast surface
+# the dashboard with no manual `hub.local` typing. Personal/unmanaged-device
+# audience only (see the amended comment above); the classroom/MDM path is
+# untouched.
+#
+# NOT tag-scoped like the dhcp-option line above: dnsmasq's `address=`
+# directive has no `tag:` selector (that syntax is a `dhcp-option`/
+# `dhcp-host` feature, for options handed out over DHCP — a DNS override
+# has no per-request tag to key on). Investigated rather than assumed: there
+# is no `address=tag:!usb0,/domain/ip` form. Left global to this dnsmasq
+# instance rather than force incorrect syntax — safe regardless, because (a)
+# `10-usb0-no-route.conf` above already strips the router/DNS DHCP options on
+# usb0, so nothing arriving over that recovery link is ever configured to
+# query this resolver in the first place, and (b) these five hostnames have
+# no legitimate reason to be looked up over the usb0 recovery link even if
+# something did ask.
+cat > "${ROOTFS_DIR}/etc/NetworkManager/dnsmasq-shared.d/30-ap-captive-probes.conf" <<'CAPPROBEEOF'
+address=/captive.apple.com/10.42.0.1
+address=/connectivitycheck.gstatic.com/10.42.0.1
+address=/connectivitycheck.android.com/10.42.0.1
+address=/www.msftconnecttest.com/10.42.0.1
+address=/www.msftncsi.com/10.42.0.1
+CAPPROBEEOF
 
 # Login banner: print the hub's IP + router status on every interactive login
 # (serial autologin and ssh both source /etc/profile.d/*.sh). This is where

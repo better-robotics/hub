@@ -34,6 +34,29 @@ Anything else in the console is real.
 - Insecure-context clipboard (hub.local behavior) on localhost: stub
   `Object.defineProperty(navigator,'clipboard',{value:undefined,configurable:true})`.
 
+## Layout regression sweeps
+
+Run in `browser_evaluate` at 320 / 390 / 768 / 1200 — and stage *hostile*
+data first (long venue SSID in `#net-chip-label`, `#host-chip` populated,
+long team names): every real-device layout bug so far shipped because the
+staged data was too polite.
+
+- **Touching pairs** (spacing floor — anything under ~5px between stacked
+  siblings is a defect unless it's the card title→meta pair):
+
+  ```js
+  const bad = [];
+  for (const p of document.querySelectorAll("main, main section, main div, form, details, .robot"))
+    { const kids = [...p.children].filter(el => { const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+        return r.height > 8 && r.width > 0 && cs.display !== "none" && cs.position !== "absolute"; });
+      for (let i = 0; i < kids.length - 1; i++) { const g = kids[i+1].getBoundingClientRect().top - kids[i].getBoundingClientRect().bottom;
+        if (g >= -1 && g < 5 && kids[i].tagName !== "H2" && kids[i].tagName !== "SUMMARY") bad.push([kids[i], kids[i+1], g]); } }
+  bad
+  ```
+
+- **Horizontal overflow**: `document.documentElement.scrollWidth > innerWidth`
+  must be false at every width.
+
 ## Gotchas
 
 - The CSP `<meta>` (line ~6) governs cross-host board iframes (`frame-src`),

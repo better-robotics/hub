@@ -25,6 +25,24 @@ the ESP hub no longer rides the same atomic commit as a contract change, so the
 drift check is what keeps its embedded dashboard from silently pinning an old
 copy. A breaking contract change now means: land it here, then resync in `robot`.
 
+## Dashboard UI system
+`dashboard.html` is three layers, strictest first: **web platform floor**
+(WCAG/ARIA — focus rings, live regions, no color-alone encoding) → **Apple HIG
+house layer** (44pt effective tap targets — chip-scale controls carry an
+invisible `::after` hit extension; safe areas; reduced motion; the corner
+popover adapts toward a sheet on compact widths) → **the file's own
+vocabulary**: tokens at the top of `<style>` (radius scale, `--tap`, ink ramp,
+ONE warn hue = "act here"; the pool state is never warn), and composable
+patterns — `.gate-row` (input+button, stacks on phones), `.btn-tile` /
+primary-by-id / `.link-btn` button tiers, `.cchip` corner chips (the card
+corner is the rover's topbar), the modal sheet, `#chip-pop` corner popover,
+the 0.85rem panel beat.
+
+**Compose, don't hand-roll.** Every shipped spacing/alignment defect so far
+was a new element skipping an existing pattern. Before shipping: run the
+layout regression sweeps in the `verify` skill (touching-pairs + horizontal
+overflow, at 320/390/768/1200, staged with hostile-length data).
+
 ## Where impl-specific context lives
 - `pi/CLAUDE.md` — the deep Pi context (broker deploy, AP/NAT, device-served
   Wi-Fi setup, ACL).

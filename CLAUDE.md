@@ -9,9 +9,13 @@ one implementation.
 - **Top level = the shared contract**: `CONTRACT.md` (topic scheme), `envelopes/`
   (message shapes), `dashboard.html` (browser client), `mcp-bridge/` (LLM client).
 - **`pi/`** — Raspberry Pi implementation (Rust `hubd` + Mosquitto + Pi image).
-  Was `better-robotics/hub-mqtt`. hubd also serves the workbench IDE bundle
-  (workbench `docs/` tree) at `/ide/` from `HUB_IDE_DIR` (default
-  `/usr/share/hub/ide`; installed by deploy/install.sh + baked by build-image).
+  Was `better-robotics/hub-mqtt`. hubd also serves the
+  [`better-robotics/ide`](https://github.com/better-robotics/ide) bundle
+  (its built dist — source + vendored Monaco/mqtt.js, fetched as a release
+  asset since `ide`'s `vendor/` is gitignored) at `/ide/` from `HUB_IDE_DIR`
+  (default `/usr/share/hub/ide`; installed by deploy/install.sh + baked by
+  build-image). `ide` is a browser-only client of this monorepo's own
+  MQTT/WS contract — no firmware or hubd changes needed when it updates.
 
 The Pi build-embeds the top-level `dashboard.html`
 (`include_str!("../../../dashboard.html")`) and speaks the `envelopes/` contract.
@@ -58,7 +62,9 @@ overflow, at 320/390/768/1200, staged with hostile-length data).
 ## Not in this repo (deliberately)
 `hub-zenoh` (Zenoh evaluation baseline — **archived 2026-07-09**, MQTT won the
 bake-off; kept read-only as the baseline record), `robot` (the rover + ESP32-hub-role
-firmware), `workbench` (browser dev env). Different projects.
+firmware), `workbench` (browser dev env, drifting from the classroom model),
+`ide` (the Monaco editor `pi/` fetches and serves at `/ide/` — a client of
+this repo's contract, not an implementation of it). Different projects.
 
 ## CI
 `.github/workflows/` are rehomed for the monorepo (`working-directory: pi`,

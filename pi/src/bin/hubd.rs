@@ -10,7 +10,7 @@
 //! separate BLE `provisiond` binary (deleted 2026-07-09).
 //!
 //! `GET /` is the embedded dashboard; `GET /fleet` is `{uplink, locator}`;
-//! `GET /ide/` serves the workbench bundle from disk when installed.
+//! `GET /ide/` serves the better-robotics/ide bundle from disk when installed.
 //! The dashboard has `mqtt.js` inlined directly (2026-07-08) rather than
 //! served as a separate file — that's also what makes it a genuine
 //! standalone artifact: download the top-level `dashboard.html` on its own, open it
@@ -30,14 +30,14 @@ use tokio::net::TcpListener;
 const DASHBOARD_HTML: &str = include_str!("../../../dashboard.html");
 const ICON_SVG: &str = include_str!("../../public/icon.svg");
 
-/// The workbench IDE bundle (better-robotics/workbench `docs/` tree),
-/// served at `/ide/`. On-disk rather than embedded: it's ~100 files with
-/// binary assets, ships on its own release cadence, and the image/installer
-/// drop it in place — hubd needs no rebuild when the IDE updates. Serving
-/// it from the hub is what makes the IDE reachable over plain http on the
-/// classroom LAN: same protocol as the broker (ws://) and the rovers'
-/// camera endpoints, so no mixed-content wall — the only shape that works
-/// on iOS phones (no insecure-content override exists there).
+/// The ide bundle (better-robotics/ide's built dist — source + vendored
+/// Monaco/mqtt.js), served at `/ide/`. On-disk rather than embedded: it's a
+/// large tree with binary/vendored assets, ships on its own release cadence,
+/// and the image/installer drop it in place — hubd needs no rebuild when the
+/// IDE updates. Serving it from the hub is what makes the IDE reachable over
+/// plain http on the classroom LAN: same protocol as the broker (ws://) and
+/// the rovers' camera endpoints, so no mixed-content wall — the only shape
+/// that works on iOS phones (no insecure-content override exists there).
 fn ide_dir() -> std::path::PathBuf {
     std::env::var("HUB_IDE_DIR").unwrap_or_else(|_| "/usr/share/hub/ide".into()).into()
 }
@@ -96,8 +96,8 @@ async fn ide_serve(raw_path: &str) -> Vec<u8> {
             let body: &[u8] = if dir.exists() {
                 b"not found"
             } else {
-                b"IDE bundle not installed \xe2\x80\x94 run deploy/install.sh --with-ide, \
-                  or place better-robotics/workbench's docs/ tree at /usr/share/hub/ide"
+                b"IDE bundle not installed \xe2\x80\x94 run deploy/install.sh (needs internet), \
+                  or place better-robotics/ide's built dist at /usr/share/hub/ide"
             };
             let mut resp = format!(
                 "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain; charset=utf-8\r\n\
@@ -361,7 +361,7 @@ async fn main() {
     let port = http.rsplit(':').next().unwrap_or("8000");
     println!("[hubd] dashboard: http://{host}:{port} (fleet JSON at /fleet)");
     if ide_dir().exists() {
-        println!("[hubd] workbench IDE: http://{host}:{port}/ide/?hub={host}");
+        println!("[hubd] ide: http://{host}:{port}/ide/?hub={host}");
     }
     println!("[hubd] rovers/sim clients: point at the broker, {locator} (see mosquitto.example.conf)");
 

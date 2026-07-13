@@ -64,20 +64,23 @@ chmod 0600 /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 systemctl enable mosquitto.service
 systemctl restart mosquitto.service   # pick up the conf.d drop-in
 
-# ---- Workbench IDE bundle (optional — needs internet at install time) ----
-# hubd serves better-robotics/workbench's docs/ tree at /ide/ when present
-# (HUB_IDE_DIR, default /usr/share/hub/ide). Best-effort: a classroom Pi
-# being (re)installed offline keeps its existing bundle, or runs without one.
+# ---- IDE bundle (optional — needs internet at install time) ----
+# hubd serves better-robotics/ide's built dist at /ide/ when present
+# (HUB_IDE_DIR, default /usr/share/hub/ide). The release asset is the full
+# static site INCLUDING vendored Monaco/mqtt.js (ide's vendor/ is gitignored —
+# a plain source tarball would be missing them; see ide's release.yml).
+# Best-effort: a classroom Pi being (re)installed offline keeps its existing
+# bundle, or runs without one.
 IDE_DIR=/usr/share/hub/ide
-echo "[install] fetching workbench IDE bundle…"
-if curl -fsSL https://github.com/better-robotics/workbench/archive/refs/heads/main.tar.gz \
-     -o /tmp/workbench.tar.gz 2>/dev/null; then
+echo "[install] fetching ide bundle…"
+if curl -fsSL https://github.com/better-robotics/ide/releases/latest/download/ide-dist.tar.gz \
+     -o /tmp/ide-dist.tar.gz 2>/dev/null; then
   rm -rf "$IDE_DIR.new"
   mkdir -p "$IDE_DIR.new"
-  tar -xzf /tmp/workbench.tar.gz -C "$IDE_DIR.new" --strip-components=2 "workbench-main/docs"
+  tar -xzf /tmp/ide-dist.tar.gz -C "$IDE_DIR.new"
   rm -rf "$IDE_DIR"
   mv "$IDE_DIR.new" "$IDE_DIR"
-  rm -f /tmp/workbench.tar.gz
+  rm -f /tmp/ide-dist.tar.gz
   echo "[install] IDE bundle installed → http://<this-host-ip>/ide/"
 else
   echo "[install] no internet — skipped the IDE bundle ($([[ -d $IDE_DIR ]] && echo 'existing copy kept' || echo 'not installed'))"

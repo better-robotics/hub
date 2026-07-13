@@ -61,12 +61,14 @@ loop-mount, not a debootstrap.
 ## Deploy (every card, cable-free)
 1. Flash the released `.img.xz` (Raspberry Pi Imager → "Use custom").
 2. Card → Pi 4 → power on (no network needed).
-3. Phone → join the Pi's own **`hub-XXXX`** Wi-Fi → open `http://hub.local` (or
-   `http://10.42.0.1`) → the dashboard's "Set up Wi-Fi" panel scans, pick the
-   classroom SSID + password. The Pi joins on its uplink radio. (The AP's DHCP
-   also advertises the dashboard via Captive Portal API `captive:false` —
-   phones that honor RFC 8910/8908 surface the page on join, unprompted and
-   with nothing blocked; the rest lose nothing.)
+3. Phone → join the Pi's own **`hub-XXXX`** Wi-Fi → the OS's captive-portal
+   popup opens the dashboard on join (probe DNS + plain HTTP from AP clients
+   are steered to the hub itself — dnsmasq overrides for clients that use the
+   network's DNS, an nftables capture in `hub-ap-setup.sh` for those that
+   bring their own; HTTPS passes through untouched). Manual fallback:
+   `http://hub.local` or `http://10.42.0.1`. Either way, the dashboard's
+   "Set up Wi-Fi" panel scans, pick the classroom SSID + password; the Pi
+   joins on its uplink radio.
 4. `hubd` is already running. Pin a **static/reserved IP** so rovers can hardcode
    the broker at `mqtt://<ip>:1883`.
 

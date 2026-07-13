@@ -116,6 +116,14 @@ CAPPORTEOF
 # audience only (see the amended comment above); the classroom/MDM path is
 # untouched.
 #
+# This is the fast path, not the guarantee: it only reaches clients that use
+# the network's DNS. Clients that bring their own resolver (hardcoded
+# 8.8.8.8, DoH, Private Relay) bypass it entirely — for them the
+# captive-capture nftables rules in `deploy/hub-ap-setup.sh` steer DNS+HTTP
+# to the hub at the IP layer (measured 2026-07-13: a Mac with Wi-Fi DNS
+# pinned to 8.8.8.8 hung on Apple's real captive address for exactly this
+# reason).
+#
 # NOT tag-scoped like the dhcp-option line above: dnsmasq's `address=`
 # directive has no `tag:` selector (that syntax is a `dhcp-option`/
 # `dhcp-host` feature, for options handed out over DHCP — a DNS override

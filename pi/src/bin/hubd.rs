@@ -203,6 +203,32 @@ async fn wifi_connect_json(body: &str) -> (&'static str, &'static str, String) {
     }
 }
 
+/// Is this request addressed to some other server than us? True means the
+/// captive-capture NAT dropped it in our lap (see hub-ap-setup.sh). Every
+/// name the hub legitimately answers to — the AP address, mDNS, loopback dev
+/// binds — counts as ours; an absent Host header does too (probe clients are
+/// not all HTTP/1.1-polite, and a false "foreign" would turn honest 404s
+/// into redirects).
+fn foreign_host(req: &str) -> bool {
+    let Some(host) = req.lines().find_map(|l| {
+        l.split_once(':').and_then(|(name, v)| {
+            name.eq_ignore_ascii_case("host").then(|| v.trim())
+        })
+    }) else {
+        return false;
+    };
+    if host.starts_with('[') {
+        return false; // bracketed IPv6 — only the ::1 dev bind ever sees it
+    }
+    let host = host.split(':').next().unwrap_or(host); // strip :port
+    !(host == "10.42.0.1"
+        || host == "hub.local"
+        || host == "hub"
+        || host == "localhost"
+        || host.starts_with("127.")
+        || host == "10.55.0.1")
+}
+
 async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, ssid: String) {
     loop {
         let Ok((mut sock, _)) = listener.accept().await else { continue };
@@ -317,19 +343,27 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                 | ("GET", "/connecttest.txt") | ("GET", "/ncsi.txt") => {
                     ("302 Found", "text/plain", String::new())
                 }
+                // Any other GET that arrives asking for a FOREIGN host can
+                // only be here because the AP's captive-capture NAT
+                // (hub-ap-setup.sh) steered it in — the client thinks it's
+                // talking to the internet. Redirect to the dashboard instead
+                // of 404ing: this is what catches probe hostnames/paths the
+                // explicit arms above don't enumerate (Firefox's
+                // detectportal, Android's /gen_204, whatever ships next).
+                // Requests addressed to US by name (10.42.0.1, hub.local,
+                // localhost dev) keep their honest 404 below — a typo'd
+                // dashboard URL should fail loudly, not bounce home.
+                ("GET", _) if foreign_host(&req) => {
+                    ("302 Found", "text/plain", String::new())
+                }
                 _ => ("404 Not Found", "text/plain", "not found".into()),
             };
             // Optional Location header, minimally bolted onto the response
-            // builder below (same hand-rolled style, no framework) — only the
-            // captive-probe redirects above ever set it; every other route's
-            // response is unchanged.
-            let location = matches!(
-                path,
-                "/hotspot-detect.html" | "/library/test/success.html" | "/generate_204"
-                    | "/connecttest.txt" | "/ncsi.txt"
-            )
-            .then_some("Location: http://10.42.0.1/\r\n")
-            .unwrap_or_default();
+            // builder below (same hand-rolled style, no framework) — every
+            // 302 this server issues points at the dashboard.
+            let location = (status == "302 Found")
+                .then_some("Location: http://10.42.0.1/\r\n")
+                .unwrap_or_default();
             // ACAO *: /fleet is public-read JSON, and the rover setup page
             // (better-robotics.github.io) prefills the hub address from it.
             let resp = format!(

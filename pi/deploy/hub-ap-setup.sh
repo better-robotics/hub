@@ -19,6 +19,31 @@ set -uo pipefail
 
 CON=hub-ap
 
+# Captive-capture NAT: steer AP clients' DNS (53) and plain HTTP (80) to the
+# hub itself, so the OS captive-portal popup lands on the dashboard no matter
+# how the client resolves names. The dnsmasq hostname overrides
+# (30-ap-captive-probes.conf) are the polite fast path, but they only work for
+# clients that use the network's DNS — measured 2026-07-13: a Mac with Wi-Fi
+# DNS pinned to 8.8.8.8 bypassed them entirely, resolved captive.apple.com to
+# Apple's real address, and hung forever on the portal-blocked uplink. The IP
+# layer is the one a resolver choice can't route around. HTTPS (443) passes
+# through untouched — this redirects, it never impersonates. The usb0
+# recovery leg (10.55.0.0/24) is outside the match by construction.
+# Runs before the profile idempotency check: nft state dies with every boot,
+# so this must apply even when the AP profile already exists.
+nft delete table ip hub-captive 2>/dev/null || true
+nft -f - <<'NFTEOF'
+table ip hub-captive {
+  chain capture {
+    type nat hook prerouting priority dstnat; policy accept;
+    ip saddr 10.42.0.0/24 ip daddr != 10.42.0.0/24 udp dport 53 dnat to 10.42.0.1
+    ip saddr 10.42.0.0/24 ip daddr != 10.42.0.0/24 tcp dport 53 dnat to 10.42.0.1
+    ip saddr 10.42.0.0/24 ip daddr != 10.42.0.0/24 tcp dport 80 dnat to 10.42.0.1
+  }
+}
+NFTEOF
+echo "hub-captive NAT applied (AP-client DNS+HTTP -> 10.42.0.1)"
+
 # The built-in radio, by driver identity. brcmfmac registers asynchronously
 # at boot; don't race it.
 ap_dev() {

@@ -45,7 +45,10 @@ fn ide_dir() -> std::path::PathBuf {
 fn ide_mime(path: &std::path::Path) -> &'static str {
     match path.extension().and_then(|e| e.to_str()).unwrap_or("") {
         "html" => "text/html; charset=utf-8",
-        "js" => "application/javascript; charset=utf-8",
+        // .mjs must be JS or the browser refuses the ES-module import —
+        // the IDE's MicroPython runtime (vendor/micropython/micropython.mjs)
+        // loads that way since ide-v6.
+        "js" | "mjs" => "application/javascript; charset=utf-8",
         "css" => "text/css; charset=utf-8",
         "json" | "map" => "application/json; charset=utf-8",
         "svg" => "image/svg+xml",

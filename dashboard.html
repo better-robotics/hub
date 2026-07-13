@@ -1209,7 +1209,10 @@ safe-buffer/index.js:
         actions.push(`<button class="btn-tile" data-cam-ip="${esc(sys.ip)}" data-id="${esc(team)}" data-board="${esc(board)}">${icon("camera")} Camera</button>`);
       // Drive opens the joystick/D-pad in the same per-board modal as Camera —
       // no separate Drive card, no target picker; the button IS the target.
-      if (!offline && !isPool)
+      // Pool boards drive too when the viewer is the professor: the "unassigned"
+      // ACL role (CONTRACT.md) exists precisely so a board nobody has claimed
+      // yet can still be test-driven from the bench, before it's handed to a team.
+      if (!offline && (!isPool || prof))
         actions.push(`<button class="btn-accent" data-drive-open="${esc(team)}" data-drive-board="${esc(board)}">${icon("drive")} Drive</button>`);
       if (prof && isPool) {
         // A fresh board's two jobs, surfaced as buttons instead of a note:
@@ -1999,8 +2002,17 @@ safe-buffer/index.js:
       // While the professor sign-in popover is open, messages belong to it
       // alone — a professor's typo must not paint the students' gate red.
       const pop = document.getElementById("prof-pop-status");
-      if (pop) { pop.textContent = text; return; }
       const el = document.getElementById("gate-error");
+      if (pop) {
+        pop.textContent = text;
+        // gate-error stays hidden either way — but its inline style must
+        // still land on "none" (not just the CSS default), or the empty
+        // string updateSigninVisibility() finds next reads as "visible"
+        // and the now-contentless #signin card never hides itself.
+        el.style.display = "none";
+        updateSigninVisibility();
+        return;
+      }
       el.textContent = text;
       el.style.display = text ? "block" : "none";
       updateSigninVisibility();

@@ -219,6 +219,24 @@ async fn wifi_connect_json(body: &str) -> (&'static str, &'static str, String) {
 /// can't inherit a stranger's Accept. Classroom-day scale.
 static ACKED: Mutex<Vec<(std::net::IpAddr, Instant)>> = Mutex::new(Vec::new());
 
+/// Best-effort packet-layer release/recapture of one device in the AP's
+/// captive NAT — the `acked` set in hub-ap-setup.sh's hub-captive table
+/// (`op` is nft's "add" / "delete"). An acked device's DNS and HTTP then go
+/// real instead of being steered to the hub: once Accept has been tapped
+/// there is nothing left to hold its packets for (the ESP portal's
+/// stop-lying-once-real lesson, robot@f313b57). Dev boxes without the table
+/// (or an IPv6 peer, which the set can't hold) just no-op — the in-memory
+/// ACKED check still answers hubd-level probes correctly either way.
+async fn nft_acked(op: &'static str, ip: std::net::IpAddr) {
+    if !ip.is_ipv4() {
+        return;
+    }
+    let _ = tokio::process::Command::new("nft")
+        .args([op, "element", "ip", "hub-captive", "acked", &format!("{{ {ip} }}")])
+        .output()
+        .await;
+}
+
 /// Presence reaper for ACKED. Every minute, poke each acked address (`ping`
 /// is only the ARP trigger — the kernel resolves the neighbor before ICMP,
 /// and ARP is the one layer nothing opts out of: sleeping iPhones keep ARP
@@ -234,6 +252,12 @@ static ACKED: Mutex<Vec<(std::net::IpAddr, Instant)>> = Mutex::new(Vec::new());
 async fn reap_acks() {
     const POLL: Duration = Duration::from_secs(60);
     const GRACE: Duration = Duration::from_secs(15 * 60);
+    // A fresh hubd means a fresh ack list — clear any packet-layer releases a
+    // previous run left in the nft set, so the two layers can't disagree.
+    let _ = tokio::process::Command::new("nft")
+        .args(["flush", "set", "ip", "hub-captive", "acked"])
+        .output()
+        .await;
     loop {
         tokio::time::sleep(POLL).await;
         let ips: Vec<std::net::IpAddr> =
@@ -263,19 +287,34 @@ async fn reap_acks() {
         };
         let neigh = String::from_utf8_lossy(&out.stdout);
         let now = Instant::now();
-        let mut acks = ACKED.lock().unwrap();
-        for (ip, seen) in acks.iter_mut() {
-            let ip_s = ip.to_string();
-            let reachable = neigh.lines().any(|l| {
-                l.starts_with(&ip_s)
-                    && l.as_bytes().get(ip_s.len()) == Some(&b' ')
-                    && l.trim_end().ends_with("REACHABLE")
-            });
-            if reachable {
-                *seen = now;
+        // Scoped so the MutexGuard (not Send) is dropped before the awaits
+        // below — required for reap_acks' future to stay spawnable.
+        let expired: Vec<std::net::IpAddr> = {
+            let mut acks = ACKED.lock().unwrap();
+            for (ip, seen) in acks.iter_mut() {
+                let ip_s = ip.to_string();
+                let reachable = neigh.lines().any(|l| {
+                    l.starts_with(&ip_s)
+                        && l.as_bytes().get(ip_s.len()) == Some(&b' ')
+                        && l.trim_end().ends_with("REACHABLE")
+                });
+                if reachable {
+                    *seen = now;
+                }
             }
+            let mut expired = Vec::new();
+            acks.retain(|(ip, seen)| {
+                let keep = now.duration_since(*seen) < GRACE;
+                if !keep {
+                    expired.push(*ip);
+                }
+                keep
+            });
+            expired
+        };
+        for ip in expired {
+            nft_acked("delete", ip).await; // back under capture on next join
         }
-        acks.retain(|(_, seen)| now.duration_since(*seen) < GRACE);
     }
 }
 
@@ -413,12 +452,15 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                     ("200 OK", "text/html; charset=utf-8", WELCOME_HTML.into())
                 }
                 ("POST", "/captive/ack") => {
-                    let mut acks = ACKED.lock().unwrap();
                     let ip = peer.ip();
-                    match acks.iter_mut().find(|(a, _)| *a == ip) {
-                        Some((_, seen)) => *seen = Instant::now(),
-                        None => acks.push((ip, Instant::now())),
+                    {
+                        let mut acks = ACKED.lock().unwrap();
+                        match acks.iter_mut().find(|(a, _)| *a == ip) {
+                            Some((_, seen)) => *seen = Instant::now(),
+                            None => acks.push((ip, Instant::now())),
+                        }
                     }
+                    tokio::spawn(nft_acked("add", ip)); // packet-layer release
                     ("200 OK", "application/json", r#"{"ok":true}"#.into())
                 }
                 // An acked device's probes get the exact "network is clean"

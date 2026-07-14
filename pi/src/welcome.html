@@ -50,11 +50,18 @@
   </div>
 </main>
 <script>
+  // Accept NAVIGATES (?done=1) instead of swapping the DOM: the OS captive
+  // sheet re-checks captivity only on full-page loads, so a DOM swap leaves
+  // the Cancel button un-flipped even though the probes already answer
+  // Success. (Learned on the ESP32 portal — robot@f313b57.)
   document.getElementById('go').addEventListener('click', async () => {
     try { await fetch('/captive/ack', { method: 'POST' }); } catch (e) {}
+    location.href = '/welcome?done=1';
+  });
+  if (location.search.indexOf('done=1') >= 0) {
     document.getElementById('before').style.display = 'none';
     document.getElementById('after').style.display = 'block';
-  });
+  }
 </script>
 </body>
 </html>

@@ -31,14 +31,23 @@ CON=hub-ap
 # recovery leg (10.55.0.0/24) is outside the match by construction.
 # Runs before the profile idempotency check: nft state dies with every boot,
 # so this must apply even when the AP profile already exists.
+# The `acked` set is hubd's packet-layer release: a device that tapped Accept
+# on /welcome is exempted from the capture (hubd adds its address on ack, the
+# presence reaper removes it when the device leaves), so its DNS and HTTP go
+# real once there's nothing to hold it for — the lesson of the ESP portal's
+# "stop lying once the uplink is real" (robot@f313b57), translated to nft.
 nft delete table ip hub-captive 2>/dev/null || true
 nft -f - <<'NFTEOF'
 table ip hub-captive {
+  set acked {
+    type ipv4_addr;
+  }
   chain capture {
     type nat hook prerouting priority dstnat; policy accept;
-    ip saddr 10.42.0.0/24 ip daddr != 10.42.0.0/24 udp dport 53 dnat to 10.42.0.1
-    ip saddr 10.42.0.0/24 ip daddr != 10.42.0.0/24 tcp dport 53 dnat to 10.42.0.1
-    ip saddr 10.42.0.0/24 ip daddr != 10.42.0.0/24 tcp dport 80 dnat to 10.42.0.1
+    ip saddr @acked accept
+    ip saddr 10.42.0.0/24 ip daddr != 10.42.0.0/24 udp dport 53 counter dnat to 10.42.0.1
+    ip saddr 10.42.0.0/24 ip daddr != 10.42.0.0/24 tcp dport 53 counter dnat to 10.42.0.1
+    ip saddr 10.42.0.0/24 ip daddr != 10.42.0.0/24 tcp dport 80 counter dnat to 10.42.0.1
   }
 }
 NFTEOF

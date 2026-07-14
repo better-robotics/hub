@@ -137,28 +137,30 @@ same auth. One firmware runs against both. The only host-specific concern is
   scan-joins the strongest open `hub-*`. Single-hub rooms need zero Wi-Fi
   provisioning; multi-hub rooms bind a robot's suffix via BLE Improv.
 
-**Isolation unit = `robots/<id>`** — a robot owns its subtree by its own
-name, and that is the whole ACL:
+**No isolation unit — the Wi-Fi perimeter is the isolation** (confirmed
+2026-07-13). A robot's name (`robots/<id>/…`) is a topic address, not a
+credential: the hub's own Wi-Fi is the classroom's real boundary, so the
+whole ACL (`pi/mosquitto-acl.example.conf`) is three top-level rules plus one
+user block:
 
 | identity | scope | why |
 |----------|-------|-----|
-| robot name | `robots/<id>/#` rw | drive/read only your own robot — `<id>` is the robot's own name |
-| `unassigned` | `robots/unassigned/#` rw | the fresh-board pool: the firmware's flash-time default identity; no student holds this credential, so only the professor can drive a board nobody has assigned yet |
-| professor | `robots/#` rw | oversight + drive any |
-| anonymous | `robots/#` read | the read-only fleet view (dashboard) |
+| anonymous — any robot or browser, authenticated or not | `robots/#` rw, `pair/#` rw, `fleet/estop` read | nothing durable is protected by gating drive/read access once the Wi-Fi perimeter is the real boundary — the per-identity password/rotate/pairing machinery this replaced never stopped a determined student from reading a credential off a card, it just made every fresh board a manual provisioning step |
+| `professor` | + `fleet/estop` rw | the one thing the open ACL can't hand out for free: engaging/clearing the room-wide e-stop needs a real credential so a stray keypress can't halt or release the room (§ Fleet e-stop) |
 
-**`pair/#` sits outside the robot scoping** — an open rendezvous namespace
-(anonymous + every identity, rw) for WebRTC signaling: workbench's
-phone↔desktop pairing exchanges offer/answer/ICE over `pair/<room>/…`, then
-media flows LAN-direct. The signaling transport is untrusted by design —
-peers authenticate end-to-end via the ECDSA P-256 pair ceremony, and rooms are
-unguessable UUIDs carried by the pairing QR. The ESP32 hub role grants this
-for free (connect-auth only, no per-topic ACL).
+**`pair/#` gets the same open rw as `robots/#`** — a rendezvous namespace for
+WebRTC signaling: workbench's phone↔desktop pairing exchanges offer/answer/ICE
+over `pair/<room>/…`, then media flows LAN-direct. The signaling transport is
+untrusted by design regardless — peers authenticate end-to-end via the ECDSA
+P-256 pair ceremony, and rooms are unguessable UUIDs carried by the pairing
+QR. The ESP32 hub role grants this for free too (its `connect_cb` admits every
+client; only username `professor` needs a password, and only for
+`fleet/estop`).
 
 **Control channels** (`robots/<id>/cmd/*`, device → robot, ad-hoc JSON — no
 envelope files; the firmware is the schema): `cmd/config` assigns a board's
-name/motor-pins post-join (`{"name":"scout","pass":"…"}`) — plus an optional
-`"hub":"hub-XXXX"` **pin**
+name post-join (`{"name":"scout"}` — no password field; a name is an address,
+not a credential) — plus an optional `"hub":"hub-XXXX"` **pin**
 (trust-on-first-use rogue-hub guard: a pinned board's discovery admits only
 that exact SSID, so a student raising their own `hub-*` can't absorb it;
 `"hub":""` clears; an SSID pin deters mischief, not a deliberate spoof of the
@@ -170,10 +172,12 @@ payload's MAC-derived `board` field) to address exactly one.
 
 Directional per-channel rules (imu robot→device, pwm device→robot) are dropped:
 they guard a robot spoofing *its own* telemetry — not a classroom threat.
-Enforcement differs by host, ownership model does not: the **Pi** enforces this
-per-topic ACL; the **ESP32** has no per-topic ACL (connect-only `connect_cb`), so
-there isolation is name-level connect-auth + rover convention (each rover only
-subscribes its own id). Per-robot identity is real on both because the rover
-authenticates with **username/password** over `esp-mqtt` — the capability
-`zenoh-pico` lacked (`robot/CLAUDE.md` usrpwd scar), and the concrete reason the
-MQTT transport, not Zenoh, is what the rover ships on.
+Enforcement is now nearly the same shape on both hosts: the **Pi**'s ACL is
+three top-level rules plus one user block; the **ESP32** hub role's
+`connect_cb` (`robot/src/hub_role.c`) mirrors it at connect time — admit every
+client, check a password only for username `professor`. MQTT still beats
+Zenoh for the same reason as before, narrowed to the one identity that still
+needs it: esp-mqtt authenticates with **username/password** natively, the
+capability `zenoh-pico` lacked (`robot/CLAUDE.md` usrpwd scar) — without it,
+even the single `professor` credential would have been unenforceable at the
+ESP32 hub.

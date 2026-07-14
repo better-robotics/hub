@@ -75,11 +75,13 @@ systemctl restart mosquitto         # after editing /etc/mosquitto/conf.d/hub.co
 ## Security: classroom vs real deployment
 
 Classroom scoping is enforced by **Mosquitto's broker-native ACL**
-(`/etc/mosquitto/hub-acl.conf`, from `mosquitto-acl.example.conf`): anonymous
-clients get read-only fleet telemetry (`robots/+/sys`); professor and per-robot
-logins get their scoped write access. `install.sh` seeds **placeholder**
-credentials matching `classroom.example.json5` — **change them before a real
-class**:
+(`/etc/mosquitto/hub-acl.conf`, from `mosquitto-acl.example.conf`): the hub's
+own Wi-Fi is the real boundary, not a login — every client, robot or browser,
+authenticated or not, gets full read+write on `robots/#` and `pair/#`. The
+only login is **professor**, and it only gates one thing: writing
+`fleet/estop` (engaging/clearing the room-wide emergency stop). `install.sh`
+seeds a **placeholder** professor password matching `classroom.example.json5`
+— **change it before a real class**, the one credential there is to rotate:
 
 ```sh
 sudo mosquitto_passwd -b /etc/mosquitto/hub-passwd professor <newpass>

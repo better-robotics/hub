@@ -14,17 +14,22 @@ cd hub && python3 -m http.server 8123 --bind 127.0.0.1
 # → http://127.0.0.1:8123/dashboard.html
 ```
 
-Expected environment noise offline: 404s for /fleet, /wifi/status, /codes/*
+Expected environment noise offline: 404s for /fleet, /wifi/status
 and ws://…:9001 connection refusals (no hubd/broker behind a static server).
-Anything else in the console is real.
+Anything else in the console is real. (The Pi's `/codes` HTTP API is gone —
+confirmed 2026-07-13, the hub's own Wi-Fi is the security boundary now, not a
+login — so there's no `/codes/*` fetch to see 404 anymore.)
 
 ## Handles
 
-- App functions (`openConfig`, `openCamera`, `mintShareCard`, …) are globals —
-  callable from `browser_evaluate` when no live MQTT fleet exists to click
-  through. Clicks on the resulting DOM are still real gestures.
-- Professor-gated sections (e.g. `#codes-share`) are `display:none` offline —
-  walk ancestors and unhide before clicking.
+- App functions (`openConfig`, `openCamera`, …) are globals — callable from
+  `browser_evaluate` when no live MQTT fleet exists to click through. Clicks
+  on the resulting DOM are still real gestures.
+- Professor-gated sections (the Assign sheet, e-stop Stop-all/Clear) are
+  `display:none` offline until a professor session is simulated — walk
+  ancestors and unhide before clicking. Everything else (drive, claim,
+  telemetry, camera) needs no sign-in at all now — verify it works from a
+  cold, anonymous load.
 - Fake board endpoint: a tiny HTTP server answering 200 on any path. It MUST
   send `Content-Type: text/html` — `python3 -m http.server` serves an
   extensionless `wifi` file as octet-stream, the iframe becomes a *download*,
@@ -64,7 +69,9 @@ staged data was too polite.
   regression breaks every per-board modal while same-host testing still passes.
 - Syntax-check the inline scripts before browser time:
   extract each `<script>` block → `node --check`. Beware: a `<script>` mention
-  inside the `<style>` comment defeats naive regex extraction; real blocks
-  start at the `<script>` tags near lines ~658 / ~2958 / ~2980.
+  inside the `<style>` comment defeats naive regex extraction; re-grep
+  `<script>`/`</script>` for the real line numbers on touch — they move as
+  the file grows or shrinks (two blocks: the vendored mqtt.js bundle, then
+  the app's own code).
 - After any dashboard change: `robot/tools/sync-dashboard.sh` (vendored copy),
   and the Pi only picks it up on the next hubd build (include_str!).

@@ -12,16 +12,18 @@ The rovers are ESP32s — they can't host an LLM, so the intelligence runs on th
    (on the hub)          (this tool,  as `professor`)   (broker)   (esp-mqtt)
 ```
 
-**The credential IS the role** (same rule as the whole system): the server
-connects as whatever identity you give it, and Mosquitto's ACL does the
-scoping. A student runs it with their robot's own code and their AI can only
-touch that rover; the professor identity gets the fleet plus the management
-tools. No role logic lives in this server. It is the first real MQTT *client*
-in this repo (hubd is deliberately not one).
+**A robot's name is a topic address, not a credential.** The hub's own Wi-Fi
+is the security boundary: every MQTT client — robot or browser — gets full
+read+write on `robots/#` and `pair/#` with no username/password at all.
+HUB_USER/HUB_PASS matter for exactly one tool: `estop()`, the sole action
+still gated behind the `professor` credential (the only `fleet/estop` write
+grant in the Pi ACL). Every other tool here works fine connected
+anonymously. No role logic lives in this server. It is the first real MQTT
+*client* in this repo (hubd is deliberately not one).
 
 ## Tools it exposes
 
-Fleet (any identity — reads are anonymous-public, writes ACL-scoped):
+Fleet (open to any client on the hub's Wi-Fi — no credential needed):
 
 | tool | topic | what it does |
 |------|-------|--------------|
@@ -37,25 +39,22 @@ before a dedicated tool exists):
 
 | tool | what it does |
 |------|--------------|
-| `publish(topic, payload)` | raw JSON publish; the broker ACL scopes what lands |
+| `publish(topic, payload)` | raw JSON publish; `robots/#` and `pair/#` are open to everyone on the hub's Wi-Fi |
 | `watch(topic_pattern, duration_s=5, max_messages=50)` | subscribe with wildcards, collect live messages — see exactly what's on the wire while your code runs |
 
-In-chat pairing (no credential configured — the server starts anonymous and
-read-only):
+Naming and repair (also open — no credential needed):
 
 | tool | backend | what it does |
 |------|---------|--------------|
-| `request_access(name, wait_s=45)` | hubd `/codes/request` + `/codes/poll` | knock on the hub's access gate and wait for a browser click. An existing name's owner approves from **its own signed-in dashboard** (an Approve banner appears; match the pairing code this tool returns). A new name is approved by the professor. On approval the session reconnects with the delivered code — scope becomes that identity's subtree. |
-
-Professor ops (mutations authenticate with this server's own credential —
-under any other identity's credential they simply come back rejected):
-
-| tool | backend | what it does |
-|------|---------|--------------|
-| `codes_list()` / `codes_set(name, code="")` / `codes_del(name)` | hubd `/codes/*` | manage broker identities; empty code = hub generates one (shown once) |
-| `requests_list()` / `approve_request(name)` / `deny_request(name)` | hubd `/codes/*` | the dashboard gate's access requests; approving a board claim also assigns that rover |
-| `assign(board, name, code, hub_pin="")` | `cmd/config` | manual (re)assign — the repair path |
+| `assign(board, name, hub_pin="")` | `cmd/config` | (re)assign a board to a name — the topic id it publishes/listens under |
 | `flip(board, direction)` | `cmd/config` | fix motor orientation: `left`, `right`, or `swap` |
+
+Professor-gated (the one credentialed action — needs `HUB_PASS` set to the
+`professor` password):
+
+| tool | topic | what it does |
+|------|-------|--------------|
+| `estop(engaged=True, reason="")` | `fleet/estop` | fleet-wide emergency stop latch, retained |
 
 \* The firmware-side `led/reply` isn't wired yet (hub#1); until it lands
 `set_led` returns `acked: false` on timeout — the LED still changes, only the
@@ -65,7 +64,8 @@ confirmation is missing.
 
 ```sh
 pip install -r requirements.txt          # or: uv pip install -r requirements.txt
-HUB_HOST=hub.local HUB_PASS=<professor-pw> python hub_mcp.py
+HUB_HOST=hub.local python hub_mcp.py                       # anonymous — everything but estop() works
+HUB_HOST=hub.local HUB_PASS=<professor-pw> python hub_mcp.py  # adds estop()
 ```
 
 Environment knobs (defaults match `../pi/mosquitto.example.conf`):
@@ -75,7 +75,7 @@ Environment knobs (defaults match `../pi/mosquitto.example.conf`):
 | `HUB_HOST` | `localhost` | broker host (`hub.local` reaches either hub) |
 | `HUB_PORT` | `1883` | raw MQTT — **not** the `:9001` WebSocket port |
 | `HUB_USER` | `professor` | ACL identity (ignored without a `HUB_PASS`) |
-| `HUB_PASS` | *(empty)* | password from your `mosquitto-passwd`; empty = connect anonymous (read-only) and pair in-chat via `request_access` |
+| `HUB_PASS` | *(empty)* | the `professor` password from your `mosquitto-passwd`; empty = connect anonymous, which is fine for every tool except `estop()` |
 
 ## Register with Claude Code
 

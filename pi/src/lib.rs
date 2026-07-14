@@ -13,11 +13,6 @@ use serde::{Deserialize, Serialize};
 /// no hosted website, no Web Bluetooth, works on iOS.
 pub mod wifi;
 
-/// Robot-code management (`/codes/*` HTTP) — dashboard-native create/rotate/
-/// delete of broker identities via `mosquitto_passwd` + SIGHUP, gated by a
-/// CONNECT/CONNACK probe of the professor's current code.
-pub mod codes;
-
 // ---- envelopes (mirror of the top-level envelopes/*.json) ----
 
 /// IMU sample — robot → device. `synthetic` is set only by the demo rover

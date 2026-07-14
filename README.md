@@ -20,35 +20,37 @@ configured:
  │  rover-XXXX  │          │   hub-XXXX   │           │  hub-pi-XXXX │
  │ the rover is │          │  any board,  │           │  Mosquitto + │
  │ its own hub: │          │  role = hub: │           │  hubd (pi/): │
- │ AP + broker  │          │  AP + broker │           │ per-robot ACL│
- │ + dashboard  │          │  + dashboard │           │  ENFORCED    │
+ │ AP + broker  │          │  AP + broker │           │  open ACL +  │
+ │ + dashboard  │          │  + dashboard │           │  professor   │
  └──────┬───────┘          └──────┬───────┘           └──────┬───────┘
         ▲                     ▲ ▲ ▲                     ▲ ▲ ▲ ▲ ▲
    one phone —             rovers & phones           the whole room —
    rover.local             join hub-XXXX —           rovers, phones,
                            hub.local                 laptops — hub.local
 
- isolation: single driver  connect-auth (honor)      broker-enforced ACL
+ isolation: single driver  Wi-Fi perimeter (open)    Wi-Fi perimeter (open)
  capacity:  1 + a phone    ~8–10 Wi-Fi clients       room-scale
  ──────────────────────────────────────────────────────────────────────
  a room resizes LIVE: an island yields when any hub-… appears, and every
  board prefers the Pi · a board can be locked to ONE hub (the hub pin),
- so a rogue hub-… can't absorb it
+ so a rogue hub-… can't absorb it · the Wi-Fi perimeter is the boundary on
+ every tier — the only gated credential anywhere is professor, for fleet/estop
 ```
 
 ## The dashboard
 
 One self-contained `dashboard.html` (mqtt.js inlined; also runs from `file://`
-with the hub's address typed once), three tiers — each enforced by the
+with the hub's address typed once), two tiers — each enforced by the
 **broker**, not by page logic:
 
 | tier | credential | can |
 |---|---|---|
-| public fleet view | none (anonymous read) | watch every robot live: telemetry, cameras, per-board settings |
-| robot | `nameN:password` | drive **its own** rover — joystick / D-pad, wire log visible (it's a teaching surface) |
-| professor | `professor:password` | drive any robot · **Assign**: Blink 💡 a board's LED to find it on the desk, then give it a name, hub pin, motor pins |
+| anyone | none | watch every robot live (telemetry, cameras, per-board settings) and drive any of them — joystick / D-pad, wire log visible (it's a teaching surface) |
+| professor | `professor:password` | everything anyone can, plus engage/clear the fleet-wide **e-stop** · **Assign**: Blink 💡 a board's LED to find it on the desk, then give it a name, hub pin, motor pins |
 
-Fresh boards arrive in an **unassigned** pool only the professor can drive.
+The hub's own Wi-Fi is the real boundary, not a login — a robot's name in the
+topic is an address, not a credential. Fresh boards arrive in an
+**unassigned** pool anyone can drive, same as any other robot.
 
 ## Layout
 
@@ -61,7 +63,7 @@ mcp-bridge/         MCP tool server — drive the fleet from an LLM over the sam
 pi/                 the Raspberry Pi hub
 ├── src/            hubd — dashboard/HTTP chassis + device-served Wi-Fi setup (nmcli)
 │                   + serves the ide bundle at /ide/ when installed
-├── mosquitto*.conf broker config + per-robot ACL
+├── mosquitto*.conf broker config + the open ACL (professor gated on fleet/estop only)
 ├── deploy/         systemd install: hubd · Mosquitto · day-zero hub AP · USB-gadget recovery
 ├── image/          the CI-baked, flash-and-go Pi image (official Lite base + customize-image.sh)
 └── examples/       broker ACL + WebSocket transport tests (CI-gated)
@@ -90,8 +92,9 @@ wall between the page, the broker, and the rovers).
 to *hub* on its `rover.local` settings page, join its Wi-Fi, open
 `http://hub.local`.
 
-Placeholder classroom credentials ship in `pi/classroom.example.json5` —
-change them before a real class (`mosquitto_passwd`).
+A placeholder `professor` credential ships in `pi/classroom.example.json5` —
+the only login the classroom has — change it before a real class
+(`mosquitto_passwd`).
 
 ## The other repos
 

@@ -44,18 +44,15 @@ apt-get install -y -qq mosquitto mosquitto-clients
 install -m 0644 "$REPO_DIR/deploy/mosquitto.conf"           /etc/mosquitto/conf.d/hub.conf
 install -m 0644 "$REPO_DIR/mosquitto-acl.example.conf"      /etc/mosquitto/hub-acl.conf
 
-# Password file — PLACEHOLDER creds matching classroom.example.json5. CHANGE
-# THESE before a real class:
-#   sudo mosquitto_passwd -b /etc/mosquitto/hub-passwd <user> <newpass>
-# (Only created if absent, so re-running install.sh won't clobber real creds.)
+# Password file — one identity. The hub's own Wi-Fi is the classroom's real
+# boundary (mosquitto-acl.example.conf); professor is the one credential
+# that ACL can't give away for free (fleet/estop write). CHANGE THIS before
+# a real class:
+#   sudo mosquitto_passwd -b /etc/mosquitto/hub-passwd professor <newpass>
+# (Only created if absent, so re-running install.sh won't clobber a real one.)
 if [[ ! -f /etc/mosquitto/hub-passwd ]]; then
-  echo "[install] seeding placeholder MQTT creds — CHANGE THESE before a real class"
-  # `unassigned` = the fresh-board pool identity (firmware MQTT_USER default):
-  # boards flash as it, no student holds it, the professor assigns real teams.
-  mosquitto_passwd -b -c /etc/mosquitto/hub-passwd unassigned unassigned-secret
-  mosquitto_passwd -b    /etc/mosquitto/hub-passwd professor  change-me
-  mosquitto_passwd -b    /etc/mosquitto/hub-passwd team1      change-me-team1
-  mosquitto_passwd -b    /etc/mosquitto/hub-passwd team2      change-me-team2
+  echo "[install] seeding the placeholder professor password — CHANGE IT before a real class"
+  mosquitto_passwd -b -c /etc/mosquitto/hub-passwd professor change-me
 fi
 # mosquitto runs as the `mosquitto` user and refuses world-readable cred/acl files.
 chown mosquitto:mosquitto /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf

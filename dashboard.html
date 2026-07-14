@@ -1396,6 +1396,27 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     }
     startPublicClient();
 
+    // The empty-state line must not lie about WHICH thing is absent. "No
+    // rovers yet" presumes this page has a live feed to be empty OF; when the
+    // MQTT session itself is down (hub rebooting, bridge refusing, Wi-Fi
+    // blip) the honest message is that the feed is unreachable — a reader
+    // acting on "power one on" would debug the wrong end (a hub whose bridge
+    // wedged kept that text on screen through hours of reconnect attempts,
+    // bench 2026-07-14). #empty only renders when there are no cards, so the
+    // swap can never cover live telemetry.
+    const emptyEl = document.getElementById("empty");
+    const emptyDefault = emptyEl.innerHTML;
+    let emptyStalled = false;
+    setInterval(() => {
+      const c = driveClient || publicClient;
+      const stalled = !!c && !c.connected;
+      if (stalled === emptyStalled) return;
+      emptyStalled = stalled;
+      emptyEl.innerHTML = stalled
+        ? `Can't reach the hub's live feed — reconnecting… <span class="hint">If this doesn't clear in a minute, power-cycle the hub and reload this page.</span>`
+        : emptyDefault;
+    }, 3000);
+
     // ---- Manual control: code gate → direct MQTT → scoped joystick + wire log ----
     // Deliberately visual/verbose (opposite of the landing page's instinct to
     // hide mechanism): this is a teaching surface, not an onboarding flow, so

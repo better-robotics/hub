@@ -6,9 +6,9 @@
 // touch, same split as hub-zenoh's protocol/README (contract) vs
 // zenoh-acl.example.json5 (enforcement).
 //
-// MQTT username IS the identity, and for a team it's always that team's robot
-// id — no separate token/robot mapping, so the dashboard can infer scope
-// (all vs. one, and which robot) from the username alone (dashboard.html's
+// MQTT username IS the identity, and it's always the robot's own name — no
+// separate token/robot mapping, so the dashboard can infer scope (all vs.
+// one, and which robot) from the username alone (dashboard.html's
 // onScope()). No usrpwd rotation: the password is still just "the code IS
 // the credential," same idea as a classroom login shared verbally or on a
 // slide — now it happens to double as an actual MQTT credential.
@@ -17,13 +17,16 @@
 
   // The fresh-board pool: every board flashes with this identity (firmware
   // MQTT_USER default) and appears in the dashboard's "Unassigned rovers" card.
-  // Deliberately NOT a team — no student is given this password, so only the
-  // professor (robots/# rw) can drive an unassigned board; the ACL's pattern
-  // rule scopes the boards themselves to robots/unassigned/# like any identity.
+  // Deliberately NOT a named robot — no student is given this password, so
+  // only the professor (robots/# rw) can drive an unassigned board; the
+  // ACL's pattern rule scopes the boards themselves to robots/unassigned/#
+  // like any identity.
   pool: { username: "unassigned", password: "unassigned-secret" },
 
-  teams: [
-    { username: "team1", password: "change-me-team1" },
-    { username: "team2", password: "change-me-team2" },
+  // Placeholder names — any string works, this is what a student names
+  // their robot post-join (CONTRACT.md's cmd/config).
+  robots: [
+    { username: "robot1", password: "change-me-robot1" },
+    { username: "robot2", password: "change-me-robot2" },
   ],
 }

@@ -38,7 +38,7 @@ Anything else in the console is real.
 
 Run in `browser_evaluate` at 320 / 390 / 768 / 1200 — and stage *hostile*
 data first (long venue SSID in `#net-chip-label`, `#host-chip` populated,
-long team names): every real-device layout bug so far shipped because the
+long robot names): every real-device layout bug so far shipped because the
 staged data was too polite.
 
 - **Touching pairs** (spacing floor — anything under ~5px between stacked

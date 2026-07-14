@@ -19,7 +19,7 @@ It connects to Mosquitto as whatever identity HUB_USER/HUB_PASS name — the
 broker ACL scopes everything (see mosquitto-acl.example.conf). With NO
 credential it connects anonymous (read-only fleet view) and `request_access()`
 pairs it in-chat: knock on hubd's access gate, a human approves from a browser
-(the team's own signed-in dashboard for an existing team, the professor for a
+(the existing name's own signed-in dashboard, or the professor for a
 new name), and this session reconnects with the delivered code. It is the
 first real MQTT *client* in this repo; hubd is deliberately not one, and
 reprovision.py still stubs on hub#1.
@@ -60,7 +60,7 @@ MOTOR_MAX = 255                                              # 8-bit PWM magnitu
 # ---- live fabric state, kept fresh by background subscriptions --------------
 # GIL makes these plain-dict swaps atomic enough for this read/write pattern.
 _imu: dict[str, dict] = {}       # robot_id -> latest IMU envelope (+ _rx wall-clock)
-_sys: dict[str, dict] = {}       # board id -> latest sys envelope (+ _rx wall-clock, _team)
+_sys: dict[str, dict] = {}       # board id -> latest sys envelope (+ _rx wall-clock, _name)
 _replies: dict[str, dict] = {}   # correlation-id -> led/reply payload
 _reply_event = threading.Event()
 _watchers: list[dict] = []       # active watch() taps: {pattern, msgs, cap}
@@ -106,8 +106,8 @@ def _on_message(client, userdata, msg):
         # Key by BOARD, not topic id: every pool board publishes on
         # robots/unassigned/sys, so keying by topic collapses them into one
         # flapping entry (the same last-writer-wins the dashboard's per-board
-        # pool rows fixed). The topic id rides along as the board's team.
-        payload["_team"] = robot_id
+        # pool rows fixed). The topic id rides along as the board's assigned identity.
+        payload["_name"] = robot_id
         _sys[payload.get("board") or robot_id] = payload
     elif channel == "led" and len(parts) == 4 and parts[3] == "reply":
         cid = None
@@ -212,13 +212,13 @@ def read_imu(robot_id: str, timeout_s: float = 2.0) -> dict:
 @mcp.tool()
 def fleet() -> dict:
     """Every board currently on the hub, keyed by hardware board id, each with
-    its team (the topic identity it publishes under — `unassigned` = the pool),
+    its assigned identity (the topic id it publishes under — `unassigned` = the pool),
     latest sys telemetry, and seconds-since-last-message. This is the anonymous
     public view (robots/+/sys) — the same data the dashboard's fleet cards show.
-    To drive a board, target its TEAM id (pool boards all share `unassigned`)."""
+    To drive a board, target the id it's assigned (pool boards all share `unassigned`)."""
     now = time.time()
     return {
-        board: {**_clean(payload), "team": payload.get("_team", "?"),
+        board: {**_clean(payload), "name": payload.get("_name", "?"),
                 "age_s": round(now - payload.get("_rx", now), 1)}
         for board, payload in _sys.items()
     }
@@ -256,15 +256,15 @@ def set_led(robot_id: str, on: bool, red: int = 0, green: int = 0, blue: int = 0
 # ---- wire primitives ---------------------------------------------------------
 # The pedagogy layer, and the escape hatch: every future channel (range, imu,
 # cmd_vel) is usable through these the day firmware ships it, before any
-# dedicated tool exists. Scope is the connected credential's ACL — a team
+# dedicated tool exists. Scope is the connected credential's ACL — an
 # identity can only publish under its own subtree; the broker enforces it,
 # not this server.
 
 @mcp.tool()
 def publish(topic: str, payload: dict) -> str:
-    """Publish a JSON payload to any MQTT topic (e.g. robots/team3/pwm).
-    Scoped by your credential's broker ACL — a team can only write its own
-    robots/<team>/... subtree; out-of-scope publishes are silently dropped by
+    """Publish a JSON payload to any MQTT topic (e.g. robots/rover3/pwm).
+    Scoped by your credential's broker ACL — an identity can only write its own
+    robots/<id>/... subtree; out-of-scope publishes are silently dropped by
     the broker. Use watch() to confirm a message actually landed."""
     _publish(topic, payload)
     return f"published to {topic}: {json.dumps(payload)}"
@@ -276,7 +276,7 @@ def watch(topic_pattern: str = "robots/#", duration_s: float = 5.0, max_messages
     collect live messages for duration_s. Returns {topic, payload, t} per
     message, oldest first. robots/# is anonymously readable, so this always
     works for observing the fleet — your own drive commands included (watch
-    your team's subtree while your code runs to see exactly what's on the wire)."""
+    your own subtree while your code runs to see exactly what's on the wire)."""
     duration_s = min(max(duration_s, 0.1), 30.0)
     tap = {"pattern": topic_pattern, "msgs": [], "cap": max(1, min(int(max_messages), 200))}
     _client.subscribe(topic_pattern)
@@ -295,32 +295,32 @@ def watch(topic_pattern: str = "robots/#", duration_s: float = 5.0, max_messages
     return out
 
 
-def _board_team(board: str) -> str | None:
+def _board_name(board: str) -> str | None:
     rec = _sys.get(board)
-    return rec.get("_team") if rec else None
+    return rec.get("_name") if rec else None
 
 
 @mcp.tool()
 def blink(board: str) -> str:
     """Blink a board's LED for ~6 s so a human can find the physical rover on
-    the desk. Targets the board through its current team topic (works for pool
+    the desk. Targets the board through its current assigned topic (works for pool
     boards too, if your credential may write there — professor always can)."""
-    team = _board_team(board)
-    if not team:
+    name = _board_name(board)
+    if not name:
         return f"unknown board {board} — call fleet() to see who's online"
-    _publish(f"robots/{team}/cmd/identify", {"target": board})
-    return f"blink sent to {board} (via robots/{team}/cmd/identify) — watch the desk"
+    _publish(f"robots/{name}/cmd/identify", {"target": board})
+    return f"blink sent to {board} (via robots/{name}/cmd/identify) — watch the desk"
 
 
 # ---- in-chat pairing -----------------------------------------------------------
 # Device-flow-shaped auth on the hub's own gate (hubd /codes/request|poll):
 # knock, show the human a short pairing code, and a browser click delivers the
-# credential — no code typed into any config screen. For an existing team the
-# approver is the team's own signed-in dashboard (/codes/grant re-shares the
+# credential — no code typed into any config screen. For an existing name the
+# approver is that name's own signed-in dashboard (/codes/grant re-shares the
 # code it holds; nothing is minted, the rover is untouched); for a new name it
 # is the professor's panel (a code is minted, exactly like a browser knock).
 
-_pending_req: dict[str, dict] = {}   # team -> {token, pair, join}; survives across tool calls
+_pending_req: dict[str, dict] = {}   # name -> {token, pair, join}; survives across tool calls
 
 
 def _reconnect_as(user: str, password: str) -> None:
@@ -344,33 +344,33 @@ def _reconnect_as(user: str, password: str) -> None:
 
 
 @mcp.tool()
-def request_access(team: str, wait_s: float = 45.0) -> dict:
+def request_access(name: str, wait_s: float = 45.0) -> dict:
     """Get this session authorized from a browser instead of a config screen.
-    Knocks on the hub's access gate as `team` and waits for a human click:
-    an existing team approves from its own signed-in dashboard (tell the
-    teammate the PAIRING CODE this returns — the approve banner shows the
+    Knocks on the hub's access gate as `name` and waits for a human click:
+    an existing name's owner approves from its own signed-in dashboard (tell
+    them the PAIRING CODE this returns — the approve banner shows the
     same one); a brand-new name is approved by the professor. On approval
     this session reconnects with the delivered credential and your scope
-    becomes that team's subtree. If the wait times out, call this again with
+    becomes that identity's subtree. If the wait times out, call this again with
     the same name — the request stays pending on the hub for ~30 minutes."""
-    team = team.strip()
-    req = _pending_req.get(team)
+    name = name.strip()
+    req = _pending_req.get(name)
     if req is None:
-        r = _hubd("/codes/request", {"name": team})
+        r = _hubd("/codes/request", {"name": name})
         if not r.get("ok"):
             return {"error": r.get("error", "the hub refused the request"),
                     "hint": "an unanswered earlier knock for this name may still be pending — "
                             "it can be denied from the dashboard, or expires on its own"}
-        req = _pending_req[team] = {"token": r["token"], "pair": r.get("pair", ""),
+        req = _pending_req[name] = {"token": r["token"], "pair": r.get("pair", ""),
                                     "join": r.get("join", False)}
-    approver = (f"{team}'s signed-in dashboard shows an Approve banner"
+    approver = (f"{name}'s signed-in dashboard shows an Approve banner"
                 if req["join"] else "the professor's codes panel lists the request")
     deadline = time.time() + min(max(wait_s, 2.0), 120.0)
     while time.time() < deadline:
         r = _hubd("/codes/poll", {"token": req["token"]})
         status = r.get("status")
         if status == "approved":
-            _pending_req.pop(team, None)
+            _pending_req.pop(name, None)
             try:
                 _reconnect_as(r["user"], r["pass"])
             except Exception as e:
@@ -378,26 +378,26 @@ def request_access(team: str, wait_s: float = 45.0) -> dict:
                         "hint": "the credential was delivered (one-shot) — restart the server "
                                 "with it set as HUB_USER/HUB_PASS"}
             return {"status": "connected", "user": r["user"],
-                    "note": "scope is now this team's subtree — drive/publish will stick"}
+                    "note": "scope is now this identity's subtree — drive/publish will stick"}
         if status == "denied":
-            _pending_req.pop(team, None)
+            _pending_req.pop(name, None)
             return {"status": "denied", "note": "the approver dismissed this request"}
         if status == "unknown":
-            _pending_req.pop(team, None)
+            _pending_req.pop(name, None)
             return {"status": "expired", "note": "the request lapsed or the hub restarted — call again to re-knock"}
         if status is None:                     # HTTP error — hubd unreachable
             return {"error": r.get("error", "hub unreachable"), "pair": req["pair"]}
         time.sleep(2.0)
     return {"status": "waiting", "pair": req["pair"],
             "note": f"tell the human: approve on {approver}, and ONLY if it shows "
-                    f"pairing code {req['pair']} — then call request_access('{team}') again"}
+                    f"pairing code {req['pair']} — then call request_access('{name}') again"}
 
 
 # ---- professor ops -----------------------------------------------------------
 # Wrappers over hubd's HTTP /codes API plus the cmd/config publishes the
 # dashboard's professor panels make. Mutations carry HUB_PASS as the professor
-# code (hubd re-verifies it against the broker per request) — with a team
-# credential these simply come back rejected.
+# code (hubd re-verifies it against the broker per request) — with any other
+# identity's credential these simply come back rejected.
 
 def _hubd(path: str, body: dict | None = None) -> dict:
     import urllib.request, urllib.error
@@ -418,47 +418,47 @@ def _hubd(path: str, body: dict | None = None) -> dict:
 
 @mcp.tool()
 def codes_list() -> dict:
-    """Broker identities (team names) and whether the class still runs the
+    """Broker identities (robot names) and whether the class still runs the
     shipped placeholder codes. Public read on the Pi hub."""
     return _hubd("/codes/list")
 
 
 @mcp.tool()
-def codes_set(team: str, code: str = "") -> dict:
-    """Create a team or rotate its code (professor only — authenticates with
+def codes_set(name: str, code: str = "") -> dict:
+    """Create a robot identity or rotate its code (professor only — authenticates with
     this server's own credential). Empty code = hub generates a readable one;
     the code in the response is shown exactly once and cannot be recovered
     later, only rotated."""
-    return _hubd("/codes/set", {"auth": HUB_PASS, "user": team, "pass": code})
+    return _hubd("/codes/set", {"auth": HUB_PASS, "user": name, "pass": code})
 
 
 @mcp.tool()
-def codes_del(team: str) -> dict:
-    """Delete a team identity (professor only). Its rover and browsers lose
+def codes_del(name: str) -> dict:
+    """Delete a robot identity (professor only). Its rover and browsers lose
     access; `professor` and the pool identity are protected."""
-    return _hubd("/codes/del", {"auth": HUB_PASS, "user": team})
+    return _hubd("/codes/del", {"auth": HUB_PASS, "user": name})
 
 
 @mcp.tool()
 def requests_list() -> dict:
     """Pending access requests from the dashboard gate: [{name, board}].
-    board is set when a team claimed a specific rover ('' = name-only)."""
+    board is set when a name claimed a specific rover ('' = name-only)."""
     return _hubd("/codes/requests")
 
 
 @mcp.tool()
 def approve_request(name: str) -> dict:
     """Approve a pending access request (professor only): the hub mints the
-    team's code and delivers it to the requester's browser. If the request
-    claimed a board, this also assigns that rover to the new team (the same
+    name's code and delivers it to the requester's browser. If the request
+    claimed a board, this also assigns that rover to the new identity (the same
     cmd/config the dashboard publishes) — it reboots renamed. JOIN requests
-    (name already has a code) can't be approved here: the team grants those
-    from its own signed-in dashboard."""
+    (name already has a code) can't be approved here: that name's owner grants
+    those from its own signed-in dashboard."""
     r = _hubd("/codes/approve", {"auth": HUB_PASS, "name": name})
     if r.get("ok") and r.get("board"):
-        team = _board_team(r["board"]) or "unassigned"
-        _publish(f"robots/{team}/cmd/config",
-                 {"target": r["board"], "team": r["user"], "pass": r["pass"]})
+        cur = _board_name(r["board"]) or "unassigned"
+        _publish(f"robots/{cur}/cmd/config",
+                 {"target": r["board"], "name": r["user"], "pass": r["pass"]})
         r["assigned"] = f"{r['board']} -> {r['user']} (reboots in a few seconds)"
     return r
 
@@ -471,24 +471,22 @@ def deny_request(name: str) -> dict:
 
 
 @mcp.tool()
-def assign(board: str, team: str, code: str, name: str = "", hub_pin: str = "") -> dict:
-    """Manually (re)assign a board to a team — the repair path; new teams
-    normally arrive via approve_request. `code` must be the team's current
+def assign(board: str, name: str, code: str, hub_pin: str = "") -> dict:
+    """Manually (re)assign a board to an identity — the repair path; new identities
+    normally arrive via approve_request. `code` must be that identity's current
     broker code (create it first with codes_set). Optional hub_pin locks the
     board to one exact hub SSID ('-' clears an existing pin). The rover saves
     the credential to NVS and reboots under the new identity."""
-    cur = _board_team(board)
+    cur = _board_name(board)
     if not cur:
         return {"error": f"unknown board {board} — call fleet() to see who's online"}
-    cfg: dict = {"target": board, "team": team, "pass": code}
-    if name:
-        cfg["name"] = name
+    cfg: dict = {"target": board, "name": name, "pass": code}
     if hub_pin == "-":
         cfg["hub"] = ""
     elif hub_pin:
         cfg["hub"] = hub_pin
     _publish(f"robots/{cur}/cmd/config", cfg)
-    return {"sent": f"{board} ({cur}) -> {team}", "note": "reboots and reappears in a few seconds"}
+    return {"sent": f"{board} ({cur}) -> {name}", "note": "reboots and reappears in a few seconds"}
 
 
 @mcp.tool()
@@ -499,10 +497,10 @@ def flip(board: str, direction: str) -> dict:
     with the fix."""
     if direction not in ("left", "right", "swap"):
         return {"error": "direction must be left, right, or swap"}
-    team = _board_team(board)
-    if not team:
+    name = _board_name(board)
+    if not name:
         return {"error": f"unknown board {board} — call fleet() to see who's online"}
-    _publish(f"robots/{team}/cmd/config", {"target": board, "flip": {direction: True}})
+    _publish(f"robots/{name}/cmd/config", {"target": board, "flip": {direction: True}})
     return {"sent": f"flip {direction} -> {board}", "note": "reboots with the fix in a few seconds"}
 
 

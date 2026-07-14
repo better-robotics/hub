@@ -18,7 +18,7 @@ file when a device first publishes it):
   on-ramp (`cmd_vel`/`odom` are its native boundary). `pwm` stays: it is the
   mission-one manual-drive channel, not a deprecation target.
 
-Classroom/team *scoping*
+Classroom *scoping*
 is not a protocol channel but the broker's ACL identity model
 (`pi/mosquitto-acl.example.conf` + `pi/classroom.example.json5`). The Zenoh
 column below is the evaluation baseline (`better-robotics/hub-zenoh`), kept for
@@ -135,14 +135,14 @@ same auth. One firmware runs against both. The only host-specific concern is
   would risk colliding with the STA uplink's subnet).
 - **SSID = `hub-<suffix>`** (suffix from the AP MAC, e.g. `hub-a3f2`). The rover
   scan-joins the strongest open `hub-*`. Single-hub rooms need zero Wi-Fi
-  provisioning; multi-hub rooms bind the team's suffix via BLE Improv.
+  provisioning; multi-hub rooms bind a robot's suffix via BLE Improv.
 
-**Isolation unit = `robots/<id>`** — a team owns its subtree, and that is the
-whole ACL:
+**Isolation unit = `robots/<id>`** — a robot owns its subtree by its own
+name, and that is the whole ACL:
 
 | identity | scope | why |
 |----------|-------|-----|
-| team | `robots/<id>/#` rw | drive/read only your own rover |
+| robot name | `robots/<id>/#` rw | drive/read only your own robot — `<id>` is the robot's own name |
 | `unassigned` | `robots/unassigned/#` rw | the fresh-board pool: the firmware's flash-time default identity; no student holds this credential, so only the professor can drive a board nobody has assigned yet |
 | professor | `robots/#` rw | oversight + drive any |
 | anonymous | `robots/#` read | the read-only fleet view (dashboard) |
@@ -157,7 +157,8 @@ for free (connect-auth only, no per-topic ACL).
 
 **Control channels** (`robots/<id>/cmd/*`, device → robot, ad-hoc JSON — no
 envelope files; the firmware is the schema): `cmd/config` assigns a board's
-team/name/motor-pins post-join — plus an optional `"hub":"hub-XXXX"` **pin**
+name/motor-pins post-join (`{"name":"scout","pass":"…"}`) — plus an optional
+`"hub":"hub-XXXX"` **pin**
 (trust-on-first-use rogue-hub guard: a pinned board's discovery admits only
 that exact SSID, so a student raising their own `hub-*` can't absorb it;
 `"hub":""` clears; an SSID pin deters mischief, not a deliberate spoof of the
@@ -168,11 +169,11 @@ topics, so each payload takes an optional `"target": "<board-id>"` (the sys
 payload's MAC-derived `board` field) to address exactly one.
 
 Directional per-channel rules (imu robot→device, pwm device→robot) are dropped:
-they guard a team spoofing *its own* rover's telemetry — not a classroom threat.
+they guard a robot spoofing *its own* telemetry — not a classroom threat.
 Enforcement differs by host, ownership model does not: the **Pi** enforces this
 per-topic ACL; the **ESP32** has no per-topic ACL (connect-only `connect_cb`), so
-there isolation is team-level connect-auth + rover convention (each rover only
-subscribes its own id). Per-team identity is real on both because the rover
+there isolation is name-level connect-auth + rover convention (each rover only
+subscribes its own id). Per-robot identity is real on both because the rover
 authenticates with **username/password** over `esp-mqtt` — the capability
 `zenoh-pico` lacked (`robot/CLAUDE.md` usrpwd scar), and the concrete reason the
 MQTT transport, not Zenoh, is what the rover ships on.

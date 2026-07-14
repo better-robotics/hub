@@ -8,7 +8,7 @@ the ESP32 that can *become* a hub — lives at
 
 ## One contract, three room sizes
 
-The room grows; the wire never changes — `robots/<team>/…` over MQTT, one
+The room grows; the wire never changes — `robots/<name>/…` over MQTT, one
 `dashboard.html`. The robot firmware picks its shape **per boot**, nothing is
 configured:
 
@@ -20,7 +20,7 @@ configured:
  │  rover-XXXX  │          │   hub-XXXX   │           │  hub-pi-XXXX │
  │ the rover is │          │  any board,  │           │  Mosquitto + │
  │ its own hub: │          │  role = hub: │           │  hubd (pi/): │
- │ AP + broker  │          │  AP + broker │           │  per-team ACL│
+ │ AP + broker  │          │  AP + broker │           │ per-robot ACL│
  │ + dashboard  │          │  + dashboard │           │  ENFORCED    │
  └──────┬───────┘          └──────┬───────┘           └──────┬───────┘
         ▲                     ▲ ▲ ▲                     ▲ ▲ ▲ ▲ ▲
@@ -45,8 +45,8 @@ with the hub's address typed once), three tiers — each enforced by the
 | tier | credential | can |
 |---|---|---|
 | public fleet view | none (anonymous read) | watch every robot live: telemetry, cameras, per-board settings |
-| team | `teamN:password` | drive **its own** rover — joystick / D-pad, wire log visible (it's a teaching surface) |
-| professor | `professor:password` | drive any robot · **Assign**: Blink 💡 a board's LED to find it on the desk, then give it a team, name, hub pin, motor pins |
+| robot | `nameN:password` | drive **its own** rover — joystick / D-pad, wire log visible (it's a teaching surface) |
+| professor | `professor:password` | drive any robot · **Assign**: Blink 💡 a board's LED to find it on the desk, then give it a name, hub pin, motor pins |
 
 Fresh boards arrive in an **unassigned** pool only the professor can drive.
 
@@ -61,7 +61,7 @@ mcp-bridge/         MCP tool server — drive the fleet from an LLM over the sam
 pi/                 the Raspberry Pi hub
 ├── src/            hubd — dashboard/HTTP chassis + device-served Wi-Fi setup (nmcli)
 │                   + serves the ide bundle at /ide/ when installed
-├── mosquitto*.conf broker config + per-team ACL
+├── mosquitto*.conf broker config + per-robot ACL
 ├── deploy/         systemd install: hubd · Mosquitto · day-zero hub AP · USB-gadget recovery
 ├── image/          the CI-baked, flash-and-go Pi image (official Lite base + customize-image.sh)
 └── examples/       broker ACL + WebSocket transport tests (CI-gated)

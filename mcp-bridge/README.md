@@ -14,8 +14,8 @@ The rovers are ESP32s — they can't host an LLM, so the intelligence runs on th
 
 **The credential IS the role** (same rule as the whole system): the server
 connects as whatever identity you give it, and Mosquitto's ACL does the
-scoping. A student runs it with their *team* code and their AI can only touch
-their own rover; the professor identity gets the fleet plus the management
+scoping. A student runs it with their robot's own code and their AI can only
+touch that rover; the professor identity gets the fleet plus the management
 tools. No role logic lives in this server. It is the first real MQTT *client*
 in this repo (hubd is deliberately not one).
 
@@ -25,10 +25,10 @@ Fleet (any identity — reads are anonymous-public, writes ACL-scoped):
 
 | tool | topic | what it does |
 |------|-------|--------------|
-| `fleet()` | `robots/+/sys` | every board online (keyed by board id, with its team) + freshness |
+| `fleet()` | `robots/+/sys` | every board online (keyed by board id, with its name) + freshness |
 | `drive(robot_id, left_motor, right_motor, duration_ms=400)` | `robots/<id>/pwm` | signed PWM per side (±255, sign = direction); auto-expires after `duration_ms` |
 | `stop(robot_id)` | `robots/<id>/pwm` | zero PWM, immediate halt |
-| `blink(board)` | `robots/<team>/cmd/identify` | flash a board's LED ~6 s — find the physical rover |
+| `blink(board)` | `robots/<name>/cmd/identify` | flash a board's LED ~6 s — find the physical rover |
 | `read_imu(robot_id, timeout_s=2)` | `robots/<id>/imu` | latest accel/gyro sample, freshness-gated (channel lands with next-gen electronics) |
 | `set_led(robot_id, on, red, green, blue)` | `robots/<id>/led` | RGB set via MQTT5 request/reply* |
 
@@ -45,16 +45,16 @@ read-only):
 
 | tool | backend | what it does |
 |------|---------|--------------|
-| `request_access(team, wait_s=45)` | hubd `/codes/request` + `/codes/poll` | knock on the hub's access gate and wait for a browser click. An existing team approves from **its own signed-in dashboard** (an Approve banner appears; match the pairing code this tool returns). A new name is approved by the professor. On approval the session reconnects with the delivered code — scope becomes that team's subtree. |
+| `request_access(name, wait_s=45)` | hubd `/codes/request` + `/codes/poll` | knock on the hub's access gate and wait for a browser click. An existing name's owner approves from **its own signed-in dashboard** (an Approve banner appears; match the pairing code this tool returns). A new name is approved by the professor. On approval the session reconnects with the delivered code — scope becomes that identity's subtree. |
 
 Professor ops (mutations authenticate with this server's own credential —
-under a team identity they simply come back rejected):
+under any other identity's credential they simply come back rejected):
 
 | tool | backend | what it does |
 |------|---------|--------------|
-| `codes_list()` / `codes_set(team, code="")` / `codes_del(team)` | hubd `/codes/*` | manage broker identities; empty code = hub generates one (shown once) |
+| `codes_list()` / `codes_set(name, code="")` / `codes_del(name)` | hubd `/codes/*` | manage broker identities; empty code = hub generates one (shown once) |
 | `requests_list()` / `approve_request(name)` / `deny_request(name)` | hubd `/codes/*` | the dashboard gate's access requests; approving a board claim also assigns that rover |
-| `assign(board, team, code, name="", hub_pin="")` | `cmd/config` | manual (re)assign — the repair path |
+| `assign(board, name, code, hub_pin="")` | `cmd/config` | manual (re)assign — the repair path |
 | `flip(board, direction)` | `cmd/config` | fix motor orientation: `left`, `right`, or `swap` |
 
 \* The firmware-side `led/reply` isn't wired yet (hub#1); until it lands

@@ -76,7 +76,7 @@ systemctl restart mosquitto         # after editing /etc/mosquitto/conf.d/hub.co
 
 Classroom scoping is enforced by **Mosquitto's broker-native ACL**
 (`/etc/mosquitto/hub-acl.conf`, from `mosquitto-acl.example.conf`): anonymous
-clients get read-only fleet telemetry (`robots/+/sys`); professor and per-team
+clients get read-only fleet telemetry (`robots/+/sys`); professor and per-robot
 logins get their scoped write access. `install.sh` seeds **placeholder**
 credentials matching `classroom.example.json5` — **change them before a real
 class**:

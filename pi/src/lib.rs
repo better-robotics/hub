@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 /// no hosted website, no Web Bluetooth, works on iOS.
 pub mod wifi;
 
-/// Team-code management (`/codes/*` HTTP) — dashboard-native create/rotate/
+/// Robot-code management (`/codes/*` HTTP) — dashboard-native create/rotate/
 /// delete of broker identities via `mosquitto_passwd` + SIGHUP, gated by a
 /// CONNECT/CONNACK probe of the professor's current code.
 pub mod codes;

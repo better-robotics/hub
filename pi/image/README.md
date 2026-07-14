@@ -98,7 +98,7 @@ uplink network (`/wifi/*` scan verified; a join needs a second network in
 range), and WPA2 on the hub AP (open for now — the ESP32 join scar, see
 `pi/CLAUDE.md`).
 
-Security: the broker ships with the per-team ACL and PLACEHOLDER credentials
+Security: the broker ships with the per-robot ACL and PLACEHOLDER credentials
 baked in — change them with `mosquitto_passwd` before a real class. The serial
 console autologs in as `pi`, and `pi` has passwordless sudo (baked by
 `customize-image.sh`, deliberately): **cable possession = root**, the same boundary as holding

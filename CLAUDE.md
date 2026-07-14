@@ -37,7 +37,7 @@ invisible `::after` hit extension; safe areas; reduced motion; the corner
 popover adapts toward a sheet on compact widths) → **the file's own
 vocabulary**: tokens at the top of `<style>` (radius scale, `--tap`, ink ramp,
 ONE warn hue = "act here" — an unassigned board carries it (corner chip +
-Assign button); amber recedes to plain ink as boards earn teams), and composable
+Assign button); amber recedes to plain ink as boards are given a name), and composable
 patterns — `.gate-row` (input+button, stacks on phones), `.btn-tile` /
 primary-by-id / `.link-btn` button tiers, `.cchip` corner chips (the card
 corner is the rover's topbar), the modal sheet, `#chip-pop` corner popover,

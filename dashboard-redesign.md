@@ -31,7 +31,7 @@ recording because it *validates a direction the repo already adopted* (#4,
   into curriculum; the current step *emphasizes the relevant tile* (accent the
   line-sensor tile during "read the line sensor"), not just a progress bar.
   Strongest when steps are **predicates over observed wire traffic** — "read the
-  distance sensor" completes when the hub sees that team receive `range` — so
+  distance sensor" completes when the hub sees that robot receive `range` — so
   progress is evidence, not a self-reported checkbox, and the professor's view
   comes free.
 - **Professor = extra scope on the same UI**, not a separate app. Already how

@@ -1,8 +1,8 @@
-//! Team-code management — the code actions on the dashboard's "Teams" panel.
+//! Robot-code management — the code actions on the dashboard's robot-codes panel.
 //!
 //! The professor's whole credential workflow used to be ssh + mosquitto_passwd;
 //! these endpoints make it dashboard-native: list identities, set/rotate a
-//! team's code, delete a team. Changes go through `mosquitto_passwd` on the
+//! robot's code, delete a robot. Changes go through `mosquitto_passwd` on the
 //! live passwd file and a broker reload (SIGHUP re-reads it), so the panel and
 //! the CLI stay two views of the same file.
 //!
@@ -147,7 +147,7 @@ pub async fn set_json(body: &str) -> (&'static str, &'static str, String) {
     ("200 OK", "application/json", serde_json::json!({ "ok": true, "pass": pass }).to_string())
 }
 
-/// `POST /codes/del` body `{auth, user}` — remove a team identity.
+/// `POST /codes/del` body `{auth, user}` — remove a robot identity.
 pub async fn del_json(body: &str) -> (&'static str, &'static str, String) {
     let v: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
     let auth = v.get("auth").and_then(|s| s.as_str()).unwrap_or("");
@@ -159,7 +159,7 @@ pub async fn del_json(body: &str) -> (&'static str, &'static str, String) {
         return err("professor and the pool identity cannot be deleted");
     }
     if !valid_name(user) || !list_users().iter().any(|u| u == user) {
-        return err("no such team");
+        return err("no such robot");
     }
     let ok = tokio::process::Command::new("mosquitto_passwd")
         .args(["-D", PASSWD, user])
@@ -174,13 +174,13 @@ pub async fn del_json(body: &str) -> (&'static str, &'static str, String) {
     ("200 OK", "application/json", r#"{"ok":true}"#.into())
 }
 
-// ---- Access requests: a team with no code yet asks from the login gate; the
+// ---- Access requests: a robot with no code yet asks from the login gate; the
 // professor approves from the codes panel and the requester's poll delivers
 // the minted code straight into their browser — nothing typed on either side.
 //
 // A request for a name that ALREADY has a code is a JOIN request — a new
 // client (another browser, an MCP bridge pairing from its chat) asking to act
-// as that team. Nothing is minted for it: the team's own signed-in dashboard
+// as that robot. Nothing is minted for it: the robot's own signed-in dashboard
 // grants it (`/codes/grant`) by re-sharing the code it authenticates with, so
 // the rover's stored credential is never rotated. Every request carries a
 // short PAIRING code, shown on both the requester's screen and the approving
@@ -210,7 +210,7 @@ struct Pending {
     /// Short display code for the human pairing check (public, not a secret).
     pair: String,
     /// The name already has a broker code: grantable only via `/codes/grant`
-    /// (team-auth), never professor-approve — a mint would rotate the team's
+    /// (robot-auth), never professor-approve — a mint would rotate the robot's
     /// code out from under its rover.
     join: bool,
     created: Instant,
@@ -237,7 +237,7 @@ fn rand_code(len: usize) -> String {
     buf.iter().map(|b| ALPHABET[*b as usize % ALPHABET.len()] as char).collect()
 }
 
-/// Team code: 8 chars.
+/// Robot code: 8 chars.
 fn gen_code() -> String {
     rand_code(8)
 }
@@ -267,11 +267,11 @@ pub fn request_json(body: &str) -> (&'static str, &'static str, String) {
     if name == "professor" || name == POOL_USER {
         return err("that name is reserved");
     }
-    // Joins are name-only: the team already has a rover; a board claim riding
+    // Joins are name-only: the robot already has a rover; a board claim riding
     // a join would let a stranger's knock queue a reassignment of it.
     let join = list_users().iter().any(|u| *u == name);
     if join && !board.is_empty() {
-        return err("that team already exists — request the name alone, without a board claim");
+        return err("that robot already exists — request the name alone, without a board claim");
     }
     let token = rand_hex(16);
     let pair = rand_code(4);
@@ -355,7 +355,7 @@ pub async fn approve_json(body: &str) -> (&'static str, &'static str, String) {
         prune(&mut q);
         match q.iter().find(|p| p.name == name && matches!(p.state, ReqState::Waiting)) {
             Some(p) if p.join => {
-                return err("that team already has a code — only its own signed-in dashboard can grant a join (minting here would rotate the rover's credential)")
+                return err("that robot already has a code — only its own signed-in dashboard can grant a join (minting here would rotate the rover's credential)")
             }
             Some(p) => p.board.clone(),
             None => return err("no such request — it may have expired"),
@@ -384,8 +384,8 @@ pub async fn approve_json(body: &str) -> (&'static str, &'static str, String) {
      serde_json::json!({ "ok": true, "user": name, "pass": pass, "board": board }).to_string())
 }
 
-/// `POST /codes/grant` body `{auth, name}` — the team-side twin of approve,
-/// for JOIN requests only. hubd cannot recover a team's code (the passwd file
+/// `POST /codes/grant` body `{auth, name}` — the robot-side twin of approve,
+/// for JOIN requests only. hubd cannot recover a robot's code (the passwd file
 /// holds a hash), but the approving browser holds it in memory — it
 /// authenticates this call with it, and that broker-verified value is itself
 /// what's parked for the requester's one-shot pickup. Nothing minted, nothing
@@ -406,7 +406,7 @@ pub async fn grant_json(body: &str) -> (&'static str, &'static str, String) {
         }
     }
     if !broker_accepts(&name, &auth).await {
-        return err("that team code was rejected — only the team itself can grant this");
+        return err("that robot's code was rejected — only the robot's own signed-in dashboard can grant this");
     }
     let mut q = PENDING.lock().unwrap();
     match q.iter_mut().find(|p| p.name == name && matches!(p.state, ReqState::Waiting) && p.join) {
@@ -420,7 +420,7 @@ pub async fn grant_json(body: &str) -> (&'static str, &'static str, String) {
 }
 
 /// `POST /codes/deny` body `{auth, name}` — professor-gated, except a JOIN
-/// request, which its own team may also dismiss (the same credential that
+/// request, which its own robot may also dismiss (the same credential that
 /// could grant it); the requester's next poll sees `denied` and stops.
 pub async fn deny_json(body: &str) -> (&'static str, &'static str, String) {
     let v: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
@@ -439,7 +439,7 @@ pub async fn deny_json(body: &str) -> (&'static str, &'static str, String) {
     let allowed = broker_accepts("professor", auth).await
         || (join && broker_accepts(name, auth).await);
     if !allowed {
-        return err(if join { "code rejected — the team itself or the professor can deny this" }
+        return err(if join { "code rejected — the robot's own signed-in dashboard or the professor can deny this" }
                    else { "professor code rejected" });
     }
     let mut q = PENDING.lock().unwrap();

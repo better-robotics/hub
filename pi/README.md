@@ -1,7 +1,7 @@
 # Robotics Hub — Raspberry Pi
 
 *One routed topic-space for the classroom: student devices, professor tools,
-and rovers over MQTT, under a per-team permission model.*
+and rovers over MQTT, under a per-robot permission model.*
 
 ```sh
 mosquitto -c mosquitto.example.conf   # the broker (passwd file: examples/classroom-mosquitto-demo.sh)
@@ -21,7 +21,7 @@ cargo run --bin hubd                  # dashboard on http://localhost:8000
                └──────────────────────────▼──────────────────────────────────┘
                      ┌─────────────────────────────────────────┐
                      │ Mosquitto — the broker (own process)    │
-                     │ usrpwd auth · per-team topic ACL        │
+                     │ usrpwd auth · per-robot topic ACL       │
                      │ robots/<id>/{sys,pwm,cmd/*,imu,led}     │
                      └─────────────────────────────────────────┘
 ```
@@ -33,7 +33,7 @@ uplink/captive-portal probe, and **device-served Wi-Fi setup** —
 `src/wifi.rs`). A phone joins the hub's own `hub-XXXX` AP, opens
 `http://hub.local`, and picks the uplink network from the dashboard's "Set up
 Wi-Fi" panel — no app, no hosted site, no Web Bluetooth, works on iOS.
-Classroom access control (professor vs. team scoping) is enforced by
+Classroom access control (professor vs. robot scoping) is enforced by
 Mosquitto's own ACL, not application code — see `mosquitto-acl.example.conf`.
 
 **The dashboard also works with no hub server at all.** `mqtt.js` is inlined

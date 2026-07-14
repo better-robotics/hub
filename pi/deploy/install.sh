@@ -100,4 +100,4 @@ systemctl --no-pager status hubd.service mosquitto.service || true
 echo
 echo "logs:   journalctl -u hubd -u mosquitto -f"
 echo "verify: curl http://<this-host-ip>/fleet                         # dashboard chassis (hubd, :80)"
-echo "        mosquitto_sub -h <ip> -u team1 -P change-me-team1 -t 'robots/team1/#'   # broker + ACL"
+echo "        mosquitto_sub -h <ip> -t 'robots/#'                      # broker + ACL — no credential needed"

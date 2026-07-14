@@ -6,22 +6,16 @@
 # Wi-Fi regulatory domain — radio stays disabled until this is set.
 raspi-config nonint do_wifi_country US || true
 
-# Mosquitto broker: seed PLACEHOLDER creds matching classroom.example.json5
-# (change before a real class: mosquitto_passwd -b /etc/mosquitto/hub-passwd …).
+# Mosquitto broker: seed the one PLACEHOLDER credential (change before a real
+# class: mosquitto_passwd -b /etc/mosquitto/hub-passwd professor <newpass>).
 # Config + ACL were staged by 00-run.sh; generate the passwd here where
 # mosquitto_passwd exists, and lock down the cred/acl files (mosquitto refuses
-# world-readable ones).
-# `unassigned` = the fresh-board pool identity (firmware MQTT_USER default).
-mosquitto_passwd -b -c /etc/mosquitto/hub-passwd unassigned unassigned-secret
-mosquitto_passwd -b    /etc/mosquitto/hub-passwd professor  change-me
-mosquitto_passwd -b    /etc/mosquitto/hub-passwd team1      change-me-team1
-mosquitto_passwd -b    /etc/mosquitto/hub-passwd team2      change-me-team2
+# world-readable ones). The hub's own Wi-Fi is the classroom's real boundary
+# (mosquitto-acl.example.conf) — professor is the only identity that needs a
+# password at all, gating just the fleet-wide emergency stop.
+mosquitto_passwd -b -c /etc/mosquitto/hub-passwd professor change-me
 chown mosquitto:mosquitto /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 chmod 0600 /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
-# Marker = "this class still runs the seeded PLACEHOLDER codes". hubd's
-# /codes/set deletes it on the first real code change; while it exists the
-# dashboard nags the professor to rotate before class.
-touch /etc/mosquitto/.placeholder-creds
 
 # Each independently restartable: usb-gadget (recovery, before NM), serial
 # console on the gadget, the day-zero hub-XXXX AP, the dashboard chassis +

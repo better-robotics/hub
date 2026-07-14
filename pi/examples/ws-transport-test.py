@@ -17,37 +17,40 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOST, WS_PORT = "127.0.0.1", 19001  # non-default port: don't collide with a real broker
 
 
-def newc(user, pw):
+def newc(user=None, pw=None):
     c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, transport="websockets")
     c.ws_set_options(path="/")           # mqtt.js connects with no path → "/"
-    c.username_pw_set(user, pw)
+    if user is not None:
+        c.username_pw_set(user, pw)
     return c
 
 
 def test_reject():
-    """team1 with a wrong password → CONNACK not-authorised, through the WS listener."""
+    """professor with a wrong password → CONNACK not-authorised, through the WS listener."""
     st = {}
-    c = newc("team1", "WRONG")
+    c = newc("professor", "WRONG")
     c.on_connect = lambda cl, u, f, rc, p: st.__setitem__("rc", getattr(rc, "value", rc))
     c.connect(HOST, WS_PORT, 10)
     c.loop_start(); time.sleep(3); c.loop_stop()
     try: c.disconnect()
     except Exception: pass
     ok = st.get("rc") not in (0, None)
-    print(f"  reject (wrong pw over WS): CONNACK rc={st.get('rc')} -> {'OK' if ok else 'FAIL'}")
+    print(f"  reject (wrong professor pw over WS): CONNACK rc={st.get('rc')} -> {'OK' if ok else 'FAIL'}")
     return ok
 
 
 def test_roundtrip():
-    """professor connects over WS, subscribes + publishes, receives its own message."""
+    """anonymous connects over WS with no credential, subscribes + publishes,
+    receives its own message — the open ACL (robots/# rw, no login) holds
+    over WebSocket, not just raw TCP."""
     got = {}
-    c = newc("professor", "change-me")
+    c = newc()
     def on_connect(cl, u, f, rc, p):
         got["conn"] = getattr(rc, "value", rc)
         if got["conn"] == 0:
-            cl.subscribe("robots/team1/#")
+            cl.subscribe("robots/scout/#")
     c.on_connect = on_connect
-    c.on_subscribe = lambda cl, u, mid, rc, p: cl.publish("robots/team1/pwm", '{"left_motor":42}', qos=1)
+    c.on_subscribe = lambda cl, u, mid, rc, p: cl.publish("robots/scout/pwm", '{"left_motor":42}', qos=1)
     c.on_message = lambda cl, u, m: got.__setitem__("msg", (m.topic, m.payload.decode()))
     c.connect(HOST, WS_PORT, 10)
     c.loop_start()
@@ -71,7 +74,6 @@ def main():
     tmp = tempfile.mkdtemp()
     passwd, acl, conf = (os.path.join(tmp, n) for n in ("passwd", "acl.conf", "broker.conf"))
     subprocess.run(["mosquitto_passwd", "-b", "-c", passwd, "professor", "change-me"], check=True)
-    subprocess.run(["mosquitto_passwd", "-b", passwd, "team1", "change-me-team1"], check=True)
     shutil.copy(os.path.join(REPO, "mosquitto-acl.example.conf"), acl)  # the real ACL, single-sourced
     os.chmod(passwd, 0o600); os.chmod(acl, 0o600)
     with open(conf, "w") as f:

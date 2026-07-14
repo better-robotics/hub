@@ -39,6 +39,7 @@ on the rover side) is an open thread in the hub state tracker (#4).
 | IMU sample | `envelopes/imu.json` | robot → device | pub/sub `robots/<id>/imu` | pub/sub `robots/<id>/imu` | — (no IMU in those kits) |
 | PWM drive | `envelopes/pwm.json` | device → robot | pub/sub `robots/<id>/pwm` | pub/sub `robots/<id>/pwm` | MOTOR char write |
 | set_led (req/resp) | `envelopes/rpc_set_led.json` | device ↔ robot | `robots/<id>/led` req, `robots/<id>/led/reply` resp (MQTT5 correlation-data) | queryable `robots/<id>/led` | LED char (on/off) + RGB char (r,g,b); no reply |
+| Fleet e-stop | `envelopes/estop.json` | device → robot (fleet-wide) | pub/sub `fleet/estop`, **retained** | — | — |
 
 Language bindings (which mirror these envelopes): Rust in `pi/src/lib.rs`; the
 ESP32 firmware hardcodes the same topics in C.
@@ -87,6 +88,36 @@ joystick shape (the dashboard republishes while held). A seconds-latency
 planner gets one capped pulse per decision; a dropped session coasts to a
 stop. (The openpilot-panda layering: safety under the intelligent layer,
 never inside it. Enforcement: `robot/src/rover_role.c` `motor_apply`.)
+
+### Fleet e-stop — the retained latch above the per-command floor
+
+The self-expiry above makes every *individual* command safe; `fleet/estop`
+is the room-wide latch on top of it, for the moment the professor needs
+everything stopped and **staying** stopped:
+
+- **Topic `fleet/estop`, published retained** (`envelopes/estop.json`;
+  `engaged` is the only field the firmware reads — `by`/`reason` are for
+  humans on dashboards). Retained is the load-bearing property: a rover that
+  reconnects mid-emergency receives the latch on subscribe, so a reboot or
+  Wi-Fi blip cannot walk a robot out of an engaged stop.
+- **Latch semantics** (firmware, `rover_role.c` `estop_apply`): engaged →
+  motors stop now and every non-zero `pwm` is refused until a clear arrives.
+  Zero drive (stop) is always honored, engaged or not. The rover reports the
+  latch as `"estop":true` in its `sys` beacon while engaged (absent = clear),
+  so a fleet view can verify each robot actually heard it.
+- **Clear** = retained `{"engaged": false}`. An *empty* retained publish (the
+  MQTT idiom for deleting retained state) also reads as clear; any other
+  unparseable payload on this topic reads as **engaged** — parse failure
+  fails toward stopped.
+- The latch is broker-state, not robot-state: a broker restart forgets an
+  engaged e-stop (retained store is in-memory on the ESP32 hub). That is the
+  intended shape — a hub power-cycle is a room reset, and every drive is
+  still individually bounded by the self-expiry floor either way.
+
+Scoping: **read for everyone, write for the professor.** Anonymous included —
+the read-only fleet view must show the engaged banner. On the Pi this is ACL
+(`pi/mosquitto-acl.example.conf`); the ESP32 hub has no per-topic ACL, so
+there write-restraint is convention, like the rest of its scoping.
 
 ## Discovery & isolation — how a client reaches *either* hub
 

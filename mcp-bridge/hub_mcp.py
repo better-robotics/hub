@@ -137,12 +137,13 @@ def _clean(d: dict) -> dict:
     return {k: v for k, v in d.items() if not k.startswith("_")}
 
 
-def _publish(topic: str, body: dict, properties: Properties | None = None) -> None:
+def _publish(topic: str, body: dict, properties: Properties | None = None,
+             *, qos: int = 0, retain: bool = False) -> None:
     if not _client.is_connected():
         raise RuntimeError(
             f"not connected to the hub at {HUB_HOST}:{HUB_PORT} — are you on its Wi-Fi? "
             "(the connection keeps retrying in the background; try again in a few seconds)")
-    info = _client.publish(topic, json.dumps(body), qos=0, properties=properties)
+    info = _client.publish(topic, json.dumps(body), qos=qos, retain=retain, properties=properties)
     info.wait_for_publish(timeout=2.0)
 
 
@@ -168,10 +169,26 @@ def drive(robot_id: str, left_motor: int, right_motor: int, duration_ms: int = 4
 
 @mcp.tool()
 def stop(robot_id: str) -> str:
-    """Immediately halt a rover (zero PWM, zero duration). Publishes robots/<id>/pwm."""
+    """Immediately halt a rover (zero PWM, zero duration). Publishes robots/<id>/pwm.
+    Transient and per-rover — for a room-wide halt that STAYS engaged, use estop()."""
     _publish(f"robots/{robot_id}/pwm",
              {"timestamp": time.time(), "left_motor": 0, "right_motor": 0, "duration_ms": 0})
     return f"stop {robot_id}"
+
+
+@mcp.tool()
+def estop(engaged: bool = True, reason: str = "") -> str:
+    """Fleet-wide EMERGENCY STOP latch (CONTRACT.md § Fleet e-stop). engaged=True
+    halts every rover on the hub now and makes them refuse all drive commands
+    until estop(engaged=False) clears it. Published RETAINED on fleet/estop, so
+    a rover that reboots or reconnects mid-emergency latches anyway. Needs the
+    professor credential (the only fleet/estop write grant in the Pi ACL)."""
+    body: dict = {"timestamp": time.time(), "engaged": engaged, "by": HUB_USER}
+    if reason:
+        body["reason"] = reason
+    _publish("fleet/estop", body, qos=1, retain=True)
+    return ("E-STOP ENGAGED — fleet halted and latched (clear with estop(engaged=False))"
+            if engaged else "e-stop cleared — fleet released")
 
 
 @mcp.tool()

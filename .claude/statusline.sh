@@ -1,5 +1,5 @@
 #!/bin/bash
-# Hub liveness + live fleet count — the two things the built-in footer can't show.
+# Global statusline (dir · model · branch) + hub liveness + live fleet count.
 #
 # Target: the broker IS the hub, and on the hub's AP the DHCP gateway is the hub
 # (the same discovery the rovers use), so default to the gateway unless HUB_HOST
@@ -14,6 +14,12 @@
 #
 # Clickable: the dashboard URL is printed as plain text; terminals auto-linkify
 # it (cmd/ctrl-click) — more robust than an OSC-8 escape, which some hosts strip.
+
+# Base segments (dir · model · branch · reader) come from the global statusline —
+# composed, not re-implemented, so the two never drift. Same stdin JSON both ways.
+input="$(cat)"
+base="$(printf '%s' "$input" | node "$HOME/.claude/statusline.mjs" 2>/dev/null)"
+[ -n "$base" ] && printf '%s · ' "$base"
 
 host="${HUB_HOST:-$(route -n get default 2>/dev/null | awk '/gateway:/{print $2}')}"
 [ -z "$host" ] && host="hub.local"

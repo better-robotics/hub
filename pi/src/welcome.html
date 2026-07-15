@@ -49,6 +49,10 @@
   .s { color: var(--ink-muted); font-size: 13px; }
   /* Base control = the neutral tile; tiers layer on. */
   button, .btn {
+    /* inline-flex + gap: centres label (and any icon) on both axes. Block
+       layout doesn't centre vertically, so .btn's text sat above centre once
+       pointer:coarse raised min-height to 44px — i.e. on every phone. */
+    display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
     cursor: pointer; font: inherit; font-size: var(--fs-body); font-weight: 600;
     min-height: var(--ctrl-h); padding: .4rem .8rem;
     border-radius: var(--radius); border: .5px solid var(--border);
@@ -57,7 +61,7 @@
   }
   button:hover, .btn:hover { filter: brightness(1.25); }
   button:active, .btn:active { transform: scale(.97); }
-  .btn { display: block; width: 100%; text-align: center; text-decoration: none; margin-top: .9rem; }
+  .btn { display: flex; width: 100%; text-align: center; text-decoration: none; margin-top: .9rem; }
   .btn-primary { color: var(--accent-ink); background: var(--accent); border-color: transparent; }
   :focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
   @media (pointer: coarse) { button, .btn { min-height: var(--tap); } }

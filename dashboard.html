@@ -62,6 +62,7 @@
       --fs-micro: 0.72rem;       /* card corner chips */
       --fs-small: 0.78rem;       /* topbar chips, log controls */
       --fs-body: 0.85rem;        /* the panel beat: controls, hints, lists */
+      --fs-glyph: 1.1rem;        /* bare-glyph controls (the D-pad arrows) */
       --fs-title: 1.05rem;       /* card titles */
       --shadow-card: 0 0.5px 0 rgba(255,255,255,0.06) inset,
                      0 1px 2px rgba(0,0,0,0.4), 0 10px 30px -12px rgba(0,0,0,0.6);
@@ -422,13 +423,13 @@
     }
     .dpad button {
       border: 0.5px solid var(--border-default); background: var(--inset); color: var(--ink);
-      border-radius: var(--radius); font-size: 1.1rem; cursor: pointer; touch-action: none;
+      border-radius: var(--radius); font-size: var(--fs-glyph); cursor: pointer; touch-action: none;
       display: flex; align-items: center; justify-content: center; transition: background 0.1s ease, transform 0.06s ease;
     }
     .dpad button:active, .dpad button.pressed { background: var(--accent); color: var(--accent-ink); }
     .dpad .up    { grid-column: 2; grid-row: 1; }
     .dpad .left  { grid-column: 1; grid-row: 2; }
-    .dpad .stop  { grid-column: 2; grid-row: 2; font-size: 0.9rem; color: var(--ink-muted); }
+    .dpad .stop  { grid-column: 2; grid-row: 2; font-size: var(--fs-body); color: var(--ink-muted); }
     .dpad .right { grid-column: 3; grid-row: 2; }
     .dpad .down  { grid-column: 2; grid-row: 3; }
     #motor-readout, #dpad-readout {
@@ -588,7 +589,14 @@
       #qr-print .qr-print-ssid { font-size: 5.5pt; font-weight: 700; margin: 0.02in 0 0; }
       #qr-print .qr-print-hint { display: none; }
     }
-    #modal-body .assign-sheet { padding: 1rem 1.25rem 1.25rem; }
+    /* The modal body pads its own content. It used to require every callsite
+       to remember `.assign-sheet`, and openDrive didn't: the drive panel
+       mounted flush to the card edge (measured 0.5px) while the header sat at
+       16.5px — the "missing margins" in that sheet. openModal always
+       replaceChildren()s a single direct child, so `>` catches every callsite,
+       including the next one. Full-bleed content opts out BY NAME below. */
+    #modal-body > * { padding: 1rem 1.25rem 1.25rem; }
+    #modal-body > img.cam-full, #modal-body > iframe.cfg-frame { padding: 0; }
     /* Chip popover — the menu-bar-extra pattern: chrome-invoked controls answer
        AT the corner they were invoked from (account menu, Wi-Fi list), keeping
        spatial continuity. The centered modal stays reserved for deep content

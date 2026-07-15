@@ -335,10 +335,16 @@
        (see the click handler). Accent-tinted so it reads as that row's
        continuation rather than as another network; #id beats `.list-group > *`
        so it keeps its own fill. */
-    #wifi-join { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
-      padding: 0.6rem 0.9rem; background: var(--accent-soft) !important; }
-    #wifi-join-ssid { font-size: var(--fs-body); min-width: 0; overflow-wrap: anywhere; }
-    #wifi-pass { flex: 1 1 9rem; min-width: 0; }
+    /* Grid, not a wrapping flex row: the SSID owns its own line and the
+       input+button share the next one, so a long name can't push Connect onto
+       a ragged third line (WhiteSky-Beckon did exactly that). An open network
+       hides the input, and Connect simply takes the 1fr track — full-width,
+       which is the right emphasis when it's the only control. */
+    #wifi-join { display: grid; grid-template-columns: 1fr auto; gap: 0.5rem;
+      align-items: center; padding: 0.6rem 0.9rem; background: var(--accent-soft) !important; }
+    #wifi-join-ssid { grid-column: 1 / -1; font-size: var(--fs-body);
+      min-width: 0; overflow-wrap: anywhere; }
+    #wifi-pass { min-width: 0; }
     /* Quiet footer actions under the picker — Rescan/Share/Forget are all
        "rarely, deliberately", so none of them earns a filled button. */
     .wifi-foot { display: flex; flex-wrap: wrap; gap: 0.9rem; font-size: var(--fs-body); }

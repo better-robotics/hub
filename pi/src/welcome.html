@@ -20,16 +20,16 @@
   h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
   h1 small { font-weight: 400; opacity: .6; }
   p { margin: .75rem 0; }
-  button {
-    font: inherit; font-weight: 600; color: inherit;
-    min-height: 44px; padding: .7rem 2rem; margin-top: .5rem;
+  .btn {
+    display: block; width: 100%; box-sizing: border-box; text-align: center;
+    font: inherit; font-weight: 600; color: inherit; text-decoration: none;
+    min-height: 44px; padding: .7rem 2rem; margin-top: .75rem;
     border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
     border-radius: 12px; background: color-mix(in srgb, CanvasText 8%, transparent);
     cursor: pointer;
   }
   #after { display: none; }
-  #after strong { white-space: nowrap; }
-  .quiet { font-size: .85rem; opacity: .65; }
+  .quiet { font-size: .85rem; opacity: .65; margin-top: 1rem; }
   a { color: inherit; }
 </style>
 </head>
@@ -38,15 +38,13 @@
   <h1>BetterRobotics <small>hub Wi-Fi</small></h1>
   <div id="before">
     <p>You’re connected to the classroom robotics hub.</p>
-    <button id="go">Accept &amp; continue</button>
+    <button class="btn" id="go">Accept &amp; continue</button>
   </div>
   <div id="after" role="status">
-    <p>✓ Accepted.</p>
-    <p>Tap <strong>Done</strong> above, then open<br>
-       <strong>hub.local</strong> in your browser.</p>
-    <p class="quiet">No Done button? Open <a href="http://10.42.0.1/">the
-       dashboard right here</a> — but sign-ins made in this window won’t be
-       remembered by your browser.</p>
+    <p>You’re set.</p>
+    <p class="quiet">Open the dashboard in your regular browser, not this
+       pop-up — this pop-up forgets sign-ins when it closes.</p>
+    <a class="btn" href="http://10.42.0.1/" target="_blank" rel="noopener">Open the dashboard</a>
   </div>
 </main>
 <script>

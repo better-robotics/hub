@@ -362,7 +362,15 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
             let req = String::from_utf8_lossy(&buf[..n]);
             let mut words = req.split_whitespace();
             let method = words.next().unwrap_or("GET");
-            let path = words.next().unwrap_or("/");
+            let raw_path = words.next().unwrap_or("/");
+            // Strip the query string before any route match below — every
+            // arm compares against the bare path (e.g. "/welcome"), and
+            // welcome.html's Accept button navigates to "/welcome?done=1"
+            // (the ESP portal's fix, ported here: a captive sheet only
+            // re-checks captivity on a full-page load, not a DOM swap) —
+            // without this the query string fell through every arm to the
+            // 404 handler, live-observed on macOS's CNA sheet.
+            let path = raw_path.split('?').next().unwrap_or(raw_path);
             // CORS/PNA preflight: a PUBLIC https page (the setup wizard on
             // github.io) fetching this LOCAL server triggers Chrome's Private
             // Network Access check — an OPTIONS preflight that must be

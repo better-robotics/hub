@@ -10,17 +10,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BetterRobotics</title>
 <style>
-  /* Shared HIG token system — values copied from the canonical dashboard.html
-     (hub@f005439 converged it with better-robotics.github.io + workbench), so
-     every BetterRobotics surface a student lands on reads as one product. */
+  /* Same encoded vocabulary as the dashboard this page hands off to, and as
+     robot's portal pages (wifi_portal.c HEAD): the base <button> IS the
+     neutral tile so a classless button can't render UA-grey, tiers are
+     classes, sizes come from tokens only, --tap applies under a finger only.
+     Values copied from canonical hub/dashboard.html (hub@f005439 converged
+     them with better-robotics.github.io + workbench) — keep in sync on touch.
+     One page, so no .list-group/.stack here; add them from the dashboard if
+     this ever grows a list. */
   :root {
     color-scheme: dark;
-    --bg: #1a1d20; --surface: #212529; --ink: #e9ecef; --ink-muted: #adb5bd;
+    --bg: #1a1d20; --surface: #212529; --inset: #2a3037;
+    --ink: #e9ecef; --ink-muted: #adb5bd; --ink-faint: #8b929b;
     --border: rgba(255,255,255,0.10);
-    --accent: #00539B; --accent-ink: #ffffff;
-    --radius-lg: 14px; --radius: 8px; --tap: 44px;
+    --accent: #00539B; --accent-ink: #ffffff; --focus: #4aa3d6;
+    --radius-lg: 14px; --radius: 8px; --tap: 44px; --ctrl-h: 2.2rem;
+    --fs-body: 0.85rem;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Helvetica Neue", Arial, sans-serif;
@@ -39,14 +47,20 @@
   }
   .card h2 { font-size: 20px; font-weight: 700; letter-spacing: -.015em; margin: 0 0 6px; }
   .s { color: var(--ink-muted); font-size: 13px; }
-  .btn {
-    display: block; width: 100%; box-sizing: border-box; text-align: center;
-    font: inherit; font-weight: 600; color: var(--accent-ink); text-decoration: none;
-    min-height: var(--tap); padding: .75rem .85rem; margin-top: .9rem;
-    border: 0; border-radius: var(--radius); background: var(--accent);
-    cursor: pointer;
+  /* Base control = the neutral tile; tiers layer on. */
+  button, .btn {
+    cursor: pointer; font: inherit; font-size: var(--fs-body); font-weight: 600;
+    min-height: var(--ctrl-h); padding: .4rem .8rem;
+    border-radius: var(--radius); border: .5px solid var(--border);
+    color: var(--ink); background: var(--inset);
+    transition: filter .15s ease, transform .08s ease;
   }
-  #after { display: none; }
+  button:hover, .btn:hover { filter: brightness(1.25); }
+  button:active, .btn:active { transform: scale(.97); }
+  .btn { display: block; width: 100%; text-align: center; text-decoration: none; margin-top: .9rem; }
+  .btn-primary { color: var(--accent-ink); background: var(--accent); border-color: transparent; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  @media (pointer: coarse) { button, .btn { min-height: var(--tap); } }
 </style>
 </head>
 <body>
@@ -55,13 +69,13 @@
   <div class="card" id="before">
     <h2>Welcome</h2>
     <p class="s">You&rsquo;re connected to the classroom robotics hub.</p>
-    <button class="btn" id="go">Accept &amp; continue</button>
+    <button class="btn btn-primary" id="go">Accept &amp; continue</button>
   </div>
-  <div class="card" id="after" role="status">
+  <div class="card" id="after" role="status" hidden>
     <h2>You&rsquo;re set</h2>
     <p class="s">Open the dashboard in your regular browser, not this
        pop-up &#8212; this pop-up forgets sign-ins when it closes.</p>
-    <a class="btn" href="http://10.42.0.1/" target="_blank" rel="noopener">Open the dashboard</a>
+    <a class="btn btn-primary" href="http://10.42.0.1/" target="_blank" rel="noopener">Open the dashboard</a>
   </div>
 </main>
 <script>
@@ -74,8 +88,8 @@
     location.href = '/welcome?done=1';
   });
   if (location.search.indexOf('done=1') >= 0) {
-    document.getElementById('before').style.display = 'none';
-    document.getElementById('after').style.display = 'block';
+    document.getElementById('before').hidden = true;
+    document.getElementById('after').hidden = false;
   }
 </script>
 </body>

@@ -134,3 +134,13 @@ staged data was too polite.
   the app's own code).
 - After any dashboard change: `robot/tools/sync-dashboard.sh` (vendored copy),
   and the Pi only picks it up on the next hubd build (include_str!).
+- `robot`'s portal pages are C string literals (`wifi_portal.c`: HEAD, PAGE_*,
+  LANDING_*, WELCOME_*). To check them, extract and `node --check` — but
+  **strip C comments FIRST**: a non-greedy match to the terminating `;\n` stops
+  at any `;` ending a comment line, silently truncating the page and "proving"
+  a field is missing that is right there (hit 2026-07-16). Same family as the
+  `<script>`-inside-`<style>`-comment trap above. Check each `<script>` block
+  SEPARATELY too — PAGE has two, and concatenating them reports a false syntax
+  error. And `wifi_portal_start`'s `max_uri_handlers` is a COUNTED budget with
+  its arithmetic in the comment above it: adding a route without bumping it
+  costs the last handler registered, at runtime, silently.

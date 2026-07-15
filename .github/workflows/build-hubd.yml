@@ -29,7 +29,23 @@ jobs:
           key: arm64
       - name: Build hubd (static aarch64)
         run: |
-          sudo apt-get update && sudo apt-get install -y musl-tools
+          # ports.ubuntu.com (arm64's apt mirror — arm64 isn't a primary arch,
+          # so even this native-arm64 runner's own packages route through it)
+          # has known recurring outages on GitHub-hosted runners, minutes to
+          # tens of minutes at a time (github.com/orgs/community/discussions/53201,
+          # first hit here 2026-07-15). Retry covers the common short blip;
+          # a sustained outage still fails loudly rather than hanging forever.
+          n=0
+          until [ "$n" -ge 5 ]; do
+            sudo apt-get update && sudo apt-get install -y musl-tools && break
+            n=$((n + 1))
+            echo "apt attempt $n/5 failed — retrying in 30s…"
+            sleep 30
+          done
+          if [ "$n" -ge 5 ]; then
+            echo "::error::apt-get install musl-tools failed after 5 attempts — ports.ubuntu.com outage likely still ongoing, see discussions/53201"
+            exit 1
+          fi
           rustup target add aarch64-unknown-linux-musl
           cargo build --release --target aarch64-unknown-linux-musl --bin hubd
       - uses: actions/upload-artifact@v4

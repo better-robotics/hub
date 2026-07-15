@@ -350,6 +350,59 @@ fn foreign_host(req: &str) -> bool {
         || host == "10.55.0.1")
 }
 
+/// Read one HTTP request off `sock`, looping until the whole thing has
+/// actually arrived. A single `sock.read()` returns as soon as ANY data is
+/// available — headers and a POST body routinely land in separate TCP
+/// segments, so one read can return the headers alone. That silently
+/// truncated `/wifi/connect`'s body to empty, which parsed as invalid JSON
+/// and got misreported as "missing ssid" even though the client sent a
+/// complete request (live-observed 2026-07-14: a phone tapped Connect on a
+/// correctly-selected network and got exactly that error). Keeps reading
+/// until the `\r\n\r\n` header terminator is seen AND, if a Content-Length
+/// header named a body, that many bytes past it have arrived too — capped
+/// well above anything this server's own POST bodies carry (SSIDs,
+/// passwords, small JSON), so a malformed or hostile Content-Length can't
+/// hang the connection reading forever.
+async fn read_request(sock: &mut tokio::net::TcpStream) -> Vec<u8> {
+    const MAX_REQUEST: usize = 16 * 1024;
+    let mut buf = Vec::with_capacity(1024);
+    let mut chunk = [0u8; 1024];
+    loop {
+        let Ok(n) = sock.read(&mut chunk).await else { break };
+        if n == 0 {
+            break; // peer closed — whatever arrived is all there is
+        }
+        buf.extend_from_slice(&chunk[..n]);
+        let Some(header_end) = find_bytes(&buf, b"\r\n\r\n").map(|i| i + 4) else {
+            if buf.len() >= MAX_REQUEST {
+                break;
+            }
+            continue;
+        };
+        let need = content_length(&buf[..header_end]);
+        if buf.len() >= header_end + need || buf.len() >= MAX_REQUEST {
+            break;
+        }
+    }
+    buf
+}
+
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|w| w == needle)
+}
+
+/// Case-insensitive `Content-Length` header scan over the raw header block
+/// (bytes up to and including the `\r\n\r\n` terminator). 0 if absent — a GET
+/// or a bodyless POST (`/wifi/forget`, `/captive/ack`) needs no more bytes.
+fn content_length(headers: &[u8]) -> usize {
+    let headers = String::from_utf8_lossy(headers);
+    headers
+        .lines()
+        .find_map(|l| l.split_once(':').filter(|(k, _)| k.eq_ignore_ascii_case("content-length")))
+        .and_then(|(_, v)| v.trim().parse().ok())
+        .unwrap_or(0)
+}
+
 async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, ssid: String) {
     loop {
         let Ok((mut sock, peer)) = listener.accept().await else { continue };
@@ -357,9 +410,8 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
         let locator = locator.clone();
         let ssid = ssid.clone();
         tokio::spawn(async move {
-            let mut buf = [0u8; 1024];
-            let n = sock.read(&mut buf).await.unwrap_or(0);
-            let req = String::from_utf8_lossy(&buf[..n]);
+            let buf = read_request(&mut sock).await;
+            let req = String::from_utf8_lossy(&buf);
             let mut words = req.split_whitespace();
             let method = words.next().unwrap_or("GET");
             let raw_path = words.next().unwrap_or("/");

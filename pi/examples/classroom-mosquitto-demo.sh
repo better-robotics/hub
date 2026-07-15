@@ -25,7 +25,7 @@ PORT=18830  # non-default: don't collide with a real broker on this machine
 
 # 0. passwd file — mosquitto_passwd salts+hashes; -c on the first call only,
 # so this must be a fresh file each run. Throwaway demo secret, gitignored,
-# matching classroom.example.json5's placeholder value.
+# matching install.sh's placeholder seed.
 rm -f mosquitto-passwd.example
 mosquitto_passwd -b -c mosquitto-passwd.example professor change-me
 chmod 0700 mosquitto-passwd.example mosquitto-acl.example.conf

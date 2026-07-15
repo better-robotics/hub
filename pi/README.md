@@ -61,7 +61,6 @@ pi/
 │       └── hubd.rs          dashboard/HTTP chassis + Wi-Fi setup — no MQTT client
 ├── mosquitto.example.conf       broker config: raw MQTT (1883) + WebSocket (9001)
 ├── mosquitto-acl.example.conf   classroom scoping, enforced by the broker
-├── classroom.example.json5      the scoping intent these files implement
 ├── examples/                    classroom-mosquitto-demo.sh proves the ACL live
 ├── deploy/                  systemd units + install — the appliance's planes
 ├── image/                   CI-built Pi image: hubd + Mosquitto baked into the rootfs

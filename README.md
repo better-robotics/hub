@@ -92,9 +92,9 @@ wall between the page, the broker, and the rovers).
 to *hub* on its `rover.local` settings page, join its Wi-Fi, open
 `http://hub.local`.
 
-A placeholder `professor` credential ships in `pi/classroom.example.json5` —
-the only login the classroom has — change it before a real class
-(`mosquitto_passwd`).
+`pi/deploy/install.sh` seeds a placeholder `professor` credential into
+`/etc/mosquitto/hub-passwd` — the only login the classroom has — change it
+before a real class (`mosquitto_passwd`).
 
 ## The other repos
 

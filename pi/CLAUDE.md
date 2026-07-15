@@ -145,10 +145,19 @@ fresh board a manual provisioning step. `cmd/config` now only assigns a
 board's name (`{"name":"scout"}`, no password field) — a name is an address,
 never a credential.
 
-`classroom.example.json5` shrank to one line (`{ professor: { username:
-"professor", password: "change-me" } }`) — still not loaded by any binary,
-just the human-readable intent the ACL/passwd files implement by hand; keep
-all three in sync on touch.
+**Where the professor credential actually lives** (deleted
+`classroom.example.json5` 2026-07-16 — it described this value while being
+loaded by nothing, so it was a third place to forget, and its own header had
+admitted it stopped being runtime config on 2026-07-08; the rationale it
+carried already lives in `mosquitto-acl.example.conf`'s header):
+
+- `deploy/install.sh` seeds `/etc/mosquitto/hub-passwd` with a placeholder,
+  **only if absent** — re-running install never clobbers a rotated one.
+- `/etc/mosquitto/hub-passwd` is the live truth (salted+hashed).
+- **The ESP32 hub keeps its own**: `PROFESSOR_PASS` in `robot`'s
+  `hub_role.c`, compiled in. Two hubs, two independent definitions of one
+  secret — rotate the Pi and the ESP hub role still admits the old one. That
+  split is real and unfixed; don't let a doc imply otherwise.
 
 ## Hub-AP mode (live on the classroom Pi since 2026-07-04)
 Not transport-specific — this is Pi/Wi-Fi-radio topology: wlan0 AP `hub-XXXX`

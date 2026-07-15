@@ -80,7 +80,7 @@ own Wi-Fi is the real boundary, not a login — every client, robot or browser,
 authenticated or not, gets full read+write on `robots/#` and `pair/#`. The
 only login is **professor**, and it only gates one thing: writing
 `fleet/estop` (engaging/clearing the room-wide emergency stop). `install.sh`
-seeds a **placeholder** professor password matching `classroom.example.json5`
+seeds a **placeholder** professor password
 — **change it before a real class**, the one credential there is to rotate:
 
 ```sh

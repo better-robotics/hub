@@ -20,7 +20,7 @@ file when a device first publishes it):
 
 Classroom *scoping*
 is not a protocol channel but the broker's ACL identity model
-(`pi/mosquitto-acl.example.conf` + `pi/classroom.example.json5`). The Zenoh
+(`pi/mosquitto-acl.example.conf`). The Zenoh
 column below is the evaluation baseline (`better-robotics/hub-zenoh`), kept for
 comparison.
 

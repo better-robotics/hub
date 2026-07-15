@@ -1096,17 +1096,22 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         }
       });
 
-      // ESP32-only for now (POST /wifi/forget — Pi hubd has no equivalent yet);
-      // a 404 there just falls into the generic failure message below.
       $("wifi-forget").addEventListener("click", async () => {
         const msg = $("wifi-msg");
         msg.textContent = "Forgetting this network…";
         try {
           const res = await fetch("/wifi/forget", { method: "POST" });
-          if (!res.ok) throw new Error();
-          msg.textContent = "Forgotten — the board is restarting as a fresh island.";
+          const j = await res.json().catch(() => ({}));
+          if (!res.ok || j.ok === false) throw new Error(j.error || "");
+          // True on both backends without branching on which one this is: the
+          // ESP32 hub reboots to apply (config-apply, same as /wifi/connect),
+          // the Pi drops the NM profile live — either way the next status
+          // poll below is what actually shows the change landed.
+          msg.textContent = "Forgotten.";
           setTimeout(async () => { const s = await getStatus(); if (s) renderStatus(s); }, 3000);
-        } catch { msg.textContent = "Couldn't forget this network — try again."; }
+        } catch (e) {
+          msg.textContent = e.message ? `Couldn't forget: ${e.message}` : "Couldn't forget this network — try again.";
+        }
       });
 
       // Join-QR: the network a phone should JOIN is this board's own AP, and a

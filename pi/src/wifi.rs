@@ -194,6 +194,38 @@ pub async fn connect(ssid: &str, password: &str) -> Result<(), String> {
     }
 }
 
+/// Erase the stored uplink credential(s) — the Pi's side of the same
+/// "Forget this network" contract the ESP32 hub already answers
+/// (rover_config_clear_wifi / POST /wifi/forget). Deletes every non-AP
+/// Wi-Fi connection profile, active or not: realistically there's ever
+/// exactly one (the venue/home network set from this panel), but
+/// enumerating rather than assuming a fixed name reuses the same
+/// discriminator `uplink_ssid`/`uplink_device` already rely on, not a new
+/// piece of state to track. `nmcli connection delete` deactivates an
+/// active profile as part of deleting it, so no separate disconnect step
+/// is needed.
+pub async fn forget() -> Result<(), String> {
+    let mut deleted = 0;
+    for line in nmcli_out(&["-t", "-f", "NAME,TYPE", "connection", "show"]).await.lines() {
+        let f = split_nmcli(line);
+        if f.len() < 2 || f[1] != "802-11-wireless" {
+            continue;
+        }
+        if is_ap_profile(&f[0]).await {
+            continue;
+        }
+        match tokio::process::Command::new("nmcli").args(["connection", "delete", &f[0]]).output().await {
+            Ok(o) if o.status.success() => deleted += 1,
+            Ok(o) => return Err(String::from_utf8_lossy(&o.stderr).trim().to_string()),
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    if deleted == 0 {
+        return Err("no stored uplink to forget".into());
+    }
+    Ok(())
+}
+
 /// The venue network the uplink leg is currently joined to (the active
 /// non-AP wireless connection), or None if not joined. Lets the panel show
 /// "currently on <ssid>" and confirm a join landed.

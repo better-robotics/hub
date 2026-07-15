@@ -412,6 +412,19 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                 ),
                 ("GET", "/wifi/status") => ("200 OK", "application/json", wifi_status_json(&uplink).await),
                 ("POST", "/wifi/connect") => wifi_connect_json(post_body).await,
+                // "Forget this network" (dashboard.html's Set-up-Wi-Fi panel)
+                // — the Pi side of the same contract the ESP32 hub already
+                // answers. The panel only checks res.ok, so the JSON body
+                // shape matches this file's other endpoints ({"ok":...}),
+                // not the ESP32's plain-text "forgotten".
+                ("POST", "/wifi/forget") => match hub::wifi::forget().await {
+                    Ok(()) => ("200 OK", "application/json", r#"{"ok":true}"#.into()),
+                    Err(e) => (
+                        "200 OK",
+                        "application/json",
+                        serde_json::json!({ "ok": false, "error": e }).to_string(),
+                    ),
+                },
                 // Captive Portal API (RFC 8908), pointed at by DHCP option 114
                 // (RFC 8910, dnsmasq drop-in in the image). `captive:false` is
                 // the whole point: nothing is blocked, we're only advertising

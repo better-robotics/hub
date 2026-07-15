@@ -145,6 +145,16 @@ fresh board a manual provisioning step. `cmd/config` now only assigns a
 board's name (`{"name":"scout"}`, no password field) — a name is an address,
 never a credential.
 
+**Diagnostic: `allow_anonymous true` means an anonymous CONNECT cannot be
+refused.** So a CONNACK *not authorized* proves the client **sent a username**
+— which, for a rover, means firmware older than 2026-07-13 (`rover_role.c`
+still passing `.credentials` from NVS: its assigned name, or the `unassigned`
+pool). `professor` is the only entry in `hub-passwd`, so the broker rejects an
+identity it was never told about. Nothing is wrong with the broker or the ACL:
+reflash the board. Expect this from any board that sat out the migration —
+the broker migrated in one commit, firmware migrates one flash at a time.
+(Scar 2026-07-15: a supermini's rejection was chased as an ACL bug for hours.)
+
 **Where the professor credential actually lives** (deleted
 `classroom.example.json5` 2026-07-16 — it described this value while being
 loaded by nothing, so it was a third place to forget, and its own header had
@@ -154,10 +164,16 @@ carried already lives in `mosquitto-acl.example.conf`'s header):
 - `deploy/install.sh` seeds `/etc/mosquitto/hub-passwd` with a placeholder,
   **only if absent** — re-running install never clobbers a rotated one.
 - `/etc/mosquitto/hub-passwd` is the live truth (salted+hashed).
-- **The ESP32 hub keeps its own**: `PROFESSOR_PASS` in `robot`'s
-  `hub_role.c`, compiled in. Two hubs, two independent definitions of one
-  secret — rotate the Pi and the ESP hub role still admits the old one. That
-  split is real and unfixed; don't let a doc imply otherwise.
+- **The ESP32 hub keeps its own**: `robot`'s `hub_role.c` `connect_cb` reads
+  NVS per-connect (`rover_config_load_professor_pass`), falling back to the
+  compile-time `PROFESSOR_PASS` when unset; set it via the portal's
+  `POST /wifi/professor`, no reflash or reboot. Two hubs, two independent
+  definitions of one secret — rotate the Pi and the ESP hub still admits its
+  own. **The split is structural, not a TODO**: there is no shared store (the
+  two hubs are alternatives, rarely on one network), and the values aren't
+  even mirror-able — the Pi keeps a PBKDF2 hash and never holds the plaintext
+  again, while the ESP `strcmp`s plaintext. Don't "fix" it by copying a value;
+  rotate each hub at its own surface.
 
 ## Hub-AP mode (live on the classroom Pi since 2026-07-04)
 Not transport-specific — this is Pi/Wi-Fi-radio topology: wlan0 AP `hub-XXXX`

@@ -32,21 +32,44 @@ copy. A breaking contract change now means: land it here, then resync in `robot`
 ## Dashboard UI system
 `dashboard.html` is three layers, strictest first: **web platform floor**
 (WCAG/ARIA — focus rings, live regions, no color-alone encoding) → **Apple HIG
-house layer** (44pt effective tap targets — chip-scale controls carry an
-invisible `::after` hit extension; safe areas; reduced motion; the corner
-popover adapts toward a sheet on compact widths) → **the file's own
-vocabulary**: tokens at the top of `<style>` (radius scale, `--tap`, ink ramp,
-ONE warn hue = "act here" — an unassigned board carries it (corner chip +
-Assign button); amber recedes to plain ink as boards are given a name), and composable
-patterns — `.gate-row` (input+button, stacks on phones), `.btn-tile` /
-primary-by-id / `.link-btn` button tiers, `.cchip` corner chips (the card
-corner is the rover's topbar), the modal sheet, `#chip-pop` corner popover,
-the 0.85rem panel beat.
+house layer** (44pt tap targets *under `pointer:coarse` only* — a mouse never
+needed them, and forcing 44px into the base rule is what made the corner
+popover tower over its own chips; chip-scale controls stay small and reach
+44pt via an invisible `::after` hit extension; safe areas; reduced motion; the
+corner popover adapts toward a sheet on compact widths) → **the file's own
+vocabulary**, which is *encoded, not described* (2026-07-16):
+
+- **Tokens are the only source of sizes.** Radius scale (`--radius-inner`
+  exists so a nested corner can't out-round its container), `--ctrl-h` (the
+  one control height), the `--fs-*` type scale, ink ramp. A literal px/rem in
+  a control is a bug — the audit greps for it.
+- **The base `<button>` IS the neutral tile**, and tiers are classes on top
+  (`.btn-primary` / `.btn-accent` / `.btn-danger` / `.link-btn`). So a
+  classless button is in-system by construction. It was previously
+  primary-by-id-list, which no new button could join — and `#estop-clear`,
+  joining nothing, shipped as a raw macOS button.
+- **Containers own spacing, not callsites**: `.stack` (vertical rhythm — the
+  JS-composed popovers each used to wrap contents in a bare div, which eats
+  the parent's `gap` because `* { margin: 0 }` means nothing else supplies
+  it), `#modal-body > *` (padding; full-bleed opts out by name),
+  `.list-group` (the iOS grouped-inset list — ONE filled panel with hairline
+  separators, which the telemetry `dl` always was and the Wi-Fi picker
+  reimplemented as a wall of pills).
+- **ONE warn hue = "act here"**, carried by the identity chip alone: the chip
+  IS the Assign affordance in every state (tap who-it-is to change it). Amber
+  recedes to plain ink once a board is named.
+- `.gate-row`, `.cchip` corner chips (the card corner is the rover's topbar),
+  the modal sheet, `#chip-pop` corner popover, the `--fs-body` panel beat.
 
 **Compose, don't hand-roll.** Every shipped spacing/alignment defect so far
-was a new element skipping an existing pattern. Before shipping: run the
-layout regression sweeps in the `verify` skill (touching-pairs + horizontal
-overflow, at 320/390/768/1200, staged with hostile-length data).
+was a new element skipping an existing pattern — a review on 2026-07-16 found
+seven at once, all that same species, which is why the vocabulary moved from
+this paragraph into the CSS itself. Prose can't stop a classless button.
+Before shipping: run the `verify` skill's **control-vocabulary audit** (no
+UA-default controls, token-only sizes, `[hidden]` still hides) and the layout
+regression sweeps (touching-pairs + horizontal overflow, at 320/390/768/1200,
+staged with hostile-length data, popovers *open* — the sweep was pointed away
+from `#chip-pop` for months, which is exactly how they all got `gap: 0`).
 
 ## Where impl-specific context lives
 - `pi/CLAUDE.md` — the deep Pi context (broker deploy, AP/NAT, device-served

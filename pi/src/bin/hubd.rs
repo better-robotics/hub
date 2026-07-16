@@ -335,6 +335,64 @@ async fn poll_uplink(uplink: Uplink) {
     }
 }
 
+/// Board addresses the HUB OBSERVED, for the jobs that must not trust a board's
+/// word about where it lives.
+///
+/// A rover's `sys` beacon carries an `ip` field, and the ACL grants `robots/#`
+/// to every client with no credential (`mosquitto-acl.example.conf`), on an open
+/// AP. So `sys.ip` is chosen by whoever published the beacon — fine for showing
+/// a fact on a card, disqualifying for anything the dashboard sends a secret to:
+/// a fake rover pointing at a laptop would collect the instructor password from
+/// the next person who pressed Update.
+///
+/// dnsmasq's lease file is the counter-fact. It is written by the DHCP server
+/// that handed the address out, and a board's id derives from the very MAC
+/// holding the lease — `robot`'s `rover_format_robot_id` is `rover-%02x%02x` of
+/// the last two bytes of its STA MAC, which is the MAC that joins this AP. A
+/// beacon can claim any `ip`; it cannot make our own DHCP server agree.
+///
+/// Not proof of identity — MAC spoofing exists — but it costs an attacker a
+/// collision with the real board on our own L2 segment instead of one MQTT
+/// publish anyone on the AP can send.
+///
+/// Every `dnsmasq-*.leases` is merged rather than reading the AP's by name:
+/// which radio is the AP is decided by DRIVER, and wlan0/wlan1 is a per-boot
+/// enumeration coin flip (see this directory's CLAUDE.md — an image once came up
+/// with the AP on the other radio). A filename would be right until it wasn't.
+fn vouched_boards() -> serde_json::Map<String, serde_json::Value> {
+    let mut out = serde_json::Map::new();
+    let dir = match std::fs::read_dir("/var/lib/NetworkManager") {
+        Ok(d) => d,
+        Err(_) => return out,
+    };
+    for e in dir.flatten() {
+        let name = e.file_name();
+        let name = name.to_string_lossy();
+        if !(name.starts_with("dnsmasq-") && name.ends_with(".leases")) {
+            continue;
+        }
+        let Ok(body) = std::fs::read_to_string(e.path()) else { continue };
+        for line in body.lines() {
+            // `<expiry> <mac> <ip> <hostname> <client-id>`
+            let mut f = line.split_whitespace();
+            let (Some(_expiry), Some(mac), Some(ip)) = (f.next(), f.next(), f.next()) else {
+                continue;
+            };
+            let octets: Vec<&str> = mac.split(':').collect();
+            if octets.len() != 6 {
+                continue;
+            }
+            // Lowercase to match the firmware's own %02x formatting exactly —
+            // dnsmasq writes lowercase today, and a case mismatch here would
+            // fail open (no vouched address → no Update button) rather than
+            // loudly, which is the kind of bug that gets found in a classroom.
+            let id = format!("rover-{}{}", octets[4].to_lowercase(), octets[5].to_lowercase());
+            out.insert(id, serde_json::Value::String(ip.to_string()));
+        }
+    }
+    out
+}
+
 fn fleet_json(uplink: &Uplink, locator: &str, ssid: &str) -> String {
     // `ssid`/`host` feed the dashboard's identity chip: which hub serves this
     // page (two hubs on the air render otherwise-identical dashboards).
@@ -344,6 +402,9 @@ fn fleet_json(uplink: &Uplink, locator: &str, ssid: &str) -> String {
     serde_json::json!({
         "uplink": *uplink.lock().unwrap(), "locator": locator,
         "ssid": ssid, "host": host,
+        // `boards` is the hub's own answer to "where does rover-xxxx live",
+        // as opposed to the beacon's. See vouched_boards.
+        "boards": vouched_boards(),
     })
     .to_string()
 }

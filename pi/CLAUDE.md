@@ -204,6 +204,14 @@ hardware boot). Scars:
   ch 6, kernel `chanspec failed (-52)`), and the run totaled ~47% AP-client loss
   with a 17.9 s worst gap. Control on the two-radio split: a full uplink
   disconnect+reconnect cost AP clients 3% loss / 0.42 s max gap. Two radios stay.
+- **AP power save is poison — pinned OFF** (2026-07-10, `3eb8e51`) — the
+  fallout of that same single-radio experiment, which left wlan0's power save
+  enabled (dmesg stamped it to the minute). Every ESP32 association then
+  flapped assoc→drop-before-DHCP for an hour while existing associations slowly
+  fell off — a radio that looks up and idle while nothing can stay joined.
+  `nmcli con modify hub-ap 802-11-wireless.powersave 2` + bounce recovered it:
+  all three boards rejoined within 100 s, self-healing onto the hub.
+  `hub-ap-setup.sh` pins it now, so a fresh card can't come up without it.
 - **Open AP for now**: ESP32-C3 WPA2 join fails against this AP (4-way
   handshake timeout; open joins in ~6 s). Interop unresolved — see
   `better-robotics/robot` CLAUDE.md.

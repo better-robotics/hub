@@ -245,6 +245,67 @@ pub async fn forget() -> Result<(), String> {
 /// The venue network the uplink leg is currently joined to (the active
 /// non-AP wireless connection), or None if not joined. Lets the panel show
 /// "currently on <ssid>" and confirm a join landed.
+/// One Wi-Fi interface: which radio, what it is for, and the address it holds.
+#[derive(serde::Serialize)]
+pub struct Iface {
+    pub dev: String,
+    /// "ap" (the classroom network this hub serves) or "uplink" (its way out).
+    pub role: &'static str,
+    pub ssid: String,
+    /// Dotted quad, or "" while the interface has no lease.
+    pub ip: String,
+}
+
+/// Every active Wi-Fi interface with its role and address — what the uplink
+/// popover shows.
+///
+/// This exists because the hub's own address is knowable from the hub and
+/// almost nowhere else. On the classroom AP you can always reach 10.42.0.1, and
+/// `hub.local` resolves; from anywhere else you need the STA leg's address, and
+/// the networks this hub joins are exactly the ones that make it unfindable —
+/// a venue LAN filters multicast (so mDNS is dead) and isolates clients (so
+/// scanning for it fails). Asking the hub, over the AP it always serves, is the
+/// one path that does not depend on the venue cooperating. (Wanted live
+/// 2026-07-16: the Pi sat on a building network on a different /24 with no mDNS,
+/// and its address had to be read off a lease table over ssh from somewhere
+/// else entirely.)
+///
+/// Role comes from the PROFILE's mode=ap, never from the interface name:
+/// wlan0/wlan1 is a per-boot enumeration coin flip between the builtin and the
+/// dongle, and an image once came up with the AP on the other radio (CLAUDE.md).
+pub async fn interfaces() -> Vec<Iface> {
+    let mut out = Vec::new();
+    let active = nmcli_out(&["-t", "-f", "NAME,TYPE,DEVICE", "connection", "show", "--active"]).await;
+    for line in active.lines() {
+        let f = split_nmcli(line);
+        if f.len() < 3 || f[1] != "802-11-wireless" {
+            continue;
+        }
+        let role = if is_ap_profile(&f[0]).await { "ap" } else { "uplink" };
+        let ssid = nmcli_out(&["-g", "802-11-wireless.ssid", "connection", "show", &f[0]])
+            .await
+            .trim()
+            .to_string();
+        // IP4.ADDRESS is "10.42.0.1/24" — the prefix is noise to a reader who
+        // wants something to type into a browser.
+        let ip = nmcli_out(&["-g", "IP4.ADDRESS", "device", "show", &f[2]])
+            .await
+            .lines()
+            .next()
+            .unwrap_or("")
+            .split('/')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        out.push(Iface { dev: f[2].clone(), role, ssid, ip });
+    }
+    // AP first: it is the address that always works, and the one a reader needs
+    // when the uplink's has stopped working.
+    out.sort_by_key(|i| i.role != "ap");
+    out
+}
+
 pub async fn uplink_ssid() -> Option<String> {
     let active = nmcli_out(&["-t", "-f", "NAME,TYPE", "connection", "show", "--active"]).await;
     for line in active.lines() {

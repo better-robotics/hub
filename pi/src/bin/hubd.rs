@@ -433,7 +433,15 @@ fn fleet_json(uplink: &Uplink, locator: &str, ssid: &str) -> String {
 /// and confirm a join landed.
 async fn wifi_status_json(uplink: &Uplink) -> String {
     let ssid = hub::wifi::uplink_ssid().await;
-    serde_json::json!({ "ssid": ssid, "uplink": *uplink.lock().unwrap() }).to_string()
+    serde_json::json!({
+        "ssid": ssid, "uplink": *uplink.lock().unwrap(),
+        // Every radio and the address it holds — see hub::wifi::interfaces. The
+        // hub is the only thing that reliably knows where the hub is: a venue
+        // LAN filters multicast and isolates clients, so mDNS and scanning both
+        // fail from off-network, while the AP at 10.42.0.1 always answers.
+        "ifaces": hub::wifi::interfaces().await,
+    })
+    .to_string()
 }
 
 /// `POST /wifi/connect` — body `{ssid, password}`. Joins on the uplink radio

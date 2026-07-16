@@ -27,6 +27,19 @@ recording because it *validates a direction the repo already adopted* (#4,
   product; it should read as a place students explore, not a troubleshooting
   closet. Per-topic message rates (e.g. `5/s`) are computable client-side from
   the stream already received — no broker introspection.
+  **Landed 2026-07-16, and it took the Topics tab with it.** There is no drawer:
+  Messages is a destination (`Fleet · Code · Messages`, Settings pinned below),
+  holding the tree *and* the traffic — picking an address in the tree drives the
+  log's filters, so "a topic is where a message goes" is the layout instead of an
+  inference across two rooms. The tell that they were one destination all along
+  was already in the file: the tree's arrows ARE the log's arrows, in the same
+  tokens, with a comment in each surface keeping them honest.
+  The rail badge is a GLOBAL msg/s, not the per-topic rates this bullet asks for
+  — those are still owed. It exists for a different reason: the drawer was global
+  chrome, so every panel could answer "is the wire alive?" without opening it, and
+  moving the log into one destination would have cost that. The tree's per-topic
+  counts are live; the rates are the same client-side arithmetic over `topicSeen`,
+  unbuilt.
 - **Missions as the spine, directing attention.** A step tracker turns free play
   into curriculum; the current step *emphasizes the relevant tile* (accent the
   line-sensor tile during "read the line sensor"), not just a progress bar.
@@ -62,18 +75,25 @@ Non-negotiable: UI strings come from `CONTRACT.md` verbatim.
 #4 already decided: **build the per-channel-tile framework when the third
 channel lands** (`range`/`imu`, robot#4). Two channels don't need the
 abstraction (generalize-too-early guard). So most of the explored surface is
-correctly *not yet* — the sensor tiles, the topic tree, the rendered↔raw toggle
-arrive with the sensor kit, not before.
+correctly *not yet* — the sensor tiles and the rendered↔raw toggle arrive with
+the sensor kit, not before.
+
+The **topic tree shipped early** and this paragraph listed it as deferred until
+2026-07-16. It didn't need the tile framework: the tree reads `topicSeen`, which
+`logLine` already fills, so it cost a renderer and no abstraction. It now anchors
+the Messages destination. The gate above still holds for everything keyed to a
+*third channel* — the tree wasn't.
 
 Safe and consistent to do before then (framing, not framework):
 
 - Reframe the live-message surface so it reads as a concept, not a debug drawer.
-  (Done: the drawer is labeled **Messages**, not "Details & troubleshooting".
-  It said "Live messages" until the scope split was retired (`16a2e9f`) took the
-  line that set the title with it, and the markup's hardcoded "Log" won by
-  default for three months — a debug word, which is the exact framing this bullet
-  exists to prevent. The label is now static markup with no scope branch to lose,
-  and "Live" is gone: one word, matching the tab this surface is headed for.)
+  (Done, then superseded the same day by the merge above — it is a destination
+  now, not a labelled drawer. Worth keeping for the failure it records: the
+  label said "Live messages" until retiring the scope split (`16a2e9f`) deleted
+  the line that set the title, and the markup's hardcoded "Log" won by default
+  for three months — a debug word on the surface this bullet exists to protect,
+  reintroduced as collateral from an auth refactor. A framing that lives in a
+  branch can be deleted by someone editing the branch for another reason.)
 - One-line cross-references that point between surfaces ("every stick move
   publishes to your rover's `pwm` topic — watch it in Messages"). Cheap,
   and it plants pub/sub before the explorer exists. Adds DOM → run the `verify`

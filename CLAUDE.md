@@ -97,6 +97,22 @@ vocabulary**, which is *encoded, not described* (2026-07-16):
   MutationObserver, not by eye.
 - `.gate-row`, `.cchip` corner chips (the card corner is the rover's topbar),
   the modal sheet, `#chip-pop` corner popover, the `--fs-body` panel beat.
+- **The rail is `Fleet · Code · Messages`, Settings pinned below** — three nouns
+  of the system in the order a student meets it (the robots · what you say · how
+  it travels), and Settings is plumbing, not a concept. Messages holds the topic
+  tree *and* the log because they are one destination: a topic is an address, and
+  the address only means something with a message on it. Picking a tree row
+  drives the log's two selects rather than keeping a third filter state — so the
+  controls visibly move and the tree teaches the filter instead of bypassing it.
+  `.nav-meter` (the rail's msg/s) is **not** `.nav-badge`: badge = the one warn
+  hue = "act here", a rate asks for nothing. It is `aria-hidden` because a
+  badge's text joins its button's accessible name, and a number that changes
+  every second would make "click Messages" untargetable (the drawer toggle hit
+  exactly this and its aria-label pinned the name; `git show 8ae0439` for the
+  reasoning, which left the file with the drawer). Two gates moved with it and both got
+  stricter: `logLine`'s DOM path is now behind `#p-messages.hidden` (an open
+  drawer used to pay it from every panel), and a stored `hubPanel` of `topics`
+  migrates on load — a preference outlives the name it was stored under.
 
 **Compose, don't hand-roll.** Every shipped spacing/alignment defect so far
 was a new element skipping an existing pattern — a review on 2026-07-16 found

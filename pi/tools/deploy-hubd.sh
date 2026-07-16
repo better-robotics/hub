@@ -1,15 +1,40 @@
 #!/usr/bin/env bash
 # deploy-hubd.sh — build hubd in CI and deploy it to the live Pi over the USB
-# serial console, one command. The repo is private and the workstation↔Pi
-# network path is usually client-isolated, so everything rides the serial
-# console: the artifact's pre-signed URL (so the Pi can download with no
-# credentials) and the ops tools (base64-staged) both go over the wire.
+# serial console, one command.
 #
 #   ./tools/deploy-hubd.sh
 #
 # Steps: verify the tree is pushed → dispatch build-hubd.yml → wait, checking
 # the run's headSha matches HEAD → fetch the artifact's pre-signed URL →
 # install + restart on the Pi → sync tools/ to /opt/hub/tools → probe /fleet.
+#
+# WHY SERIAL — and read this before trusting it. The original reasons were "the
+# repo is private" (so the Pi needs a pre-signed URL to fetch the artifact with
+# no credentials) and "the workstation↔Pi network path is usually
+# client-isolated". BOTH ARE NOW FALSE: the repo went public, and on the bench
+# LAN `ssh pi@hub.local` works. On 2026-07-16 find_pi() also matched no console
+# at all — the attached USB serials were rovers — so this path did not run,
+# while the network path it rules out deployed fine. The pre-signed URL still
+# earns its keep for a Pi that genuinely has no route to this workstation (a
+# classroom with client isolation on), which is the case this was built for and
+# is worth keeping; it is no longer the DEFAULT case.
+#
+# The equivalent over ssh, when the Pi is reachable and no console is attached
+# — same guarantee, the deployed binary is the reviewed one (match the artifact
+# checksum, and `install.sh` cannot run on the Pi: it native-builds and there is
+# no toolchain there by design):
+#
+#   gh run download <run> -R better-robotics/hub -n hubd-arm64
+#   scp hubd pi@hub.local:/tmp/hubd-new
+#   ssh pi@hub.local 'sha256sum /tmp/hubd-new | grep -q <sha> \
+#     && sudo cp -a /opt/hub/hubd /opt/hub/hubd.prev \
+#     && sudo install -m755 /tmp/hubd-new /opt/hub/hubd \
+#     && sudo systemctl restart hubd && sleep 3 && systemctl is-active hubd \
+#     && curl -sf http://127.0.0.1/fleet >/dev/null && echo "fleet OK"'
+#
+# Not wired in as a --ssh flag on purpose: an untested branch in the script that
+# installs binaries on a live classroom hub is worth less than a command a human
+# runs and watches. Add the flag when someone can exercise both paths.
 set -euo pipefail
 
 REPO=better-robotics/hub   # was hub-mqtt — merged into the monorepo 2026-07-08

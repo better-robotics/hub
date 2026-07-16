@@ -106,14 +106,27 @@ jobs:
           # whole point: a unit added to the manifest is verified for free, and
           # one that silently didn't install fails the build here.
           echo "=== payload ==="
+          PAYLOAD_MD=""
           while read -r src dest mode enable on_host; do
             sudo test -f "/mnt/hub$dest" || { echo "MISSING from image: $dest (from $src)"; exit 1; }
             if [ "$enable" = yes ]; then
               sudo test -L "/mnt/hub/etc/systemd/system/multi-user.target.wants/$(basename "$dest")" \
                 || { echo "NOT ENABLED in image: $(basename "$dest")"; exit 1; }
+              boot="enabled"
+            else
+              boot="—"
             fi
             echo "  ✓ $dest"
+            PAYLOAD_MD+="| \`$dest\` | \`$mode\` | $boot |"$'\n'
           done < <(grep -Ev '^[[:space:]]*(#|$)' deploy/payload.tsv)
+          # Every package 00-packages declares is actually installed — and its
+          # version comes back from the image's own dpkg, not from a list here.
+          PKGS_MD=""
+          while read -r p; do
+            v=$(sudo chroot /mnt/hub dpkg-query -W -f '${Version}' "$p") \
+              || { echo "DECLARED BUT NOT INSTALLED: $p"; exit 1; }
+            PKGS_MD+="| \`$p\` | \`$v\` |"$'\n'
+          done < <(grep -Ev '^[[:space:]]*(#|$)' image/stage-hub/00-hub/00-packages)
           ! sudo chroot /mnt/hub dpkg-query -W comitup 2>/dev/null                    # comitup gone
           # Appliance diet (01-run-chroot.sh) — absences are contract too:
           ! sudo chroot /mnt/hub dpkg-query -W bluez 2>/dev/null                      # no bluetooth stack
@@ -144,44 +157,49 @@ jobs:
           sudo grep -q 'dtoverlay=disable-bt' /mnt/boot/config.txt                    # BT hardware off (stack is purged; silence the kernel probes too)
           sudo grep -q 'modules-load=dwc2' /mnt/boot/cmdline.txt                      # gadget modules (boot part)
           sudo umount /mnt/boot
-          sudo umount /mnt/hub && sudo losetup -d "$LOOP"
-          echo "✓ image: hubd + usb-gadget recovery, base config owned by customize-image.sh"
-
-      # The run page shows a build graph, not a bill of materials — but "what is
-      # actually on this card" is the question a flashed image raises, and the
-      # answer was only readable by expanding the log. Rendered from the same
-      # manifest the bake installed from and the verify step above just asserted,
-      # so it reports verified truth and can't drift into a stale prose copy.
-      # Deliberately NOT a parallel job: the payload isn't built, so a job could
-      # only describe it — and a second place describing the payload is the
-      # duplication payload.tsv exists to remove.
-      - name: Summarize what's on the card
-        run: |
-          set -euo pipefail
+          # --- Bill of materials for the run page ("what's actually on this
+          # card" — the question a flashed image raises, previously answerable
+          # only by expanding this log). Written HERE, while the image is still
+          # mounted, so every line is something just observed in the .img: the
+          # payload table is the manifest rows verified above, the arch is
+          # `file` output, the sizes are measured, the versions come from the
+          # image's own dpkg. A later step, after the unmount, could only
+          # describe a card it never read — which is how a summary drifts into
+          # confidently restating a stale hardcoded list.
+          HUBD_FILE=$(sudo file -b /mnt/hub/opt/hub/hubd)
+          HUBD_SIZE=$(sudo du -h  /mnt/hub/opt/hub/hubd     | cut -f1)
+          IDE_SIZE=$( sudo du -sh /mnt/hub/usr/share/hub/ide | cut -f1)
+          ROOT_USED=$(df -h --output=used /mnt/hub | tail -1 | tr -d ' ')
           {
             echo "## What's on this card"
             echo
-            echo "Base \`$BASE_IMG\` + \`hubd\` at \`/opt/hub/hubd\` (static musl aarch64: dashboard, \`/fleet\`, device-served Wi-Fi setup)"
-            echo "and the [ide](https://github.com/better-robotics/ide) bundle at \`/usr/share/hub/ide\`, served at \`/ide/\`."
+            echo "| | |"
+            echo "|---|---|"
+            echo "| base | \`$BASE_IMG\` |"
+            echo "| rootfs used | $ROOT_USED |"
+            echo "| \`hubd\` | $HUBD_SIZE — $HUBD_FILE |"
+            echo "| \`ide\` bundle | $IDE_SIZE at \`/usr/share/hub/ide\`, served at \`/ide/\` |"
             echo
-            echo "### Payload — [\`pi/deploy/payload.tsv\`](../blob/${GITHUB_SHA}/pi/deploy/payload.tsv)"
+            echo "### Payload"
+            echo
+            echo "Every row of [\`pi/deploy/payload.tsv\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/pi/deploy/payload.tsv),"
+            echo "verified present in the image above. It is the one list \`deploy/install.sh\`,"
+            echo "the bake, and the checks all read — add a unit there and it appears here."
             echo
             echo "| installed at | mode | at boot |"
             echo "|---|---|---|"
-            while read -r src dest mode enable on_host; do
-              if [ "$enable" = yes ]; then boot="enabled"; else boot="—"; fi
-              echo "| \`$dest\` | \`$mode\` | $boot |"
-            done < <(grep -Ev '^[[:space:]]*(#|$)' deploy/payload.tsv)
+            printf '%s' "$PAYLOAD_MD"
             echo
             echo "### Packages"
             echo
-            # awk, not `paste -sd', '` — paste treats -d as a CYCLIC delimiter
-            # list, so that renders "a,b c,d" rather than a comma-space join.
-            echo "Added: $(awk '{printf "%s`%s`", sep, $0; sep=", "} END{print ""}' image/stage-hub/00-hub/00-packages)"
+            echo "| added | version |"
+            echo "|---|---|"
+            printf '%s' "$PKGS_MD"
             echo
-            echo "Removed (appliance diet — no bluetooth, no swap, no uncontracted radio firmware):"
-            echo "see \`01-run-chroot.sh\`; the verify step asserts each absence."
+            echo "Removed (appliance diet): see \`01-run-chroot.sh\` — each absence is asserted above."
           } >> "$GITHUB_STEP_SUMMARY"
+          sudo umount /mnt/hub && sudo losetup -d "$LOOP"
+          echo "✓ image: hubd + usb-gadget recovery, base config owned by customize-image.sh"
 
       # Compress after verify (verify reads the raw .img — no decompress round-trip).
       - name: Compress image

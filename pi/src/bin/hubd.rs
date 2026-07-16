@@ -64,17 +64,124 @@ fn ide_mime(path: &std::path::Path) -> &'static str {
     }
 }
 
+// --- Response compression ---------------------------------------------------
+//
+// Everything big this server sends is text: the dashboard is ~646 KB of HTML
+// with mqtt.js inlined, and the IDE bundle is mostly JS. Uncompressed, a cold
+// `/ide/` open measured 5.4 MB over 27 requests — times a class, at the same
+// minute, over the one AP radio that is already this deployment's measured
+// bottleneck (single-radio AP+STA starved clients for up to 17.9 s; see
+// pi/CLAUDE.md). gzip -6 takes the dashboard to 204 KB, a measured 31.6%.
+//
+// This is the half of the caching work that helps the load nobody had yet: the
+// ETag below only pays off on a *re*visit, and a first day of class is all cold
+// loads.
+//
+// Minification was measured and declined: ~3.6% on top of gzip, because DEFLATE
+// already prices repeated identifiers near zero. It would buy a build step, a
+// source/artifact split, and unreadable stack traces for a rounding error.
+
+/// Below this, gzip's ~18-byte header and the CPU buy nothing — the response
+/// already fit in one segment.
+const GZIP_MIN: usize = 1024;
+
+/// Types that actually shrink. png/jpg/ico/woff2 are already DEFLATE-compressed
+/// internally, so gzipping them spends CPU to add bytes.
+fn compressible(ctype: &str) -> bool {
+    ["text/", "application/json", "application/javascript", "application/manifest+json",
+     "image/svg+xml", "application/wasm"]
+        .iter()
+        .any(|p| ctype.starts_with(p))
+}
+
+/// Did the client offer gzip? Tolerates the `,`-list and `gzip;q=0.8` forms.
+fn accepts_gzip(req: &str) -> bool {
+    header_value(req, "accept-encoding")
+        .is_some_and(|v| v.split(',').any(|t| t.trim().split(';').next() == Some("gzip")))
+}
+
+/// Memoized gzip output. Keyed by caller-supplied identity; `None` = never
+/// cache, which is the only safe answer for a body computed per request.
+static GZ_CACHE: std::sync::OnceLock<Mutex<std::collections::HashMap<String, Arc<Vec<u8>>>>> =
+    std::sync::OnceLock::new();
+
+/// gzip `body`, or hand it back untouched if compression fails. Returns
+/// `(bytes, is_gzipped)` — the flag reports what actually happened, so the
+/// caller's `Content-Encoding` can never claim gzip over identity bytes.
+///
+/// `spawn_blocking` because this is real CPU on a Pi (~150 ms for the IDE's
+/// 3.5 MB Monaco chunk) and the async workers are shared with the uplink probe:
+/// 30 students opening the IDE at once would otherwise stall the runtime at
+/// exactly the minute it must not.
+///
+/// Cached per (asset, version) — the bundle is static between installs (the
+/// same property that makes the mtime+size ETag valid), so the class-start
+/// burst compresses each file once rather than once per student. Unbounded by
+/// design: the keyspace is the bundle's ~27 files, and install.sh restarts hubd.
+async fn gzip_body(key: Option<String>, body: Vec<u8>) -> (Vec<u8>, bool) {
+    let cache = GZ_CACHE.get_or_init(Default::default);
+    if let Some(k) = &key {
+        if let Some(hit) = cache.lock().unwrap().get(k).cloned() {
+            return ((*hit).clone(), true);
+        }
+    }
+    // Arc, not a move: the identity fallback below must still be able to send
+    // the original bytes, so the blocking task borrows the body rather than
+    // consuming it. Giving it away and having no way back is how "fall back to
+    // identity" becomes "serve an empty page".
+    let src = Arc::new(body);
+    let out = tokio::task::spawn_blocking({
+        let src = src.clone();
+        move || {
+            use std::io::Write;
+            let mut e = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+            e.write_all(&src).and_then(|_| e.finish()).ok()
+        }
+    })
+    .await;
+    match out {
+        Ok(Some(gz)) => {
+            if let Some(k) = key {
+                cache.lock().unwrap().insert(k, Arc::new(gz.clone()));
+            }
+            (gz, true)
+        }
+        // Compression failed, or the blocking task panicked. A Vec sink doesn't
+        // fail in practice, but "in practice" is not a framing guarantee — send
+        // identity rather than a body whose Content-Encoding lies about it.
+        _ => (Arc::try_unwrap(src).unwrap_or_else(|a| (*a).clone()), false),
+    }
+}
+
+/// `Vary` tracks whether a resource IS negotiable, not what this response
+/// happened to be: a compressible asset served identity (because the client
+/// offered no gzip) still has a gzip twin, and a cache that stored it without
+/// `Vary` would key it on URL alone. Omitted for png/woff2, whose one
+/// representation would otherwise fragment cache keys for nothing.
+fn vary(ctype: &str) -> &'static str {
+    if compressible(ctype) { "Vary: Accept-Encoding\r\n" } else { "" }
+}
+
+/// `Connection`/`Keep-Alive` headers. HTTP/1.1 is persistent by default and
+/// needs no header at all, but HTTP/1.0 clients need the explicit token — and
+/// saying it either way keeps the response self-describing.
+fn conn_hdr(keep: bool) -> &'static str {
+    if keep { "Connection: keep-alive\r\nKeep-Alive: timeout=15\r\n" } else { "Connection: close\r\n" }
+}
+
 /// Build the full HTTP response bytes for a `/ide` request. Bytes, not
 /// String — the bundle has binary assets (png/ico/woff2) that the string
 /// response path used by the API routes would corrupt.
-async fn ide_serve(raw_path: &str, req: &str) -> Vec<u8> {
+async fn ide_serve(raw_path: &str, req: &str, keep: bool) -> Vec<u8> {
     let path = raw_path.split('?').next().unwrap_or(raw_path);
     if path == "/ide" {
         // Trailing slash matters: the page's relative module imports resolve
         // against the directory, not the bare segment.
-        return b"HTTP/1.1 301 Moved Permanently\r\nLocation: /ide/\r\n\
-                 Content-Length: 0\r\nConnection: close\r\n\r\n"
-            .to_vec();
+        return format!(
+            "HTTP/1.1 301 Moved Permanently\r\nLocation: /ide/\r\nContent-Length: 0\r\n{}\r\n",
+            conn_hdr(keep)
+        )
+        .into_bytes();
     }
     let rel = path.trim_start_matches("/ide/");
     let rel = if rel.is_empty() { "index.html" } else { rel };
@@ -82,17 +189,33 @@ async fn ide_serve(raw_path: &str, req: &str) -> Vec<u8> {
     // Bundle filenames are plain ASCII; rejecting dot-dot segments is the
     // whole traversal surface (no percent-decoding happens above).
     if rel.split('/').any(|seg| seg == "..") || rel.starts_with('/') {
-        return b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec();
+        return format!("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n{}\r\n", conn_hdr(keep))
+            .into_bytes();
     }
     let full = dir.join(rel);
+    let meta = tokio::fs::metadata(&full).await.ok();
+    let ctype = ide_mime(std::path::Path::new(rel));
+    // Decided from metadata alone, before the file is read: the 304 below has
+    // to know which representation it is validating without paying to build
+    // either one.
+    let gz = accepts_gzip(req)
+        && compressible(ctype)
+        && meta.as_ref().is_some_and(|m| m.len() >= GZIP_MIN as u64);
     // A validator from the file's own mtime+size, not a digest of its bytes:
     // hashing a 3.5 MB asset per request would cost the Pi more than the
     // download it saves. Weak by HTTP's definition, exact enough for a bundle
     // that only changes when install.sh replaces it.
-    let etag = tokio::fs::metadata(&full).await.ok().and_then(|m| {
+    let etag_base = meta.as_ref().and_then(|m| {
         let secs = m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
-        Some(format!("\"{:x}-{:x}\"", secs, m.len()))
+        Some(format!("{:x}-{:x}", secs, m.len()))
     });
+    // The `-gz` suffix is not decoration. With `Vary: Accept-Encoding` this URL
+    // now has two representations, and one ETag naming both is how a cache
+    // hands gzip bytes to a client that never asked for them. Derived from
+    // whether a response IS gzipped, never from whether we meant it to be —
+    // gzip_body's identity fallback would otherwise ship bytes tagged `-gz`.
+    let etag_of =
+        |gz: bool| etag_base.as_ref().map(|b| format!("\"{b}{}\"", if gz { "-gz" } else { "" }));
     // `Cache-Control: no-cache` means "revalidate before reuse" — but shipped
     // with no validator there was nothing to revalidate WITH, so every browser
     // refetched the whole bundle every load: 27 requests, 5.4 MB measured on a
@@ -104,26 +227,41 @@ async fn ide_serve(raw_path: &str, req: &str) -> Vec<u8> {
     // filename heuristic, and a false positive pins a mutable asset in every
     // student's cache forever with no way to bust it. Revalidating costs a LAN
     // round-trip and can never go stale — the bytes were the problem.
-    if let (Some(tag), Some(want)) = (&etag, header_value(req, "if-none-match")) {
+    if let (Some(tag), Some(want)) = (&etag_of(gz), header_value(req, "if-none-match")) {
         if want.split(',').any(|c| c.trim() == tag) {
             return format!(
                 "HTTP/1.1 304 Not Modified\r\nETag: {tag}\r\nCache-Control: no-cache\r\n\
-                 Access-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n"
+                 {}Access-Control-Allow-Origin: *\r\n{}\r\n",
+                vary(ctype),
+                conn_hdr(keep)
             )
             .into_bytes();
         }
     }
     match tokio::fs::read(&full).await {
         Ok(bytes) => {
+            // Cache key = path + ETag, which encodes (mtime, size, encoding) —
+            // so an install.sh that swaps the bundle can't be served the old
+            // version's compressed bytes. Path-prefixed because mtime+size is
+            // unique per *version of a file*, not across files: two assets
+            // written in the same second at the same size would collide.
+            let (body, gzipped) = if gz {
+                gzip_body(etag_of(true).map(|t| format!("{rel}:{t}")), bytes).await
+            } else {
+                (bytes, false)
+            };
             let mut resp = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\
-                 Cache-Control: no-cache\r\n{}Access-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n",
-                ide_mime(std::path::Path::new(rel)),
-                bytes.len(),
-                etag.map(|t| format!("ETag: {t}\r\n")).unwrap_or_default(),
+                "HTTP/1.1 200 OK\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\n\
+                 Cache-Control: no-cache\r\n{}{}{}\
+                 Access-Control-Allow-Origin: *\r\n{}\r\n",
+                body.len(),
+                vary(ctype),
+                if gzipped { "Content-Encoding: gzip\r\n" } else { "" },
+                etag_of(gzipped).map(|t| format!("ETag: {t}\r\n")).unwrap_or_default(),
+                conn_hdr(keep),
             )
             .into_bytes();
-            resp.extend_from_slice(&bytes);
+            resp.extend_from_slice(&body);
             resp
         }
         Err(_) => {
@@ -135,8 +273,9 @@ async fn ide_serve(raw_path: &str, req: &str) -> Vec<u8> {
             };
             let mut resp = format!(
                 "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain; charset=utf-8\r\n\
-                 Content-Length: {}\r\nConnection: close\r\n\r\n",
-                body.len()
+                 Content-Length: {}\r\n{}\r\n",
+                body.len(),
+                conn_hdr(keep)
             )
             .into_bytes();
             resp.extend_from_slice(body);
@@ -394,28 +533,39 @@ fn foreign_host(req: &str) -> bool {
 /// well above anything this server's own POST bodies carry (SSIDs,
 /// passwords, small JSON), so a malformed or hostile Content-Length can't
 /// hang the connection reading forever.
-async fn read_request(sock: &mut tokio::net::TcpStream) -> Vec<u8> {
+///
+/// Reads ONE request out of `carry`, refilling from the socket as needed, and
+/// leaves anything past it in `carry` for the next call. That draining is what
+/// makes a connection reusable: a client may put its next request in the same
+/// segment as this one's tail, and a reader that returned the whole buffer
+/// would hand those bytes to the router as garbage — or silently drop them.
+///
+/// `None` = no more requests on this connection (clean EOF, read error, or a
+/// head over the cap). Not "empty request": an oversized or truncated head is
+/// answered by closing, never by routing a fragment.
+async fn read_request(sock: &mut tokio::net::TcpStream, carry: &mut Vec<u8>) -> Option<Vec<u8>> {
     const MAX_REQUEST: usize = 16 * 1024;
-    let mut buf = Vec::with_capacity(1024);
     let mut chunk = [0u8; 1024];
     loop {
-        let Ok(n) = sock.read(&mut chunk).await else { break };
-        if n == 0 {
-            break; // peer closed — whatever arrived is all there is
-        }
-        buf.extend_from_slice(&chunk[..n]);
-        let Some(header_end) = find_bytes(&buf, b"\r\n\r\n").map(|i| i + 4) else {
-            if buf.len() >= MAX_REQUEST {
-                break;
+        // Checked before reading, so a request already sitting in `carry` from
+        // the last call's tail is served without waiting on a segment that may
+        // never come.
+        if let Some(header_end) = find_bytes(carry, b"\r\n\r\n").map(|i| i + 4) {
+            let total = header_end + content_length(&carry[..header_end]);
+            if carry.len() >= total {
+                let rest = carry.split_off(total);
+                return Some(std::mem::replace(carry, rest));
             }
-            continue;
-        };
-        let need = content_length(&buf[..header_end]);
-        if buf.len() >= header_end + need || buf.len() >= MAX_REQUEST {
-            break;
         }
+        if carry.len() >= MAX_REQUEST {
+            return None;
+        }
+        let n = sock.read(&mut chunk).await.ok()?;
+        if n == 0 {
+            return None; // peer closed
+        }
+        carry.extend_from_slice(&chunk[..n]);
     }
-    buf
 }
 
 fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -444,6 +594,29 @@ fn header_value<'a>(req: &'a str, name: &str) -> Option<&'a str> {
         .map(|(_, v)| v.trim())
 }
 
+/// Should this connection stay open after the response? HTTP/1.1 is persistent
+/// unless the client says `close`; HTTP/1.0 is the reverse.
+///
+/// Honouring it is safe here only because every response this server builds
+/// carries an accurate `Content-Length` (or is a 304, which by definition has
+/// no body) — that framing is the only thing telling a client where one
+/// response ends and the next begins. A route that ever streams a body without
+/// one must send `close`, or it will corrupt whatever follows it.
+fn wants_keepalive(req: &str) -> bool {
+    let conn = header_value(req, "connection").unwrap_or("").to_ascii_lowercase();
+    let mut tokens = conn.split(',').map(str::trim);
+    if tokens.clone().any(|t| t == "close") {
+        return false;
+    }
+    tokens.any(|t| t == "keep-alive")
+        || req.lines().next().is_some_and(|l| l.ends_with("HTTP/1.1"))
+}
+
+/// How long a reused connection may sit idle before hubd reclaims it. The IDE
+/// bundle's requests come back-to-back, so this only reaps genuinely finished
+/// sockets and browsers' speculative preconnects.
+const KEEPALIVE_IDLE: Duration = Duration::from_secs(15);
+
 async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, ssid: String) {
     loop {
         let Ok((mut sock, peer)) = listener.accept().await else { continue };
@@ -451,219 +624,254 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
         let locator = locator.clone();
         let ssid = ssid.clone();
         tokio::spawn(async move {
-            let buf = read_request(&mut sock).await;
-            let req = String::from_utf8_lossy(&buf);
-            let mut words = req.split_whitespace();
-            let method = words.next().unwrap_or("GET");
-            let raw_path = words.next().unwrap_or("/");
-            // Strip the query string before any route match below — every
-            // arm compares against the bare path (e.g. "/welcome"), and
-            // welcome.html's Accept button navigates to "/welcome?done=1"
-            // (the ESP portal's fix, ported here: a captive sheet only
-            // re-checks captivity on a full-page load, not a DOM swap) —
-            // without this the query string fell through every arm to the
-            // 404 handler, live-observed on macOS's CNA sheet.
-            let path = raw_path.split('?').next().unwrap_or(raw_path);
-            // NO CORS/PNA PREFLIGHT — deliberately, and it must not come back
-            // without the threat model coming with it.
-            //
-            // This used to answer every OPTIONS, unconditionally and before any
-            // path match, with `Access-Control-Allow-Origin: *` plus
-            // `Access-Control-Allow-Private-Network: true` — the explicit opt-out
-            // of the browser protection whose entire job is stopping public web
-            // pages from reaching 10.42.0.1. With `Allow-Methods: GET, POST` and
-            // `Allow-Headers: Content-Type`, ANY page on the internet passed
-            // preflight for a JSON POST to any route here. A student browses a
-            // page with a hostile ad on the classroom Wi-Fi; its JS posts
-            // {ssid,password} to /wifi/connect; wifi.rs shells out to nmcli and
-            // the room's uplink is repointed at an attacker's AP. The response
-            // is unreadable cross-origin, which buys nothing — the side effect
-            // already happened. The address isn't a secret; it's the documented
-            // constant.
-            //
-            // It existed for the github.io setup wizard, and that flow was
-            // deleted 2026-07-09 in favour of device-served Wi-Fi setup (see
-            // CLAUDE.md § "Wi-Fi setup is device-served" — "no hosted website").
-            // The device-served flow is SAME-ORIGIN: it never preflights, so
-            // nothing legitimate here needs this. It was the deleted feature's
-            // residue, and pure liability.
-            //
-            // Sending nothing means an unexpected OPTIONS falls through to the
-            // 404 arm below, which is the correct answer for a server with no
-            // cross-origin API.
-            // Workbench IDE bundle — binary-safe path, bypasses the string
-            // response builder below.
-            if method == "GET" && (path == "/ide" || path.starts_with("/ide/")) {
-                let _ = sock.write_all(&ide_serve(path, &req).await).await;
-                return;
-            }
-            // The Wi-Fi setup panel POSTs `{ssid, password}` here; the body is
-            // whatever follows the header terminator (creds are tiny — one read
-            // of `buf` holds them).
-            let post_body = req.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or("");
-            // Did this device already tap Accept on /welcome? Decides whether
-            // its OS probes get "captive" (302) or genuine success answers.
-            let acked = ACKED.lock().unwrap().iter().any(|(ip, _)| *ip == peer.ip());
-            let (status, ctype, body) = match (method, path) {
-                ("GET", "/fleet") => ("200 OK", "application/json", fleet_json(&uplink, &locator, &ssid)),
-                ("GET", "/") | ("GET", "/index.html") => {
-                    ("200 OK", "text/html; charset=utf-8", DASHBOARD_HTML.into())
+            // One task per CONNECTION, serving requests until the peer leaves
+            // or goes idle — not one per request. A cold /ide/ open is 27
+            // requests; under `Connection: close` that was 27 TCP handshakes,
+            // each a round-trip on an AP this deployment has already measured
+            // starving under load.
+            let mut carry = Vec::new();
+            loop {
+                let read = tokio::time::timeout(KEEPALIVE_IDLE, read_request(&mut sock, &mut carry));
+                let Ok(Some(buf)) = read.await else { return };
+                let req = String::from_utf8_lossy(&buf);
+                let keep = wants_keepalive(&req);
+                let mut words = req.split_whitespace();
+                let method = words.next().unwrap_or("GET");
+                let raw_path = words.next().unwrap_or("/");
+                // Strip the query string before any route match below — every
+                // arm compares against the bare path (e.g. "/welcome"), and
+                // welcome.html's Accept button navigates to "/welcome?done=1"
+                // (the ESP portal's fix, ported here: a captive sheet only
+                // re-checks captivity on a full-page load, not a DOM swap) —
+                // without this the query string fell through every arm to the
+                // 404 handler, live-observed on macOS's CNA sheet.
+                let path = raw_path.split('?').next().unwrap_or(raw_path);
+                // NO CORS/PNA PREFLIGHT — deliberately, and it must not come back
+                // without the threat model coming with it.
+                //
+                // This used to answer every OPTIONS, unconditionally and before any
+                // path match, with `Access-Control-Allow-Origin: *` plus
+                // `Access-Control-Allow-Private-Network: true` — the explicit opt-out
+                // of the browser protection whose entire job is stopping public web
+                // pages from reaching 10.42.0.1. With `Allow-Methods: GET, POST` and
+                // `Allow-Headers: Content-Type`, ANY page on the internet passed
+                // preflight for a JSON POST to any route here. A student browses a
+                // page with a hostile ad on the classroom Wi-Fi; its JS posts
+                // {ssid,password} to /wifi/connect; wifi.rs shells out to nmcli and
+                // the room's uplink is repointed at an attacker's AP. The response
+                // is unreadable cross-origin, which buys nothing — the side effect
+                // already happened. The address isn't a secret; it's the documented
+                // constant.
+                //
+                // It existed for the github.io setup wizard, and that flow was
+                // deleted 2026-07-09 in favour of device-served Wi-Fi setup (see
+                // CLAUDE.md § "Wi-Fi setup is device-served" — "no hosted website").
+                // The device-served flow is SAME-ORIGIN: it never preflights, so
+                // nothing legitimate here needs this. It was the deleted feature's
+                // residue, and pure liability.
+                //
+                // Sending nothing means an unexpected OPTIONS falls through to the
+                // 404 arm below, which is the correct answer for a server with no
+                // cross-origin API.
+                // Workbench IDE bundle — binary-safe path, bypasses the string
+                // response builder below.
+                if method == "GET" && (path == "/ide" || path.starts_with("/ide/")) {
+                    let resp = ide_serve(path, &req, keep).await;
+                    drop(req);
+                    if sock.write_all(&resp).await.is_err() || !keep {
+                        return;
+                    }
+                    continue;
                 }
-                ("GET", "/icon.svg") => ("200 OK", "image/svg+xml", ICON_SVG.into()),
-                // Device-served Wi-Fi setup (replaces the old BLE/website flow).
-                ("GET", "/wifi/scan") => (
-                    "200 OK",
-                    "application/json",
-                    serde_json::to_string(&hub::wifi::scan().await).unwrap_or_else(|_| "[]".into()),
-                ),
-                ("GET", "/wifi/status") => ("200 OK", "application/json", wifi_status_json(&uplink).await),
-                ("POST", "/wifi/connect") => wifi_connect_json(post_body).await,
-                // "Forget this network" (dashboard.html's Set-up-Wi-Fi panel)
-                // — the Pi side of the same contract the ESP32 hub already
-                // answers. The panel only checks res.ok, so the JSON body
-                // shape matches this file's other endpoints ({"ok":...}),
-                // not the ESP32's plain-text "forgotten".
-                ("POST", "/wifi/forget") => match hub::wifi::forget().await {
-                    Ok(()) => ("200 OK", "application/json", r#"{"ok":true}"#.into()),
-                    Err(e) => (
+                // The Wi-Fi setup panel POSTs `{ssid, password}` here; the body is
+                // whatever follows the header terminator (creds are tiny — one read
+                // of `buf` holds them).
+                let post_body = req.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or("");
+                // Did this device already tap Accept on /welcome? Decides whether
+                // its OS probes get "captive" (302) or genuine success answers.
+                let acked = ACKED.lock().unwrap().iter().any(|(ip, _)| *ip == peer.ip());
+                let (status, ctype, body) = match (method, path) {
+                    ("GET", "/fleet") => ("200 OK", "application/json", fleet_json(&uplink, &locator, &ssid)),
+                    ("GET", "/") | ("GET", "/index.html") => {
+                        ("200 OK", "text/html; charset=utf-8", DASHBOARD_HTML.into())
+                    }
+                    ("GET", "/icon.svg") => ("200 OK", "image/svg+xml", ICON_SVG.into()),
+                    // Device-served Wi-Fi setup (replaces the old BLE/website flow).
+                    ("GET", "/wifi/scan") => (
                         "200 OK",
                         "application/json",
-                        serde_json::json!({ "ok": false, "error": e }).to_string(),
+                        serde_json::to_string(&hub::wifi::scan().await).unwrap_or_else(|_| "[]".into()),
                     ),
-                },
-                // Captive Portal API (RFC 8908), pointed at by DHCP option 114
-                // (RFC 8910, dnsmasq drop-in in the image). `captive:false` is
-                // the whole point: nothing is blocked, we're only advertising
-                // the dashboard as the venue page so joining devices surface it
-                // unprompted. 10.42.0.1 = NM-shared's AP address, the same
-                // always-works fallback the docs teach. Caveat, recorded
-                // honestly: RFC 8908 wants this endpoint over TLS, which an
-                // offline LAN appliance can't validly present — some clients
-                // may ignore the plain-HTTP form. Zero blast radius either
-                // way; verify on a real phone, keep if it helps, shrug if not.
-                // This is the MDM/classroom-safe path (unmanaged AND managed
-                // devices); it stays exactly as it was — untouched by the
-                // probe-intercept handlers below.
-                ("GET", "/captive") => (
-                    "200 OK",
-                    "application/captive+json",
-                    r#"{"captive":false,"venue-info-url":"http://10.42.0.1/"}"#.into(),
-                ),
-                // OS captive-portal auto-popup, personal/unmanaged devices only —
-                // see 00-run.sh's `30-ap-captive-probes.conf` heredoc for the
-                // audience split. The dnsmasq drop-in there resolves each OS's
-                // connectivity-check
-                // hostname to this hub's AP address, so these specific paths
-                // are the only requests that can ever land here for them.
-                // Each OS's checker expects an exact "network is clean"
-                // answer; deliberately failing that expectation is what makes
-                // the OS treat the network as captive and auto-launch its own
-                // mini-browser, which the Location header then points at the
-                // dashboard instead of leaving it blank.
-                //   Apple  (captive.apple.com): expects an exact
-                //     `<HTML>...Success...</HTML>` body — a 302 fails that
-                //     comparison and the CNA mini-browser follows Location.
-                //   Android (connectivitycheck.{gstatic,android}.com):
-                //     expects a bare 204 — a 302 trips the "sign in to
-                //     network" notification, which opens Location.
-                //   Windows (www.msftconnecttest.com / www.msftncsi.com):
-                //     expects exact plaintext bodies; a 302 fails NCSI's
-                //     check too, but note honestly: NCSI's auto-launch-a-
-                //     browser behavior is less consistent across Windows
-                //     versions than Apple/Android's — sometimes it's only a
-                //     taskbar toast, not an auto-opened browser. Don't
-                //     overclaim it "just works" there.
-                // The captive sheet's own flow: the splash page the probe
-                // 302s land on, and the Accept that releases the sheet.
-                ("GET", "/welcome") => {
-                    ("200 OK", "text/html; charset=utf-8", WELCOME_HTML.into())
-                }
-                ("POST", "/captive/ack") => {
-                    let ip = peer.ip();
-                    {
-                        let mut acks = ACKED.lock().unwrap();
-                        match acks.iter_mut().find(|(a, _)| *a == ip) {
-                            Some((_, seen)) => *seen = Instant::now(),
-                            None => acks.push((ip, Instant::now())),
-                        }
+                    ("GET", "/wifi/status") => ("200 OK", "application/json", wifi_status_json(&uplink).await),
+                    ("POST", "/wifi/connect") => wifi_connect_json(post_body).await,
+                    // "Forget this network" (dashboard.html's Set-up-Wi-Fi panel)
+                    // — the Pi side of the same contract the ESP32 hub already
+                    // answers. The panel only checks res.ok, so the JSON body
+                    // shape matches this file's other endpoints ({"ok":...}),
+                    // not the ESP32's plain-text "forgotten".
+                    ("POST", "/wifi/forget") => match hub::wifi::forget().await {
+                        Ok(()) => ("200 OK", "application/json", r#"{"ok":true}"#.into()),
+                        Err(e) => (
+                            "200 OK",
+                            "application/json",
+                            serde_json::json!({ "ok": false, "error": e }).to_string(),
+                        ),
+                    },
+                    // Captive Portal API (RFC 8908), pointed at by DHCP option 114
+                    // (RFC 8910, dnsmasq drop-in in the image). `captive:false` is
+                    // the whole point: nothing is blocked, we're only advertising
+                    // the dashboard as the venue page so joining devices surface it
+                    // unprompted. 10.42.0.1 = NM-shared's AP address, the same
+                    // always-works fallback the docs teach. Caveat, recorded
+                    // honestly: RFC 8908 wants this endpoint over TLS, which an
+                    // offline LAN appliance can't validly present — some clients
+                    // may ignore the plain-HTTP form. Zero blast radius either
+                    // way; verify on a real phone, keep if it helps, shrug if not.
+                    // This is the MDM/classroom-safe path (unmanaged AND managed
+                    // devices); it stays exactly as it was — untouched by the
+                    // probe-intercept handlers below.
+                    ("GET", "/captive") => (
+                        "200 OK",
+                        "application/captive+json",
+                        r#"{"captive":false,"venue-info-url":"http://10.42.0.1/"}"#.into(),
+                    ),
+                    // OS captive-portal auto-popup, personal/unmanaged devices only —
+                    // see 00-run.sh's `30-ap-captive-probes.conf` heredoc for the
+                    // audience split. The dnsmasq drop-in there resolves each OS's
+                    // connectivity-check
+                    // hostname to this hub's AP address, so these specific paths
+                    // are the only requests that can ever land here for them.
+                    // Each OS's checker expects an exact "network is clean"
+                    // answer; deliberately failing that expectation is what makes
+                    // the OS treat the network as captive and auto-launch its own
+                    // mini-browser, which the Location header then points at the
+                    // dashboard instead of leaving it blank.
+                    //   Apple  (captive.apple.com): expects an exact
+                    //     `<HTML>...Success...</HTML>` body — a 302 fails that
+                    //     comparison and the CNA mini-browser follows Location.
+                    //   Android (connectivitycheck.{gstatic,android}.com):
+                    //     expects a bare 204 — a 302 trips the "sign in to
+                    //     network" notification, which opens Location.
+                    //   Windows (www.msftconnecttest.com / www.msftncsi.com):
+                    //     expects exact plaintext bodies; a 302 fails NCSI's
+                    //     check too, but note honestly: NCSI's auto-launch-a-
+                    //     browser behavior is less consistent across Windows
+                    //     versions than Apple/Android's — sometimes it's only a
+                    //     taskbar toast, not an auto-opened browser. Don't
+                    //     overclaim it "just works" there.
+                    // The captive sheet's own flow: the splash page the probe
+                    // 302s land on, and the Accept that releases the sheet.
+                    ("GET", "/welcome") => {
+                        ("200 OK", "text/html; charset=utf-8", WELCOME_HTML.into())
                     }
-                    tokio::spawn(nft_acked("add", ip)); // packet-layer release
-                    ("200 OK", "application/json", r#"{"ok":true}"#.into())
-                }
-                // An acked device's probes get the exact "network is clean"
-                // answer each OS expects — that's what flips the sheet's
-                // Cancel into Done and lets it close. Only ever per-device,
-                // post-Accept (see ACKED above).
-                ("GET", "/hotspot-detect.html") | ("GET", "/library/test/success.html")
-                    if acked =>
-                {
-                    ("200 OK", "text/html",
-                     "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>".into())
-                }
-                ("GET", "/generate_204") if acked => {
-                    ("204 No Content", "text/plain", String::new())
-                }
-                ("GET", "/connecttest.txt") if acked => {
-                    ("200 OK", "text/plain", "Microsoft Connect Test".into())
-                }
-                ("GET", "/ncsi.txt") if acked => {
-                    ("200 OK", "text/plain", "Microsoft NCSI".into())
-                }
-                ("GET", "/hotspot-detect.html") | ("GET", "/library/test/success.html")
-                | ("GET", "/generate_204")
-                | ("GET", "/connecttest.txt") | ("GET", "/ncsi.txt") => {
-                    ("302 Found", "text/plain", String::new())
-                }
-                // Any other GET that arrives asking for a FOREIGN host can
-                // only be here because the AP's captive-capture NAT
-                // (hub-ap-setup.sh) steered it in — the client thinks it's
-                // talking to the internet. This is what catches probe
-                // hostnames/paths the explicit arms above don't enumerate
-                // (Firefox's detectportal, Android's /gen_204, whatever
-                // ships next): unacked devices get the captive redirect,
-                // acked ones a quiet no-content (their real traffic isn't
-                // ours to bounce around). Requests addressed to US by name
-                // (10.42.0.1, hub.local, localhost dev) keep their honest
-                // 404 below — a typo'd dashboard URL should fail loudly,
-                // not bounce home.
-                ("GET", _) if foreign_host(&req) => {
-                    if acked {
+                    ("POST", "/captive/ack") => {
+                        let ip = peer.ip();
+                        {
+                            let mut acks = ACKED.lock().unwrap();
+                            match acks.iter_mut().find(|(a, _)| *a == ip) {
+                                Some((_, seen)) => *seen = Instant::now(),
+                                None => acks.push((ip, Instant::now())),
+                            }
+                        }
+                        tokio::spawn(nft_acked("add", ip)); // packet-layer release
+                        ("200 OK", "application/json", r#"{"ok":true}"#.into())
+                    }
+                    // An acked device's probes get the exact "network is clean"
+                    // answer each OS expects — that's what flips the sheet's
+                    // Cancel into Done and lets it close. Only ever per-device,
+                    // post-Accept (see ACKED above).
+                    ("GET", "/hotspot-detect.html") | ("GET", "/library/test/success.html")
+                        if acked =>
+                    {
+                        ("200 OK", "text/html",
+                         "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>".into())
+                    }
+                    ("GET", "/generate_204") if acked => {
                         ("204 No Content", "text/plain", String::new())
-                    } else {
+                    }
+                    ("GET", "/connecttest.txt") if acked => {
+                        ("200 OK", "text/plain", "Microsoft Connect Test".into())
+                    }
+                    ("GET", "/ncsi.txt") if acked => {
+                        ("200 OK", "text/plain", "Microsoft NCSI".into())
+                    }
+                    ("GET", "/hotspot-detect.html") | ("GET", "/library/test/success.html")
+                    | ("GET", "/generate_204")
+                    | ("GET", "/connecttest.txt") | ("GET", "/ncsi.txt") => {
                         ("302 Found", "text/plain", String::new())
                     }
+                    // Any other GET that arrives asking for a FOREIGN host can
+                    // only be here because the AP's captive-capture NAT
+                    // (hub-ap-setup.sh) steered it in — the client thinks it's
+                    // talking to the internet. This is what catches probe
+                    // hostnames/paths the explicit arms above don't enumerate
+                    // (Firefox's detectportal, Android's /gen_204, whatever
+                    // ships next): unacked devices get the captive redirect,
+                    // acked ones a quiet no-content (their real traffic isn't
+                    // ours to bounce around). Requests addressed to US by name
+                    // (10.42.0.1, hub.local, localhost dev) keep their honest
+                    // 404 below — a typo'd dashboard URL should fail loudly,
+                    // not bounce home.
+                    ("GET", _) if foreign_host(&req) => {
+                        if acked {
+                            ("204 No Content", "text/plain", String::new())
+                        } else {
+                            ("302 Found", "text/plain", String::new())
+                        }
+                    }
+                    _ => ("404 Not Found", "text/plain", "not found".into()),
+                };
+                // Optional Location header, minimally bolted onto the response
+                // builder below (same hand-rolled style, no framework) — every
+                // 302 this server issues is captive steering, and it points at
+                // the welcome/release page, NOT the dashboard: the sheet's
+                // sandbox is a dead end for sign-ins (see WELCOME_HTML).
+                let location = (status == "302 Found")
+                    .then_some("Location: http://10.42.0.1/welcome\r\n")
+                    .unwrap_or_default();
+                // ACAO *, scoped to /fleet ONLY. The reason given for it — "/fleet
+                // is public-read JSON, and the rover setup page prefills the hub
+                // address from it" — is true of exactly one route, but the header
+                // was being stamped on every response, including /wifi/* and the
+                // dashboard itself. Handing a blanket read grant to every origin
+                // for endpoints that drive nmcli is surface with no caller.
+                let cors = (path == "/fleet")
+                    .then_some("Access-Control-Allow-Origin: *\r\n")
+                    .unwrap_or_default();
+                // Clickjacking: the meta CSP in dashboard.html CANNOT express
+                // frame-ancestors (it's header-only), and this server sent no
+                // X-Frame-Options — so the professor's dashboard was framable by
+                // any page. SAMEORIGIN, not DENY: the dashboard frames its own
+                // /ide/ bundle, and DENY would break that too.
+                let frame = "X-Frame-Options: SAMEORIGIN\r\n";
+                // Only the two embedded constants may be memoized — they cannot
+                // change while the process lives. Every other body here is computed
+                // per request (`/wifi/scan`'s networks, `/fleet`'s uplink verdict),
+                // and keying those by path is exactly how a cache comes to serve
+                // last week's Wi-Fi list. Most never reach GZIP_MIN anyway.
+                let gz_key = match path {
+                    "/" | "/index.html" => Some("dashboard".to_string()),
+                    "/icon.svg" => Some("icon.svg".to_string()),
+                    _ => None,
+                };
+                let want_gz = body.len() >= GZIP_MIN && compressible(ctype) && accepts_gzip(&req);
+                drop(req);
+                let (body, gzipped) =
+                    if want_gz { gzip_body(gz_key, body.into_bytes()).await } else { (body.into_bytes(), false) };
+                let enc = if gzipped { "Content-Encoding: gzip\r\n" } else { "" };
+                let vary = vary(ctype);
+                let mut resp = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\n\
+                     {location}{cors}{frame}{vary}{enc}{}\r\n",
+                    body.len(),
+                    conn_hdr(keep),
+                )
+                .into_bytes();
+                resp.extend_from_slice(&body);
+                if sock.write_all(&resp).await.is_err() || !keep {
+                    return;
                 }
-                _ => ("404 Not Found", "text/plain", "not found".into()),
-            };
-            // Optional Location header, minimally bolted onto the response
-            // builder below (same hand-rolled style, no framework) — every
-            // 302 this server issues is captive steering, and it points at
-            // the welcome/release page, NOT the dashboard: the sheet's
-            // sandbox is a dead end for sign-ins (see WELCOME_HTML).
-            let location = (status == "302 Found")
-                .then_some("Location: http://10.42.0.1/welcome\r\n")
-                .unwrap_or_default();
-            // ACAO *, scoped to /fleet ONLY. The reason given for it — "/fleet
-            // is public-read JSON, and the rover setup page prefills the hub
-            // address from it" — is true of exactly one route, but the header
-            // was being stamped on every response, including /wifi/* and the
-            // dashboard itself. Handing a blanket read grant to every origin
-            // for endpoints that drive nmcli is surface with no caller.
-            let cors = (path == "/fleet")
-                .then_some("Access-Control-Allow-Origin: *\r\n")
-                .unwrap_or_default();
-            // Clickjacking: the meta CSP in dashboard.html CANNOT express
-            // frame-ancestors (it's header-only), and this server sent no
-            // X-Frame-Options — so the professor's dashboard was framable by
-            // any page. SAMEORIGIN, not DENY: the dashboard frames its own
-            // /ide/ bundle, and DENY would break that too.
-            let frame = "X-Frame-Options: SAMEORIGIN\r\n";
-            let resp = format!(
-                "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\n\
-                 {location}{cors}{frame}Connection: close\r\n\r\n{body}",
-                body.len()
-            );
-            let _ = sock.write_all(resp.as_bytes()).await;
+            }
         });
     }
 }

@@ -371,7 +371,13 @@
     .log-toggle {
       display: flex; align-items: center; justify-content: flex-start; gap: 0.5rem; width: 100%;
       background: none; border: 0; border-radius: 0; height: 2.6rem; padding: 0 0.7rem;
-      cursor: pointer; color: var(--ink); font: inherit;
+      cursor: pointer; color: var(--ink);
+      /* font-size AFTER `font: inherit` — the same trap .link-btn already
+         documents: the shorthand resets size, so this took whatever its
+         container set. Once the <h2> became its wrapper (APG accordion shape),
+         "whatever the container set" was the UA's h2 1.5em, and the control
+         jumped to 24px. Caught by the token-scale audit, not by looking. */
+      font: inherit; font-size: var(--fs-body);
     }
     .log-toggle:hover { background: var(--inset); }
     .log-toggle .spacer { flex: 1 1 auto; }
@@ -387,6 +393,14 @@
        a guess extrapolated from a desktop one. */
     @media (max-width: 720px) {
       .shell { grid-template-columns: minmax(0, 1fr); }
+      /* The rail is a horizontal strip here, so its COLLAPSE handle has nothing
+         to collapse — and it was still absolutely positioned at
+         `left: calc(var(--rail-w) - 0.62rem)`, because this block changes
+         grid-template-columns but never touches --rail-w. Measured at 320px:
+         the chevron sat at x=222, y=375 — detached from the rail, floating in
+         the middle of a rover card, over .cchip/.card-meta. A control whose
+         only job is to narrow a column that no longer exists. */
+      .rail-toggle { display: none; }
       .rail {
         position: static; flex-direction: row; flex-wrap: wrap; align-items: center;
         min-height: 0; max-height: none; overflow: visible;
@@ -1078,8 +1092,17 @@
        it in the base control rule (as the inputs and primary buttons used to)
        makes a mouse-driven 24rem popover carry 44px controls next to 0.78rem
        chips, which is what made the professor gate look bolted on. */
+    /* <summary> is a real target — it IS the disclosure control — and it matched
+       nothing in the list below, so "Advanced rover setup" (~23.5px) and "Motor
+       pins & orientation" (~20px) were under both the 44pt house number and
+       WCAG's own 24px floor, on the iPads this whole coarse block exists for.
+       The base rule gives them the one control height everywhere; the coarse
+       rule below now includes them. */
+    #assign-advanced > summary, #assign-pins-wrap summary, #prof-advanced > summary {
+      min-height: var(--ctrl-h); display: flex; align-items: center;
+    }
     @media (pointer: coarse) {
-      button, .btn-tile, input, select, .segmented button,
+      button, .btn-tile, input, select, .segmented button, summary,
       .wifi-net, #wire-filter, #wire-topic { min-height: var(--tap); }
       .link-btn { min-height: 0; }
     }
@@ -1476,7 +1499,6 @@
       </div>
     </div>
   </div>
-  </section>
 
   <!-- Professor-only Assign sheet, hidden storage (not a page section): the
        robot chip on each card opens it, moved into the modal on demand and
@@ -2284,6 +2306,14 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       const cutoff = Date.now() - EVICT_MS;
       for (const [id, rec] of robots) if (rec.seenAt < cutoff) robots.delete(id);
       for (const [b, rec] of boards) if (rec.seenAt < cutoff) boards.delete(b);
+      // topicSeen was the one Map here that never evicted, and it retains a
+      // full payload string per entry. Robot names are student-supplied with no
+      // registry (sendClaim publishes any name anonymously, and robots/# is
+      // open rw), so `mosquitto_pub -t robots/$RANDOM/sys` in a loop grows the
+      // projector tab's heap without bound. Even benignly, the "semester-long
+      // projector tab" this eviction block exists for accumulates every name
+      // ever seen × 6 channels. Same cutoff, same loop, one line.
+      for (const [t, seen] of topicSeen) if (seen.at < cutoff) topicSeen.delete(t);
       renderRobots(); watchAssign(); syncPinsPanel(false);
       syncWireFilter(); telemetrySync?.();
       renderDriveStatus(); renderDetailsAge();
@@ -4101,8 +4131,18 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       return { left, right };
     }
 
+    // The pad's geometry, captured at pointerdown. This USED to be a
+    // getBoundingClientRect() on every pointermove — and the previous move had
+    // just written knob.style.transform, so each read was a forced synchronous
+    // layout, potentially several per frame with coalesced events. maybeSend()
+    // rate-limits the NETWORK, not this, so the read happened unthrottled
+    // during the one interaction that has to feel immediate, on the lowest-end
+    // device in the room. Caching is safe: the pad cannot move mid-drag —
+    // since the drive panel became a modal (2026-07-16) the growing wire log
+    // no longer shifts it, which is what the old note here was worried about.
+    let padRect = null;
     function stickFromPointer(clientX, clientY) {
-      const rect = pad.getBoundingClientRect();
+      const rect = padRect || pad.getBoundingClientRect();
       const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
       const dist = Math.hypot(clientX - cx, clientY - cy) || 1;
       const clampedDist = Math.min(dist, rect.width / 2);
@@ -4125,6 +4165,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     pad.addEventListener("pointerdown", (e) => {
       pad.setPointerCapture(e.pointerId);
       dragging = true;
+      padRect = pad.getBoundingClientRect();   // once per drag, not per move
       sendPwm(stickFromPointer(e.clientX, e.clientY));
     });
     pad.addEventListener("pointermove", (e) => {
@@ -4132,7 +4173,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       maybeSend(stickFromPointer(e.clientX, e.clientY));
     });
     ["pointerup", "pointercancel", "pointerleave"].forEach((evt) =>
-      pad.addEventListener(evt, () => { if (dragging) { dragging = false; stopStick(); } })
+      pad.addEventListener(evt, () => { if (dragging) { dragging = false; padRect = null; stopStick(); } })
     );
     // Keyboard alternative — arrow keys nudge the stick; releasing them (or
     // Space/Escape) stops. A drive control with no stop key is a safety bug,

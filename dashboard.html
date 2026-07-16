@@ -851,6 +851,17 @@
       display: inline-flex; gap: 2px; padding: 2px; margin-bottom: 1rem;
       background: var(--inset); border-radius: var(--radius); border: 0.5px solid var(--border-default);
     }
+    /* inline-flex means "hug the buttons", and a .stack silently overrules it:
+       .stack is a flex column with no align-items, so it defaults to stretch and
+       pulls the track to full width while the buttons keep their natural size —
+       a wide empty rail with the pills stranded at the left end. Caught in the
+       Details sheet's Facts/Log tabs (2026-07-16), the first .segmented ever put
+       inside a .stack. Not scoped to that sheet: any .segmented in a .stack has
+       this, and the next one should not have to rediscover it.
+       The coarse rule below still wins where it should — it sets an explicit
+       width, which align-self cannot undo, so phones keep the full-width strip
+       with equal thumbs. */
+    .stack > .segmented { align-self: start; }
     .segmented button {
       cursor: pointer; border: none; background: transparent; color: var(--ink-muted);
       font-size: var(--fs-body); font-weight: 600; padding: 0.4rem 1rem; min-height: var(--ctrl-h);
@@ -4311,6 +4322,11 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // drives joystick/D-pad) — same track, same thumb, same aria-pressed.
       const tabs = document.createElement("div");
       tabs.className = "segmented";
+      // role=group + a label, matching #drive-mode: a bare div of buttons is
+      // announced as two unrelated toggles with nothing saying they are one
+      // choice.
+      tabs.setAttribute("role", "group");
+      tabs.setAttribute("aria-label", "Details view");
       const tabFacts = document.createElement("button");
       const tabLog = document.createElement("button");
       tabFacts.textContent = "Facts";

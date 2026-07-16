@@ -431,13 +431,24 @@
        track defaults to a content-based minimum, so one long unbroken value
        can force the whole list — and its modal — wider than the viewport. */
     dl {
-      display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center;
+      /* stretch, NOT center: the hairline between rows is a border-top on each
+         of dt and dd, so the two cells must share a top edge or the separator
+         breaks into two segments at different heights. Centring only ever did
+         nothing here — every row whose dt and dd are one line each is already
+         equal-height — but the moment a dt grew a second line (a gloss) it
+         dropped the dd by half the difference and shattered the rule. */
+      display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: stretch;
       background: var(--inset); border-radius: var(--radius); padding: 0 0.9rem;
       font-size: 0.88rem; margin-top: 0.2rem;
     }
     dt, dd { padding: 0.5rem 0; border-top: 0.5px solid var(--border-default); }
     dt:first-of-type, dt:first-of-type + dd { border-top: none; }
     dt { color: var(--ink-muted); }
+    /* A dt may carry a gloss — the address on line one, what it's FOR on line
+       two (Settings' ACL rows). Reuses .hint rather than coining a second
+       faint-text size; block is the only thing an inline span needs. The dl's
+       align-items:center then centres the one-line dd against it. */
+    dt > .hint { display: block; margin-top: 0.15rem; }
     dd { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); overflow-wrap: anywhere; }
     #empty { color: var(--ink-muted); padding: 2rem 0; }
     footer { margin-top: 3rem; color: var(--ink-faint); font-size: 0.85rem; }
@@ -2607,11 +2618,20 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // A bare <dl> IS the grouped-inset list (the `dl` rule: grid, hairlines,
       // inset fill) — same builder the telemetry sheet uses, so these panels
       // can't drift apart.
+      // A row's key is either a plain label or [label, gloss] — the gloss is a
+      // second, fainter line under it. A topic filter is an ADDRESS, not a
+      // concept: "pair/#" names where, never what, and a panel built to teach
+      // owes the what.
       const list = (rows) => {
         const dl = document.createElement("dl");
-        for (const [k, v] of rows)
-          dl.append(Object.assign(document.createElement("dt"), { textContent: k }),
-                    Object.assign(document.createElement("dd"), { textContent: v }));
+        for (const [k, v] of rows) {
+          const dt = document.createElement("dt");
+          if (Array.isArray(k)) {
+            dt.append(k[0], Object.assign(document.createElement("span"),
+              { className: "hint", textContent: k[1] }));
+          } else dt.textContent = k;
+          dl.append(dt, Object.assign(document.createElement("dd"), { textContent: v }));
+        }
         return dl;
       };
       const head = (t) => Object.assign(document.createElement("div"),
@@ -2658,11 +2678,18 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // "what am I allowed to do right now" is the question — the professor
       // delta is one line of prose below instead of a column students must
       // read themselves out of.
+      // pair/# is the one row with no client in this repo — the hub grants it,
+      // nothing it serves speaks it. It is NOT dead: workbench signals
+      // phone↔desktop WebRTC over pair/<room>/s/<peer> on this very broker,
+      // camera tracks included. Worth naming rather than dropping, because the
+      // seam is the lesson: MQTT brokers every rover message, while for a
+      // phone the broker only introduces the peers and the media then flows
+      // LAN-direct, never through here.
       wrap.append(head("What you may publish"),
         list([
-          ["robots/#", "read + write"],
-          ["pair/#", "read + write"],
-          ["fleet/estop", prof ? "read + write" : "read only"],
+          [["robots/#", "every rover — telemetry, drive, LED"], "read + write"],
+          [["pair/#", "phone pairing — WebRTC signaling only; video goes peer-to-peer"], "read + write"],
+          [["fleet/estop", "the room-wide emergency stop"], prof ? "read + write" : "read only"],
         ]),
         hint(prof
           ? "Professor: yours is the only credential the broker checks, and only to write fleet/estop — engaging or clearing the room-wide stop."

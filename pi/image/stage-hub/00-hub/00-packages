@@ -2,3 +2,4 @@ avahi-daemon
 network-manager
 mosquitto
 mosquitto-clients
+iw

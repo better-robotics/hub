@@ -27,6 +27,13 @@ jobs:
           # One cache covers ./target (the musl hubd build) plus the cargo
           # registry. Keyed by arch only — never shared across runner archs.
           key: arm64
+      # Gates the artifact, not the push: this workflow is what deploy-hubd.sh
+      # ships and what build-image bakes, so every binary reaching hardware has
+      # passed. Default (gnu) target, not the musl one below — musl-tools isn't
+      # installed until the build step, and the suite is pure parsers (`iw`/`ip`
+      # output shapes) that no libc choice or real radio changes.
+      - name: Test hubd
+        run: cargo test --bin hubd
       - name: Build hubd (static aarch64)
         run: |
           # ports.ubuntu.com (arm64's apt mirror — arm64 isn't a primary arch,

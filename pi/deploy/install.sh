@@ -36,7 +36,13 @@ install -m 0755 "$REPO_DIR/target/release/hubd" "$PREFIX/hubd"
 # exist when the config, ACL, and their ownership land.
 echo "[install] installing Mosquitto broker…"
 apt-get update -qq
-apt-get install -y -qq mosquitto mosquitto-clients
+# `iw` is hubd's association check (the captive release keys on it, see
+# reap_acks). Raspberry Pi OS ships it, so this is a no-op today — declared
+# anyway because "the base image happens to carry it" is not a dependency, and
+# a base bump that dropped it would silently strand every ack. Mirrored in
+# image/stage-hub/00-hub/00-packages: an image installs from its own list, and
+# a fresh card that came up without this would have nothing to say so (2fd8fdf).
+apt-get install -y -qq mosquitto mosquitto-clients iw
 
 # ---- Payload: every file deploy/payload.tsv maps into place ----
 # That manifest is the one list — the Pi image installs the same rows and CI

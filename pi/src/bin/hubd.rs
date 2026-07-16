@@ -376,18 +376,29 @@ async fn wifi_connect_json(body: &str) -> (&'static str, &'static str, String) {
     }
 }
 
-/// Devices that tapped "Accept" on /welcome, with when they were last seen
-/// on the network. From then on their OS probes get the genuine success
-/// answers, so the captive sheet's button turns into "Done" and the user can
-/// finish in a real browser — the public-Wi-Fi splash-then-release flow.
-/// Per-device opt-in on purpose: a device that never accepts keeps honest
-/// "captive" answers, so an offline hub never tricks it into believing the
-/// uplink works (that lie is what breaks phones' cellular fallback — the
-/// reason blanket fake-success stayed chosen-against). An Accept means "this
-/// visit", not "this device forever" — `reap_acks` forgets devices that
-/// leave, so the popup greets every fresh join and a DHCP-reused address
-/// can't inherit a stranger's Accept. Classroom-day scale.
-static ACKED: Mutex<Vec<(std::net::IpAddr, Instant)>> = Mutex::new(Vec::new());
+/// One device's release from the captive capture: the MAC that tapped Accept,
+/// the address it held when it did, and when its association was last seen.
+/// **The MAC is the identity; the address is only a lease.** A release keyed by
+/// address is inherited by whoever DHCP hands that address to next — `ip` is
+/// carried solely because the nft set is `type ipv4_addr` and the packet layer
+/// has no other handle.
+struct Ack {
+    mac: Option<String>,
+    ip: std::net::IpAddr,
+    seen: Instant,
+}
+
+/// Devices that tapped "Accept" on /welcome. From then on their OS probes get
+/// the genuine success answers, so the captive sheet's button turns into "Done"
+/// and the user can finish in a real browser — the public-Wi-Fi
+/// splash-then-release flow. Per-device opt-in on purpose: a device that never
+/// accepts keeps honest "captive" answers, so an offline hub never tricks it
+/// into believing the uplink works (that lie is what breaks phones' cellular
+/// fallback — the reason blanket fake-success stayed chosen-against). An Accept
+/// means "this visit", not "this device forever" — `reap_acks` forgets devices
+/// that disassociate, so the sheet greets the next person to open a shared
+/// laptop. Classroom-day scale.
+static ACKED: Mutex<Vec<Ack>> = Mutex::new(Vec::new());
 
 /// Best-effort packet-layer release/recapture of one device in the AP's
 /// captive NAT — the `acked` set in hub-ap-setup.sh's hub-captive table
@@ -407,76 +418,155 @@ async fn nft_acked(op: &'static str, ip: std::net::IpAddr) {
         .await;
 }
 
-/// Presence reaper for ACKED. Every minute, poke each acked address (`ping`
-/// is only the ARP trigger — the kernel resolves the neighbor before ICMP,
-/// and ARP is the one layer nothing opts out of: sleeping iPhones keep ARP
-/// offload, Windows firewalls drop ICMP but must still answer ARP) and read
-/// the kernel neighbor table's verdict; a device unreachable for the whole
-/// grace window is gone and forgets its ack. The grace is deliberately
-/// generous: iPhones drop off the AP while asleep in a pocket, and an ack
-/// expiring under a still-present device would flip its probes back to
-/// "captive" and re-summon the sheet mid-class. Tool failure never expires
-/// anyone. (`iw station dump` would be the authoritative association check,
-/// but the appliance image doesn't carry `iw` — neighbor reachability is
-/// the same answer one layer up.)
+/// The AP-mode interface, found by nl80211 type rather than by name. Radio
+/// roles are selected by driver, never by interface name (CLAUDE.md § Hub-AP
+/// mode): wlan0/wlan1 is a per-boot enumeration coin flip between the SDIO
+/// builtin and the USB dongle, so hardcoding `wlan0` is a guess that is wrong
+/// every other boot. `iw dev` prints an indented `Interface <name>` block per
+/// netdev, plus an `Unnamed/non-netdev interface` block for the P2P device —
+/// which carries a `type` line but no name, hence the reset.
+fn parse_ap_iface(text: &str) -> Option<String> {
+    let mut name: Option<String> = None;
+    for line in text.lines() {
+        let t = line.trim();
+        if let Some(n) = t.strip_prefix("Interface ") {
+            name = Some(n.trim().to_string());
+        } else if t.starts_with("Unnamed/non-netdev") {
+            name = None;
+        } else if t == "type AP" && name.is_some() {
+            return name;
+        }
+    }
+    None
+}
+
+async fn ap_iface() -> Option<String> {
+    let out = tokio::process::Command::new("iw").arg("dev").output().await.ok()?;
+    parse_ap_iface(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// The MACs currently associated to the AP — the authoritative answer the
+/// neighbour table cannot give (see `reap_acks`). `None` means the question
+/// could not be asked at all (no AP interface up, `iw` missing or failing),
+/// which callers must read as "don't know", never as "nobody is here".
+fn parse_station_macs(text: &str) -> std::collections::HashSet<String> {
+    text.lines()
+        .filter_map(|l| l.strip_prefix("Station "))
+        .filter_map(|rest| rest.split_whitespace().next())
+        .map(|m| m.to_ascii_lowercase())
+        .collect()
+}
+
+async fn associated_macs() -> Option<std::collections::HashSet<String>> {
+    let dev = ap_iface().await?;
+    let out = tokio::process::Command::new("iw")
+        .args(["dev", &dev, "station", "dump"])
+        .output()
+        .await
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    Some(parse_station_macs(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// The MAC answering for `ip`, from the kernel neighbour table. Called only on
+/// Accept, where the device has just completed this request's TCP handshake and
+/// its entry is therefore as fresh as it will ever be. The table is far too
+/// volatile to poll — measured 2026-07-16, it listed none of three
+/// definitely-associated stations seconds after listing all three — which is
+/// the other half of why association, not reachability, drives the reaper.
+fn parse_mac_for_ip(text: &str, ip: std::net::IpAddr) -> Option<String> {
+    let ip_s = ip.to_string();
+    for line in text.lines() {
+        // "10.42.0.161 dev wlan0 lladdr 16:3e:5a:1c:44:02 REACHABLE"
+        let mut fields = line.split_whitespace();
+        if fields.next() != Some(ip_s.as_str()) {
+            continue;
+        }
+        let mut rest = fields.skip_while(|t| *t != "lladdr");
+        rest.next()?; // the marker itself; absent on a FAILED entry
+        return rest.next().map(|m| m.to_ascii_lowercase());
+    }
+    None
+}
+
+async fn mac_for_ip(ip: std::net::IpAddr) -> Option<String> {
+    let out = tokio::process::Command::new("ip").args(["neigh", "show"]).output().await.ok()?;
+    parse_mac_for_ip(&String::from_utf8_lossy(&out.stdout), ip)
+}
+
+/// Presence reaper for ACKED, keyed on **association**. `iw dev <ap> station
+/// dump` is the authoritative "is this device on the AP" answer; the kernel
+/// neighbour table is not, and believing it was the bug. It lied in both
+/// directions, each measured 2026-07-16 on the bench hub: ARP offload keeps a
+/// *sleeping* phone answering, so an ack refreshed on reachability never lapsed
+/// at all — and the table is volatile the other way too, listing none of three
+/// associated stations seconds after listing them. Association tracks a session
+/// the way reachability cannot: a suspended lid disassociates, a pocketed phone
+/// does not.
+///
+/// The failure this fixes is a shared laptop. The release is device-scoped but
+/// the user is account-scoped, so student B opens the cart Chromebook student A
+/// accepted on, gets no sheet, and — signed into their own profile — has no
+/// bookmark either. The old 15-minute grace was longer than the passing period
+/// it had to beat.
+///
+/// Tool failure never expires anyone: a round that cannot ask is skipped whole.
 async fn reap_acks() {
-    const POLL: Duration = Duration::from_secs(60);
-    const GRACE: Duration = Duration::from_secs(15 * 60);
+    const POLL: Duration = Duration::from_secs(30);
+    // Shorter than the gap between two users of one device (a passing period,
+    // ~5 min) so the sheet greets the next student; longer than a transient
+    // re-association so a blip cannot re-summon it mid-class.
+    const GRACE: Duration = Duration::from_secs(90);
     // A fresh hubd means a fresh ack list — clear any packet-layer releases a
     // previous run left in the nft set, so the two layers can't disagree.
     let _ = tokio::process::Command::new("nft")
         .args(["flush", "set", "ip", "hub-captive", "acked"])
         .output()
         .await;
+    // Edge-triggered: the skip below is SAFE (nobody loses a release they
+    // earned) but it degrades silently into the exact bug this reaper exists to
+    // fix — releases that never expire. If the station list ever stops being
+    // askable, that has to be sayable.
+    let mut warned = false;
     loop {
         tokio::time::sleep(POLL).await;
-        let ips: Vec<std::net::IpAddr> =
-            ACKED.lock().unwrap().iter().map(|(ip, _)| *ip).collect();
-        if ips.is_empty() {
+        let idle = ACKED.lock().unwrap().is_empty();
+        if idle {
             continue;
         }
-        let pokes: Vec<_> = ips
-            .iter()
-            .map(|ip| {
-                let ip = ip.to_string();
-                tokio::spawn(async move {
-                    let _ = tokio::process::Command::new("ping")
-                        .args(["-c", "1", "-W", "1", &ip])
-                        .output()
-                        .await;
-                })
-            })
-            .collect();
-        for p in pokes {
-            let _ = p.await;
-        }
-        let Ok(out) =
-            tokio::process::Command::new("ip").args(["neigh", "show"]).output().await
-        else {
+        // "Don't know" is not "nobody is here" — a round that can't ask expires
+        // no one, the same guarantee the ip-neigh path made on tool failure.
+        let Some(stations) = associated_macs().await else {
+            if !warned {
+                warned = true;
+                println!(
+                    "[hubd] captive: no AP station list (iw missing, or no AP interface up) \
+                     — accepted devices will not be re-greeted until this clears"
+                );
+            }
             continue;
         };
-        let neigh = String::from_utf8_lossy(&out.stdout);
+        warned = false;
         let now = Instant::now();
         // Scoped so the MutexGuard (not Send) is dropped before the awaits
         // below — required for reap_acks' future to stay spawnable.
         let expired: Vec<std::net::IpAddr> = {
             let mut acks = ACKED.lock().unwrap();
-            for (ip, seen) in acks.iter_mut() {
-                let ip_s = ip.to_string();
-                let reachable = neigh.lines().any(|l| {
-                    l.starts_with(&ip_s)
-                        && l.as_bytes().get(ip_s.len()) == Some(&b' ')
-                        && l.trim_end().ends_with("REACHABLE")
-                });
-                if reachable {
-                    *seen = now;
+            for a in acks.iter_mut() {
+                // An ack we could not tie to a MAC can't be checked against the
+                // station table, so it rides the grace out and re-earns itself
+                // with one tap. Unreachable in practice — see `mac_for_ip`.
+                if a.mac.as_deref().is_some_and(|m| stations.contains(m)) {
+                    a.seen = now;
                 }
             }
             let mut expired = Vec::new();
-            acks.retain(|(ip, seen)| {
-                let keep = now.duration_since(*seen) < GRACE;
+            acks.retain(|a| {
+                let keep = now.duration_since(a.seen) < GRACE;
                 if !keep {
-                    expired.push(*ip);
+                    expired.push(a.ip);
                 }
                 keep
             });
@@ -689,7 +779,7 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                 let post_body = req.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or("");
                 // Did this device already tap Accept on /welcome? Decides whether
                 // its OS probes get "captive" (302) or genuine success answers.
-                let acked = ACKED.lock().unwrap().iter().any(|(ip, _)| *ip == peer.ip());
+                let acked = ACKED.lock().unwrap().iter().any(|a| a.ip == peer.ip());
                 let (status, ctype, body) = match (method, path) {
                     ("GET", "/fleet") => ("200 OK", "application/json", fleet_json(&uplink, &locator, &ssid)),
                     ("GET", "/") | ("GET", "/index.html") => {
@@ -766,12 +856,13 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                     }
                     ("POST", "/captive/ack") => {
                         let ip = peer.ip();
+                        // Resolved here rather than in the reaper: this request's
+                        // own TCP handshake just populated the neighbour entry.
+                        let mac = mac_for_ip(ip).await;
                         {
                             let mut acks = ACKED.lock().unwrap();
-                            match acks.iter_mut().find(|(a, _)| *a == ip) {
-                                Some((_, seen)) => *seen = Instant::now(),
-                                None => acks.push((ip, Instant::now())),
-                            }
+                            acks.retain(|a| a.ip != ip);
+                            acks.push(Ack { mac, ip, seen: Instant::now() });
                         }
                         tokio::spawn(nft_acked("add", ip)); // packet-layer release
                         ("200 OK", "application/json", r#"{"ok":true}"#.into())
@@ -947,5 +1038,144 @@ async fn main() {
     // Park so the HTTP chassis (dashboard, /fleet) stays up.
     loop {
         tokio::time::sleep(Duration::from_secs(3600)).await;
+    }
+}
+
+/// Parser tests for the captive release's association check. The fixtures keep
+/// the exact *shape* of the bench hub's output (2026-07-16) — a Pi with the USB
+/// dongle present, which is the layout that makes interface NAMES a coin flip
+/// and puts an `Unnamed/non-netdev` P2P block between the two real interfaces.
+/// That shape is the whole reason these parse rather than index.
+///
+/// Client MACs and the uplink SSID are substituted — a public repo is no place
+/// for the names of whatever network the bench happened to be sitting on.
+/// Vendor OUIs and the locally-administered bit are kept, because those two
+/// carry the meaning: `16:3e:…` has the LAA bit set, i.e. it is a phone's
+/// private address, which is the case that must never stop resolving.
+///
+/// These pin the parse, not the policy: `parse_ap_iface` returning None is not
+/// a loud failure — it silently stops every release from ever expiring (see
+/// `reap_acks`), so the format is the thing worth freezing.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Verbatim `iw dev`. Note wlan1 (the Edimax uplink) sorts FIRST and the AP
+    // is wlan0 here — the reverse is equally likely on the next boot, which is
+    // why nothing may key on the name.
+    const IW_DEV: &str = "\
+phy#2
+\tInterface wlan1
+\t\tifindex 6
+\t\twdev 0x200000001
+\t\taddr 74:da:38:0c:22:08
+\t\tssid campus-uplink
+\t\ttype managed
+\t\tchannel 1 (2412 MHz), width: 20 MHz, center1: 2412 MHz
+\t\ttxpower 20.00 dBm
+phy#0
+\tUnnamed/non-netdev interface
+\t\twdev 0x2
+\t\taddr 8a:a2:9e:6c:a2:f5
+\t\ttype P2P-device
+\t\ttxpower 31.00 dBm
+\tInterface wlan0
+\t\tifindex 3
+\t\twdev 0x1
+\t\taddr 88:a2:9e:6c:a2:f5
+\t\tssid hub-a2f5
+\t\ttype AP
+\t\tchannel 6 (2437 MHz), width: 20 MHz, center1: 2437 MHz
+\t\ttxpower 31.00 dBm
+";
+
+    #[test]
+    fn ap_iface_is_found_by_type_not_by_name() {
+        assert_eq!(parse_ap_iface(IW_DEV).as_deref(), Some("wlan0"));
+    }
+
+    /// The P2P block carries `type P2P-device` and no name. Without the reset
+    /// it would inherit wlan1's name — harmless only by luck, since the very
+    /// next `type` line decides an interface.
+    #[test]
+    fn unnamed_p2p_block_never_inherits_the_previous_name() {
+        let only_p2p = "phy#0\n\tInterface wlan1\n\t\ttype managed\n\tUnnamed/non-netdev interface\n\t\ttype AP\n";
+        assert_eq!(parse_ap_iface(only_p2p), None);
+    }
+
+    #[test]
+    fn no_ap_up_is_none_not_a_guess() {
+        assert_eq!(parse_ap_iface("phy#2\n\tInterface wlan1\n\t\ttype managed\n"), None);
+    }
+
+    // Verbatim `iw dev wlan0 station dump`, trimmed to two stations. The first
+    // is an iOS private (locally-administered) address — the case that must
+    // keep working, since every modern phone presents one.
+    const STATION_DUMP: &str = "\
+Station 16:3e:5a:1c:44:02 (on wlan0)
+\tinactive time:\t17000 ms
+\trx bytes:\t1600165
+\ttx bitrate:\t72.2 MBit/s
+\tauthorized:\tno
+\tassociated:\tyes
+Station d4:e9:f4:0b:11:07 (on wlan0)
+\tinactive time:\t120 ms
+\tassociated:\tyes
+";
+
+    #[test]
+    fn station_macs_are_every_associated_device() {
+        let macs = parse_station_macs(STATION_DUMP);
+        assert_eq!(macs.len(), 2);
+        assert!(macs.contains("16:3e:5a:1c:44:02"));
+        assert!(macs.contains("d4:e9:f4:0b:11:07"));
+    }
+
+    /// An empty AP is a real, common state (no students yet) and must parse as
+    /// "nobody associated" — distinct from `associated_macs()`'s None, which
+    /// means "couldn't ask". Collapsing the two is what would expire everyone.
+    #[test]
+    fn empty_station_dump_is_empty_not_an_error() {
+        assert!(parse_station_macs("").is_empty());
+    }
+
+    // Verbatim `ip neigh show`, including the FAILED entry (an address the
+    // kernel probed and got nothing for) and the v6 link-local that shares the
+    // phone's MAC — both present on the live hub.
+    const IP_NEIGH: &str = "\
+10.42.0.174 dev wlan0 FAILED 
+10.42.0.99 dev wlan0 lladdr d4:e9:f4:0b:11:07 REACHABLE 
+10.42.0.161 dev wlan0 lladdr 16:3e:5a:1c:44:02 STALE 
+fe80::143e:5aff:fe1c:4402 dev wlan0 lladdr 16:3e:5a:1c:44:02 STALE
+";
+
+    /// STALE resolves the same as REACHABLE on purpose: this asks "who holds
+    /// this address", not "can I reach it". The old reaper's REACHABLE-only
+    /// test is exactly what made a live phone look absent.
+    #[test]
+    fn mac_for_ip_reads_lladdr_regardless_of_nud_state() {
+        let ip = "10.42.0.161".parse().unwrap();
+        assert_eq!(parse_mac_for_ip(IP_NEIGH, ip).as_deref(), Some("16:3e:5a:1c:44:02"));
+    }
+
+    #[test]
+    fn mac_for_ip_does_not_prefix_match_a_longer_address() {
+        // .17 must not match the .174 line — the bug a starts_with() would have.
+        let ip = "10.42.0.17".parse().unwrap();
+        assert_eq!(parse_mac_for_ip(IP_NEIGH, ip), None);
+    }
+
+    /// A FAILED entry exists but carries no lladdr. That device gets acked with
+    /// mac: None and rides the grace out, rather than being handed a wrong MAC.
+    #[test]
+    fn failed_entry_yields_no_mac() {
+        let ip = "10.42.0.174".parse().unwrap();
+        assert_eq!(parse_mac_for_ip(IP_NEIGH, ip), None);
+    }
+
+    #[test]
+    fn unknown_ip_yields_no_mac() {
+        let ip = "10.42.0.222".parse().unwrap();
+        assert_eq!(parse_mac_for_ip(IP_NEIGH, ip), None);
     }
 }

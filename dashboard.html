@@ -7,7 +7,18 @@
        :81/stream camera, reachability probe) talk plain http to dynamic private
        board IPs, which 'self' can't express (CSP has no CIDR). Verified 2026-07-12:
        under default-src 'self' every cross-host board modal was CSP-blocked. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: http:; connect-src 'self' http: ws: wss:; frame-src 'self' http:; worker-src blob:">
+  <!-- base-uri 'self' is NOT redundant: base-uri is one of the few directives
+       that does NOT fall back to default-src, so without it an injected
+       <base href="http://evil/"> would re-point every relative URL on the page.
+       object-src DOES fall back, so it's already covered.
+       frame-ancestors is deliberately absent — a meta CSP cannot express it;
+       hubd sends X-Frame-Options: SAMEORIGIN as the header-side answer.
+       'unsafe-inline' in script-src stays: there are zero inline event handlers
+       (every listener is addEventListener), so hashing the two script blocks
+       would work — but the hashes change on every edit to this file, and a
+       stale hash bricks the page, which is a worse failure than the one it
+       mitigates. Revisit only if pi/build.rs computes them at build time. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; form-action 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data: http:; connect-src 'self' http: ws: wss:; frame-src 'self' http:; worker-src blob:">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTYgMjU2IiB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiI+CiAgPGRlZnM+CiAgICA8IS0tIFN1YnRsZSB2ZXJ0aWNhbCBncmFkaWVudCDigJQgQXBwbGUgaWNvbnMgcmFyZWx5IHVzZSBhIGZsYXQgZmlsbC4gLS0+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImJnTGlnaHQiIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSIxIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjZmZmZmZmIi8+CiAgICAgIDxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2VjZWVmMSIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0iYmdEYXJrIiB4MT0iMCIgeTE9IjAiIHgyPSIwIiB5Mj0iMSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCIgc3RvcC1jb2xvcj0iIzIzMjYyYSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMxNDE3MWEiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8IS0tIGlPUyBjb250aW51b3VzLWNvcm5lciBzcXVpcmNsZSAobuKJiDUgc3VwZXJlbGxpcHNlIGFwcHJveGltYXRpb24KICAgICAgICAgdmlhIGFzeW1tZXRyaWMgY3ViaWMgYmV6aWVyczsgfjIyJSByYWRpdXMsIDAuNiBzbW9vdGhuZXNzIGZhY3RvcikuIC0tPgogICAgPGNsaXBQYXRoIGlkPSJpY29uU2hhcGUiPgogICAgICA8cGF0aCBkPSJNIDkyLjE2MDAwMDAwMDAwMDAxIDAgTCAxNjMuODM5OTk5OTk5OTk5OTcgMCBDIDIyMS40NCAwIDI1NiAzNC41NiAyNTYgOTIuMTYwMDAwMDAwMDAwMDEgTCAyNTYgMTYzLjgzOTk5OTk5OTk5OTk3IEMgMjU2IDIyMS40NCAyMjEuNDQgMjU2IDE2My44Mzk5OTk5OTk5OTk5NyAyNTYgTCA5Mi4xNjAwMDAwMDAwMDAwMSAyNTYgQyAzNC41NiAyNTYgMCAyMjEuNDQgMCAxNjMuODM5OTk5OTk5OTk5OTcgTCAwIDkyLjE2MDAwMDAwMDAwMDAxIEMgMCAzNC41NiAzNC41NiAwIDkyLjE2MDAwMDAwMDAwMDAxIDAgWiIvPgogICAgPC9jbGlwUGF0aD4KICA8L2RlZnM+CiAgPHN0eWxlPgogICAgLmJnIHsgZmlsbDogdXJsKCNiZ0xpZ2h0KTsgfQogICAgLmIgIHsgZmlsbDogIzAxMjE2OTsgfQogICAgLnIgIHsgZmlsbDogIzZlNmU3MzsgfQogICAgQG1lZGlhIChwcmVmZXJzLWNvbG9yLXNjaGVtZTogZGFyaykgewogICAgICAuYmcgeyBmaWxsOiB1cmwoI2JnRGFyayk7IH0KICAgICAgLmIgIHsgZmlsbDogIzA1NzdCMTsgfQogICAgICAuciAgeyBmaWxsOiAjYWRiNWJkOyB9CiAgICB9CiAgPC9zdHlsZT4KICA8ZyBjbGlwLXBhdGg9InVybCgjaWNvblNoYXBlKSI+CiAgICA8cGF0aCBjbGFzcz0iYmciIGQ9Ik0gOTIuMTYwMDAwMDAwMDAwMDEgMCBMIDE2My44Mzk5OTk5OTk5OTk5NyAwIEMgMjIxLjQ0IDAgMjU2IDM0LjU2IDI1NiA5Mi4xNjAwMDAwMDAwMDAwMSBMIDI1NiAxNjMuODM5OTk5OTk5OTk5OTcgQyAyNTYgMjIxLjQ0IDIyMS40NCAyNTYgMTYzLjgzOTk5OTk5OTk5OTk3IDI1NiBMIDkyLjE2MDAwMDAwMDAwMDAxIDI1NiBDIDM0LjU2IDI1NiAwIDIyMS40NCAwIDE2My44Mzk5OTk5OTk5OTk5NyBMIDAgOTIuMTYwMDAwMDAwMDAwMDEgQyAwIDM0LjU2IDM0LjU2IDAgOTIuMTYwMDAwMDAwMDAwMDEgMCBaIi8+CiAgICA8IS0tIEJSIGxldHRlcmZvcm1zIOKAlCBleHRyYWN0ZWQgZnJvbSBTRiBQcm8gYXQgdGhlIERpc3BsYXkgb3B0aWNhbC1zaXplCiAgICAgICAgIHZhcmlhbnQgKG9wc3o9OTYpLCBCIGF0IHdlaWdodCA4MDAsIFIgYXQgd2VpZ2h0IDQwMC4gVGhlIHdpZGUKICAgICAgICAgd2VpZ2h0IGdhcCAodnMgdGhlIHByZXZpb3VzIDcwMC81MDApIG1ha2VzIHRoZSBwcmltYXJ5L3N1cHBvcnRpbmcKICAgICAgICAgaGllcmFyY2h5IHVubWlzdGFrYWJsZSBhdCBmYXZpY29uIHNpemUuIEVtYmVkZGVkIGFzIHBhdGhzIHNvCiAgICAgICAgIHJlbmRlcmluZyBpcyBpZGVudGljYWwgb24gZXZlcnkgT1MuIC0tPgogICAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoNDguNTc5IDE3NC4wODApIHNjYWxlKDAuMDYzODY3IC0wLjA2Mzg2NykiPgogICAgICA8cGF0aCBjbGFzcz0iYiIgZD0iTTI1Ny4zMzE2NjUwMzkwNjI1IDBWMjAyLjY2NDAwMTQ2NDg0Mzc1SDY3My42NjU3MTA0NDkyMTg4UTgxNC4zMzM2NzkxOTkyMTg4IDIwMi42NjQwMDE0NjQ4NDM3NSA4ODguNTAwOTc2NTYyNSAyNTkuMTY0NDg5NzQ2MDkzNzVROTYyLjY2ODI3MzkyNTc4MTIgMzE1LjY2NDk3ODAyNzM0Mzc1IDk2Mi42NjgyNzM5MjU3ODEyIDQyMy42NjU5NTQ1ODk4NDM3NVY0MjUuNjY1OTU0NTg5ODQzNzVROTYyLjY2ODI3MzkyNTc4MTIgNDk4IDkyOC41MDEzMTIyNTU4NTk0IDU0Ny4wMDA0MjcyNDYwOTM4UTg5NC4zMzQzNTA1ODU5Mzc1IDU5Ni4wMDA4NTQ0OTIxODc1IDgyNi44MzM3NDAyMzQzNzUgNjIwLjY2NzcyNDYwOTM3NVE3NTkuMzMzMTI5ODgyODEyNSA2NDUuMzM0NTk0NzI2NTYyNSA2NTkuMzMyMjE0MzU1NDY4OCA2NDUuMzM0NTk0NzI2NTYyNUgyNTcuMzMxNjY1MDM5MDYyNVY4MzMuNjY1ODkzNTU0Njg3NUg2MTguNjY0OTE2OTkyMTg3NVE3NTYuOTk5NTcyNzUzOTA2MiA4MzMuNjY1ODkzNTU0Njg3NSA4MjkuNjY2OTYxNjY5OTIxOSA4ODguNDk5NjY0MzA2NjQwNlE5MDIuMzM0MzUwNTg1OTM3NSA5NDMuMzMzNDM1MDU4NTkzOCA5MDIuMzM0MzUwNTg1OTM3NSAxMDQ0LjY2NzcyNDYwOTM3NVYxMDQ2LjY2NzcyNDYwOTM3NVE5MDIuMzM0MzUwNTg1OTM3NSAxMTM5LjY2ODU3OTEwMTU2MjUgODM5LjMzMzg2MjMwNDY4NzUgMTE5MC4wMDIyODg4MTgzNTk0UTc3Ni4zMzMzNzQwMjM0Mzc1IDEyNDAuMzM1OTk4NTM1MTU2MiA2NjEuOTk5MDIzNDM3NSAxMjQwLjMzNTk5ODUzNTE1NjJIMjU3LjMzMTY2NTAzOTA2MjVWMTQ0M0g3MjcuNjY0MTg0NTcwMzEyNVE4NTkuOTk3MDA5Mjc3MzQzOCAxNDQzIDk1Ny4xNjM0MjE2MzA4NTk0IDEzOTguNDk5OTY5NDgyNDIxOVExMDU0LjMyOTgzMzk4NDM3NSAxMzUzLjk5OTkzODk2NDg0MzggMTEwNy42NjMwODU5Mzc1IDEyNzIuODMzMjgyNDcwNzAzMVExMTYwLjk5NjMzNzg5MDYyNSAxMTkxLjY2NjYyNTk3NjU2MjUgMTE2MC45OTYzMzc4OTA2MjUgMTA4MS42NjY3NDgwNDY4NzVWMTA3OS42NjY3NDgwNDY4NzVRMTE2MC45OTYzMzc4OTA2MjUgMTAwMS42NjY5MzExNTIzNDM4IDExMjUuMzI5NzcyOTQ5MjE4OCA5MzQuMDAwMjQ0MTQwNjI1UTEwODkuNjYzMjA4MDA3ODEyNSA4NjYuMzMzNTU3MTI4OTA2MiAxMDI3LjgzMDA0NzYwNzQyMTkgODIxLjE2NjgwOTA4MjAzMTJROTY1Ljk5Njg4NzIwNzAzMTIgNzc2LjAwMDA2MTAzNTE1NjIgODg3Ljk5NzA3MDMxMjUgNzY1LjAwMDA2MTAzNTE1NjJWNzU5LjY2NjgwOTA4MjAzMTJROTg5LjY2Mzg3OTM5NDUzMTIgNzUwLjk5OTkzODk2NDg0MzggMTA2Ni44MzA0MTM4MTgzNTk0IDcwMy45OTk4Nzc5Mjk2ODc1UTExNDMuOTk2OTQ4MjQyMTg3NSA2NTYuOTk5ODE2ODk0NTMxMiAxMTg2Ljk5Njc2NTEzNjcxODggNTgxLjQ5OTgxNjg5NDUzMTJRMTIyOS45OTY1ODIwMzEyNSA1MDUuOTk5ODE2ODk0NTMxMjUgMTIyOS45OTY1ODIwMzEyNSA0MTAuNjY2NDQyODcxMDkzNzVWNDA4LjY2NjQ0Mjg3MTA5Mzc1UTEyMjkuOTk2NTgyMDMxMjUgMjgyLjMzMzA2ODg0NzY1NjI1IDExNjkuOTk2NjczNTgzOTg0NCAxOTAuODMzMTI5ODgyODEyNVExMTA5Ljk5Njc2NTEzNjcxODggOTkuMzMzMTkwOTE3OTY4NzUgOTk5LjMzMDIwMDE5NTMxMjUgNDkuNjY2NTk1NDU4OTg0Mzc1UTg4OC42NjM2MzUyNTM5MDYyIDAgNzM0LjMzMDMyMjI2NTYyNSAwWk0xMjYuNjY3NDgwNDY4NzUgMFYxNDQzSDM4Ny45OTU4NDk2MDkzNzVWMFoiLz4KICAgIDwvZz4KICAgIDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDEyNS40ODAgMTc0LjA4MCkgc2NhbGUoMC4wNjM4NjcgLTAuMDYzODY3KSI+CiAgICAgIDxwYXRoIGNsYXNzPSJyIiBkPSJNMTI2LjY2NzQ4MDQ2ODc1IDBWMTQ0M0g3MDMuOTk4NTk2MTkxNDA2MlE4NTguNjY0MzA2NjQwNjI1IDE0NDMgOTcwLjE2MzgxODM1OTM3NSAxMzg4LjMzMzQwNDU0MTAxNTZRMTA4MS42NjMzMzAwNzgxMjUgMTMzMy42NjY4MDkwODIwMzEyIDExNDEuNjYzMTQ2OTcyNjU2MiAxMjMyLjY2NzA4Mzc0MDIzNDRRMTIwMS42NjI5NjM4NjcxODc1IDExMzEuNjY3MzU4Mzk4NDM3NSAxMjAxLjY2Mjk2Mzg2NzE4NzUgOTkxLjY2Nzk2ODc1Vjk4OS42Njc5Njg3NVExMjAxLjY2Mjk2Mzg2NzE4NzUgODQ0LjY2NzY2MzU3NDIxODggMTEyOC44MjkzNDU3MDMxMjUgNzM0LjMzNDM4MTEwMzUxNTZRMTA1NS45OTU3Mjc1MzkwNjI1IDYyNC4wMDEwOTg2MzI4MTI1IDkzMC45OTUxMTcxODc1IDU3OC4zMzQ1OTQ3MjY1NjI1TDEyNDQuOTk2MzM3ODkwNjI1IDBIOTQ2LjMzNTAyMTk3MjY1NjJMNjY0LjMzMzM3NDAyMzQzNzUgNTM4LjY2ODY0MDEzNjcxODhRNjYxLjAwMDA2MTAzNTE1NjIgNTM4LjY2ODY0MDEzNjcxODggNjU3LjY2Njc3ODU2NDQ1MzEgNTM4LjY2ODY0MDEzNjcxODhRNjU0LjMzMzQ5NjA5Mzc1IDUzOC42Njg2NDAxMzY3MTg4IDY1MC42NjY4NzAxMTcxODc1IDUzOC42Njg2NDAxMzY3MTg4SDM4Ny45OTU4NDk2MDkzNzVWMFpNMzg3Ljk5NTg0OTYwOTM3NSA3NDQuMzMyNDU4NDk2MDkzOEg2NzYuOTk5MjY3NTc4MTI1UTc5OC4zMzM2NzkxOTkyMTg4IDc0NC4zMzI0NTg0OTYwOTM4IDg2Ni4wMDA4MjM5NzQ2MDk0IDgwOC42NjYyNTk3NjU2MjVROTMzLjY2Nzk2ODc1IDg3My4wMDAwNjEwMzUxNTYyIDkzMy42Njc5Njg3NSA5ODguMDAxMTU5NjY3OTY4OFY5OTAuMDAxMTU5NjY3OTY4OFE5MzMuNjY3OTY4NzUgMTEwMi4zMzU1MTAyNTM5MDYyIDg2My4wMDA3NjI5Mzk0NTMxIDExNjcuMTY5MzExNTIzNDM3NVE3OTIuMzMzNTU3MTI4OTA2MiAxMjMyLjAwMzExMjc5Mjk2ODggNjcxLjY2NTc3MTQ4NDM3NSAxMjMyLjAwMzExMjc5Mjk2ODhIMzg3Ljk5NTg0OTYwOTM3NVoiLz4KICAgIDwvZz4KICA8L2c+Cjwvc3ZnPgo=">
   <title>Better Robotics — Dashboard</title>
   <style>
@@ -26,9 +37,22 @@
       --inset: #2a3037;          /* inset list / control inside a card */
       --ink: #e9ecef;
       --ink-muted: #adb5bd;
-      --ink-faint: #8b929b;   /* ≥4.5:1 on --inset (placeholders live there) */
+      --ink-faint: #949ca6;   /* 4.8:1 on --inset (placeholders live there). Was
+                                 #8b929b, which measured 4.24 — the comment
+                                 asserted AA and the token missed it, so every
+                                 placeholder and .log-payload shipped under 4.5.
+                                 Measured, not eyeballed: audit greps this. */
       --border-default: rgba(255,255,255,0.10);
       --border-strong: rgba(255,255,255,0.18);
+      /* The INPUT hairline, and the reason it's a third border token rather than
+         a reuse: SC 1.4.11 wants a UI component's boundary at 3:1, and an empty
+         text field has nothing else to be perceived by — no label inside the
+         box, and a placeholder vanishes on the first keystroke (the file already
+         knows this; see the pins-grid note). --border-default composites to
+         ~1.43:1 on --surface and --border-strong only reaches ~2.1, so neither
+         can carry a field. 0.35 white ≈ #6f7174 → 3.15 on --surface, 3.46 on
+         --bg. Buttons don't need this: their label carries them. */
+      --border-input: rgba(255,255,255,0.35);
       /* Duke-blue accent — contrast pairs verified AA (kept from the prior
          theme): --accent for fills under white text, --accent-text for tint. */
       --accent: #00539B;
@@ -38,10 +62,17 @@
       --link: color-mix(in srgb, #0577B1 70%, white);
       --focus: #4aa3d6;
       --success: #30d158;        /* iOS system green — the live signal */
-      --success-dim: #248a3d;
       --warn: #ffd60a;
       --warn-ink: #e8a900;
-      --danger-text: #ff453a;
+      /* Lifted off Apple's dark-mode system red (#ff453a). Conformance beats the
+         vendor value when they collide: #ff453a rode the edge everywhere (4.53
+         on --surface) and FAILED outright as .notice.danger's text on its own
+         10% tint — 4.11. That banner says "Emergency stop engaged", so it is
+         the last string in the file allowed to miss AA. Lowering the tint can't
+         fix it (2% tint still only reaches 4.44); the text had to move.
+         #ff6b61 clears every dependent pairing with margin — banner 4.81,
+         --surface 5.53, --bg 6.07, and #fff on the .tchip.danger fill 5.03. */
+      --danger-text: #ff6b61;
       /* Continuous-corner radii scale + tap target + card elevation. */
       --radius-lg: 14px;         /* cards */
       --radius: 8px;             /* controls, inputs, inset lists */
@@ -153,11 +184,20 @@
     .tchip > svg { flex: none; }
     .tchip > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .tchip.warn { color: var(--warn-ink); border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+    /* Amber alone was the whole signal. For a hub that HAS an SSID but sits
+       behind a captive portal, the chip label is the SSID either way — so
+       "online" and "needs venue sign-in" differed by hue and nothing else, and
+       a colourblind instructor read an un-signed-in portal as fine all class
+       (SC 1.4.1). A shape restores the second channel. Text "!", not an emoji
+       or an icon swap: emoji render platform-coloured against the monochrome
+       chrome (this file's own rule — see ICON_PATHS), and the icon system
+       hydrates data-icon once at load, so it can't carry a live state. */
+    .tchip.warn > span::before { content: "! "; font-weight: 700; }
     /* The e-stop chip: SOLID red, white text — the one filled control in a row
        of outline status chips, so the room's kill switch is found instantly.
-       The fill is darker than --danger-text (#ff453a): white on the bright red
-       misses AA (~3:1), so it's mixed toward black to clear 4.5:1. Amber stays
-       the "act here" channel; this red is "act NOW". Professor-only. */
+       The fill is darker than --danger-text: white on the bare red misses AA
+       (~3:1), so it's mixed toward black — #fff lands at 5.03 on the result.
+       Amber stays the "act here" channel; this red is "act NOW". Professor-only. */
     .tchip.danger { color: #fff;
       background: color-mix(in srgb, var(--danger-text) 72%, #000);
       border-color: color-mix(in srgb, var(--danger-text) 72%, #000); }
@@ -301,9 +341,14 @@
     .tw-row:hover { background: var(--inset); }
     .tw-row[aria-current="true"] { background: var(--accent-soft); color: var(--ink); box-shadow: inset 2px 0 0 var(--accent-text); }
     /* The tree's arrows ARE the log's arrows — same point of view (this page's),
-       so the two surfaces teach one vocabulary instead of two. */
-    .dir-in { color: var(--success-dim); flex: none; }
-    .dir-out { color: var(--accent-text); flex: none; }
+       so the two surfaces teach one vocabulary instead of two. They now also
+       use the log's TOKENS, which is what made the claim above true: the tree
+       had quietly taken a dimmer raw pair and shipped ↓ at 3.85 and ↑ at 3.45
+       against the log's own 7.63 / 5.29. These are text characters, not icons —
+       SC 1.4.3's 4.5 floor, not 1.4.11's 3. (--success-dim died here: the tree
+       was its only caller.) */
+    .dir-in { color: var(--success); flex: none; }
+    .dir-out { color: var(--link); flex: none; }
     .tw-count { margin-left: auto; font-size: var(--fs-micro); color: var(--ink-faint); font-variant-numeric: tabular-nums; }
     .tw-empty { font-size: var(--fs-micro); color: var(--ink-faint); padding: 0.4rem 0.35rem; }
 
@@ -366,6 +411,17 @@
     /* A healthy uplink is plumbing, not news — drop the warn tint so the
        banner stops being the loudest element on the page. */
     .notice.ok { background: var(--surface); border-color: var(--border-default); }
+    /* The ANNOUNCEMENT channel's carrier. Every .notice above is display-toggled,
+       and a live region that is not rendered when its text arrives never fires —
+       so the visual banners physically cannot be the announcement surface. This
+       is why #app-status / #app-alert exist beside them rather than on them:
+       they are always rendered, always empty at rest, and never display:none.
+       Not `display:none` and not `visibility:hidden` — both remove the node from
+       the accessibility tree, which is the exact bug this class exists to dodge. */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+    }
     /* An engaged e-stop IS news — the one state allowed to out-shout amber. */
     .notice.danger { background: color-mix(in srgb, var(--danger-text) 10%, var(--surface));
       border-color: color-mix(in srgb, var(--danger-text) 55%, transparent);
@@ -527,9 +583,13 @@
        both are one class deep and the later rule simply won. */
     .btn-danger { color: var(--danger-text); }
 
+    /* 1px --border-input, not 0.5px --border-default: an input's fill is
+       --inset on a --surface card = 1.18:1, and the old hairline composited to
+       1.43:1 — so an EMPTY field was, strictly, not perceivable as a component
+       (SC 1.4.11). 0.5px also renders sub-pixel on a 1× projector. */
     input, select, .claim-name {
       background: var(--inset); color: var(--ink); font-size: var(--fs-body);
-      border: 0.5px solid var(--border-default); border-radius: var(--radius);
+      border: 1px solid var(--border-input); border-radius: var(--radius);
       padding: 0.4rem 0.7rem; min-height: var(--ctrl-h);
     }
     /* A select was the last UA-default control on the page: the platform drew
@@ -543,7 +603,7 @@
     select {
       appearance: none; -webkit-appearance: none;
       padding-right: 1.9rem;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b929b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23949ca6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
       background-repeat: no-repeat;
       background-position: right 0.6rem center;
       background-size: 0.85rem 0.85rem;
@@ -723,7 +783,12 @@
     .wire-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.5rem;
       margin-bottom: 0.5rem; }
     .wire-head .spacer { flex: 1; }
-    #details-label { font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
+    /* The <h2#details-label> is now a bare wrapper around the toggle (APG
+       accordion shape) — it must add no box of its own, or it inserts a line
+       above the drawer bar. The type it used to carry moved to .log-title,
+       which is the element the text actually lives in now. */
+    #details-label { display: contents; }
+    .log-title { font-size: var(--fs-body); font-weight: 600; color: var(--ink); }
     .wire-legend { margin-bottom: 0.35rem; font-size: var(--fs-small); color: var(--ink-muted); }
     /* Chip-scale log toggles: the base tile with a transparent fill, opting out
        of --ctrl-h like the other chip-scale controls (they carry the ::after
@@ -731,7 +796,7 @@
     #wire-pause { font-size: var(--fs-small); min-height: 0;
       padding: 0.2rem 0.7rem; border-color: var(--border-strong);
       background: transparent; color: var(--ink-muted); }
-    #wire-pause[aria-pressed="true"] { background: var(--accent-soft); color: var(--link); }
+    #wire-pause.paused { background: var(--accent-soft); color: var(--link); }
     /* Log-scale select: smaller type, a width cap, a stronger hairline for a
        dense row. Nothing else — the base select already supplies the fill, the
        radius, the ink AND the chevron.
@@ -882,7 +947,7 @@
     #student-details { flex: none; margin: 0 1.25rem 1.25rem;
       border: 0.5px solid var(--border-default);
       border-radius: var(--radius-lg); background: var(--surface); overflow: hidden; }
-    .log-toggle h2 { font-size: var(--fs-body); font-weight: 600; color: var(--ink); margin: 0; }
+    .log-toggle .log-title { font-size: var(--fs-body); font-weight: 600; color: var(--ink); margin: 0; }
     .log-toggle .wire-legend { margin: 0; }
     .wire-head { margin: 0; }
     #prof-advanced > summary { cursor: pointer; color: var(--ink-muted);
@@ -1021,7 +1086,7 @@
   </style>
 </head>
 <body>
-  <header class="topbar"><h1><button id="home-btn" class="logo-btn" aria-label="Fleet — home"><span class="logo-accent">Better</span><span class="logo-base">Robotics</span></button></h1>
+  <header class="topbar"><h1><button id="home-btn" class="logo-btn" aria-label="Better Robotics — home (Fleet)"><span class="logo-accent">Better</span><span class="logo-base">Robotics</span></button></h1>
     <span class="topbar-right">
       <!-- Stop all sits LEFT of the status chips and behind a divider. It is
            the only ACTION in a row of popover-openers, and the only control
@@ -1029,19 +1094,27 @@
            two chips you tap most. Space encodes relatedness, so the fence is
            the fix; the reorder is only what makes room for it. -->
       <span class="estop-slot">
-        <button id="estop-chip" class="tchip danger" aria-label="Emergency stop — halt every rover" data-icon="octagon"><span>Stop all</span></button>
+        <!-- The accessible name MUST start with the visible label (SC 2.5.3).
+             It read "Emergency stop — halt every rover" over a chip that says
+             "Stop all", so the name did not contain the visible text: a voice
+             user looked at the room's kill switch, said "click Stop all", and
+             nothing happened — no error, no feedback. The one control in this
+             file that must never miss, unreachable by the input method most
+             likely to be used by someone who can't reach a mouse fast. The
+             label stays (≤480px hides the span, per the rule below). -->
+        <button id="estop-chip" class="tchip danger" aria-label="Stop all — emergency stop, halts every rover" data-icon="octagon"><span>Stop all</span></button>
       </span>
       <!-- Fleet e-stop: one tap engages the retained fleet/estop latch
            (CONTRACT.md § Fleet e-stop). Direct action, not a popover chip;
            visible only to a signed-in professor, and while engaged the
            banner (with its Clear) takes over. -->
-      <button id="net-chip" class="tchip" aria-haspopup="true" aria-controls="chip-pop" aria-expanded="false" data-icon="wifi"><span id="net-chip-label"></span></button>
+      <button id="net-chip" class="tchip" aria-haspopup="dialog" aria-controls="chip-pop" aria-expanded="false" data-icon="wifi"><span id="net-chip-label"></span></button>
       <!-- Locked: the professor's door lives in the account corner. It isn't a
            sign-in — one shared code unlocks the professor role; robots need no
            credential at all (Claim on the rover card, Drive for anyone).
            Swaps for #id-chip once a session exists. -->
-      <button id="signin-chip" class="tchip" aria-label="Professor — unlock fleet controls" aria-haspopup="true" aria-controls="chip-pop" aria-expanded="false" data-icon="person"><span>Professor</span></button>
-      <button id="id-chip" class="tchip" aria-haspopup="true" aria-controls="chip-pop" aria-expanded="false" data-icon="person"><span id="id-chip-name"></span></button>
+      <button id="signin-chip" class="tchip" aria-label="Professor — unlock fleet controls" aria-haspopup="dialog" aria-controls="chip-pop" aria-expanded="false" data-icon="person"><span>Professor</span></button>
+      <button id="id-chip" class="tchip" aria-haspopup="dialog" aria-controls="chip-pop" aria-expanded="false" data-icon="person"><span id="id-chip-name"></span></button>
     </span>
   </header>
   <!-- The corner popover both chips share; content MOVES in on open and back
@@ -1098,15 +1171,15 @@
       <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18"/></svg>
     </button>
     <nav class="rail" aria-label="Sections">
-      <button class="navitem" data-panel="fleet" title="Fleet" aria-label="Fleet" aria-current="page">
+      <button class="navitem" data-panel="fleet" title="Fleet" aria-current="page">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         <span>Fleet</span><span class="nav-badge" id="nav-unnamed" hidden></span>
       </button>
-      <button class="navitem" data-panel="code" title="Code" aria-label="Code">
+      <button class="navitem" data-panel="code" title="Code">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
         <span>Code</span>
       </button>
-      <button class="navitem" data-panel="topics" title="Topics" aria-label="Topics">
+      <button class="navitem" data-panel="topics" title="Topics">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/></svg>
         <span>Topics</span>
       </button>
@@ -1115,10 +1188,20 @@
            IN, it does not carry every section's contents at once. -->
       <div class="tw" id="topic-tree" hidden>
         <div class="tw-filter"><input id="tw-filter" type="search" placeholder="Filter&#8230;" aria-label="Filter topics" autocapitalize="none" autocorrect="off" spellcheck="false"></div>
-        <div class="tw-tree" id="tw-tree" role="tree" aria-label="Topic tree"></div>
+        <!-- No role="tree", by the same rule #drive-mode already states: the
+             full contract isn't implemented, and claiming the role without it
+             misleads AT. This one claimed it hardest — role="tree" holding zero
+             treeitems (its children are plain buttons, which aren't even
+             allowed there), no owned subtree for aria-expanded to refer to, no
+             roving tabindex, no arrow keys, no aria-level/setsize. A screen
+             reader announced "tree, 0 items", the user pressed ↓ expecting tree
+             navigation, and the key fell through to the browser. The disclosure
+             below is now real (aria-controls + a container that actually holds
+             the rows); a genuine tree is a build, not a fix. -->
+        <div class="tw-tree" id="tw-tree" aria-label="Topic tree"></div>
       </div>
       <span class="rail-spacer"></span>
-      <button class="navitem" data-panel="settings" title="Settings" aria-label="Settings">
+      <button class="navitem" data-panel="settings" title="Settings">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         <span>Settings</span>
       </button>
@@ -1131,6 +1214,27 @@
       <!-- Notices belong to the WORK, not to the chrome: a full-width band above
            the shell pushed the rail down the page to say the hub was retrying. -->
       <div class="notices" id="notices">
+    <!-- THE ANNOUNCEMENT VOCABULARY. The file had a rich visual status system
+         (.notice / .notice.ok / .notice.danger / #codes-status / .assign-ok)
+         and no announcement counterpart: four live regions existed, three of
+         them parked inside `hidden` storage nodes, so a state change announced
+         only if the sheet that owned it happened to be open. Hub down, uplink
+         lost, feed stalled, board claimed, code rejected — no region at all.
+         That is the same defect this file already named for its buttons:
+         primary-by-id-list, which no new button could join. Status was
+         announced-by-whichever-sheet-is-open, which no new status could join.
+         These two regions are the join point. They are ALWAYS rendered and
+         EMPTY at rest — that is the whole contract, and it is why they cannot
+         live on the visual banners, which are display-toggled by design.
+         Route through announce() / alertNow(); never write them directly. -->
+    <p id="app-status" class="sr-only" role="status" aria-live="polite"></p>
+    <p id="app-alert" class="sr-only" role="alert"></p>
+    <!-- The visible home for messages that had none. blinkBoard/unassign/pins
+         wrote errors into #codes-status while it sat inside <section id="codes"
+         hidden> — invisible to EVERYONE, not just AT, whenever the assign sheet
+         wasn't open. This is display-toggled freely: it is the sighted channel,
+         not the announcement one. -->
+    <div id="app-notice" class="notice"></div>
     <div id="hub-host-gate" class="notice" style="gap:0.5rem; align-items:center; flex-wrap:wrap">
       <span id="hub-host-label">Standalone copy — which hub?</span>
       <input id="hub-host-input" type="text" placeholder="10.42.0.1 or hub.local" aria-label="Hub address"
@@ -1141,7 +1245,15 @@
     <!-- Fleet e-stop banner: driven by the retained fleet/estop latch, so every
          dashboard — anonymous fleet views included — shows the engaged state.
          The Clear button appears only for a signed-in professor. -->
-    <div id="estop-banner" class="notice danger" role="alert" style="gap:0.6rem; align-items:center; flex-wrap:wrap">
+    <!-- No role="alert" here any more, for two reasons. (1) This element is
+         display:none until engaged and ships with its text already written —
+         populate-then-reveal, which announces in some browser/AT pairs and not
+         others; whether a blind student learns the room has been e-stopped is
+         not a coin flip we get to keep. (2) An alert must not contain a focusable
+         control, and #estop-clear lives here. The announcement now goes through
+         #app-alert (always rendered, empty at rest); this banner is purely the
+         sighted channel. -->
+    <div id="estop-banner" class="notice danger" style="gap:0.6rem; align-items:center; flex-wrap:wrap">
       <span style="flex:1; min-width:12rem; overflow-wrap:anywhere"><b>Emergency stop engaged</b> — <span id="estop-meta">rovers refuse drive commands until it is cleared</span><!--
         Did every robot actually HEAR it? CONTRACT.md § Fleet e-stop has rovers
         echo "estop":true in their sys beacon for exactly this check, and nothing
@@ -1211,9 +1323,26 @@
        close. Collapsed by default: sys beacons every 2 s per rover, so this is
        ambient evidence you glance at, not a thing to stare at. -->
   <section id="student-details">
-    <button class="log-toggle" id="log-toggle" aria-expanded="false" aria-controls="log-body">
+    <!-- APG's accordion shape: the heading WRAPS the button. The <h2> used to
+         live inside it, and role=button is Children Presentational: True — so
+         every descendant was stripped from the accessibility tree and flattened
+         into the button's name. Two things followed. (1) The heading didn't
+         exist for AT, so the log was unreachable by heading navigation and this
+         section had no accessible name at all. (2) The name became
+         "Log · last message 3s ago 12 msg/s ↑ sent from this page · ↓ received"
+         — and #details-age / #wire-rate are rewritten every 1–2 s, so the name
+         mutated continuously; aria-live="off" silences announcements but does
+         nothing about a NAME, and voice control ("click Log") can't target a
+         string that's mostly numbers.
+         Wrapping instead of restructuring keeps the whole bar clickable, which
+         is the point of the closed drawer. aria-label pins the name to the
+         visible word (SC 2.5.3 satisfied: "Log" is on screen); the metrics stay
+         visible but out of the a11y tree — they're ambient glance-evidence,
+         and the log itself is reachable below. -->
+    <h2 id="details-label">
+    <button class="log-toggle" id="log-toggle" aria-expanded="false" aria-controls="log-body" aria-label="Log">
       <svg class="chev" viewBox="0 0 10 10" width="10" height="10" fill="currentColor" aria-hidden="true"><polygon points="1,3 9,3 5,8"/></svg>
-      <h2 id="details-label">Log</h2>
+      <span class="log-title">Log</span>
       <!-- Link health at a glance, beside the title it qualifies. Both of these
            stay on the closed bar: the point of a collapsed drawer is that it
            still answers "is the wire alive?" without opening. -->
@@ -1222,6 +1351,7 @@
       <span class="spacer"></span>
       <span class="wire-legend"><span class="log-out">&#8593; sent from this page</span> &#183; <span class="log-in">&#8595; received</span></span>
     </button>
+    </h2>
     <div class="log-body" id="log-body" hidden>
     <div class="wire-head">
       <select class="select-sm" id="wire-filter" aria-label="Filter log to one rover"><option value="">all rovers</option></select>
@@ -1252,7 +1382,7 @@
         <option value="estop">estop</option>
       </select>
       <span class="spacer"></span>
-      <button id="wire-pause" aria-pressed="false">Pause</button>
+      <button id="wire-pause">Pause</button>
     </div>
     <!-- The arrow key is a CAPTION for the log, not a control: it sat inside
          the control row, which is what made that row read as a jumble. -->
@@ -1263,7 +1393,18 @@
          answering nothing), and inbound also carries fleet/estop, which comes
          from a professor, not a rover. Direction is the honest claim — what
          this page sent vs what it received. -->
-    <div id="wire-log" role="log" tabindex="0" aria-label="Live command and telemetry log"></div>
+    <!-- aria-live="off" is REQUIRED here, not belt-and-braces: role="log"
+         carries an implicit aria-live="polite", so every frame logLine() appends
+         became an announcement. sys alone is one per rover per 2 s — six rovers
+         is three utterances a second, forever, each reading a full JSON payload.
+         The polite queue never drains, so every other announcement in the app
+         (including the e-stop) starves behind a wall of telemetry. The drawer
+         being collapsed by default is the only reason this wasn't already
+         shipping broken — hubLogOpen makes it permanent for anyone who opened
+         it once. This is a READING surface: it's scrollable and focusable, which
+         is the right affordance. Let the user read it; announce nothing.
+         #wire-rate beside it already had exactly this fix. -->
+    <div id="wire-log" role="log" aria-live="off" tabindex="0" aria-label="Live command and telemetry log"></div>
     </div>
   </section>
     </div>
@@ -1275,7 +1416,12 @@
          and claiming need no sign-in at all. The only remaining door is the
          professor's (the topbar chip); this box stays empty and hidden
          except to surface a professor sign-in error (updateSigninVisibility). -->
-    <p id="gate-error" role="alert">Wrong code, or the hub isn't accepting drive connections.</p>
+    <!-- No role="alert": this element is display:none-toggled inside a
+         display:none-toggled #signin, so it is not in the accessibility tree at
+         the moment its text is written — the announcement could never fire from
+         here. It also shipped with its text pre-filled. gateMsg() routes the
+         announcement through #app-alert; this <p> is the sighted channel. -->
+    <p id="gate-error">Wrong code, or the hub isn't accepting drive connections.</p>
   </section>
 
   <!-- Drive controls: parked here, hidden, until a card's Drive button moves them
@@ -1464,6 +1610,70 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     const esc = s => String(s ?? "").replace(/[&<>"']/g,
       c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+    // ONE panel-head builder. There were two hand-rolled twins — renderTopicDetail's
+    // escaped its argument, renderSettings' interpolated it raw into
+    // `<h2>${t}</h2>`. No live vulnerability (every call site passed a literal),
+    // but it's two spellings of one helper where one is a trap: the next call
+    // site to pass hostLabel — which comes from /fleet's ssid, i.e. off the air
+    // — is an XSS. textContent rather than a fixed esc(), so there is no
+    // innerHTML left to forget. This is the file's own rule: compose, don't
+    // hand-roll; every shipped defect here was an element skipping a pattern.
+    const panelHead = (t) => {
+      const d = document.createElement("div");
+      d.className = "panel-head";
+      d.append(Object.assign(document.createElement("h2"), { textContent: t }));
+      return d;
+    };
+
+    // ---- The announcement vocabulary (see #app-status / #app-alert markup) ----
+    // Every state change gets ONE call. The regions are always rendered and
+    // empty at rest, so these can be called from anywhere at any time —
+    // including while the sheet that "owns" the message is closed, which is
+    // precisely where the old per-sheet regions went silent.
+    //
+    // The change-guard is load-bearing, not an optimisation: renderEstop() and
+    // friends run on the unconditional 2 s clock, and re-writing a live region
+    // with the string it already holds is a no-op that several AT re-announce
+    // anyway. Guarding on !== is what stops "Emergency stop engaged" from being
+    // spoken every two seconds for the length of an emergency.
+    const announce = (msg, region = "app-status") => {
+      const el = document.getElementById(region);
+      const want = msg || "";
+      if (el.textContent !== want) el.textContent = want;
+    };
+    // Assertive: interrupts. Loss and failure only — an alert that fires for
+    // routine news trains the user to tune out the one that matters.
+    const alertNow = (msg) => announce(msg, "app-alert");
+    // The visible half for messages with no banner of their own. Kept separate
+    // from announce() on purpose: this one is display-toggled, so it must never
+    // be the announcement carrier.
+    const notify = (msg, cls = "") => {
+      const el = document.getElementById("app-notice");
+      el.className = "notice" + (cls ? " " + cls : "");
+      el.textContent = msg || "";
+      el.style.display = msg ? "block" : "none";
+    };
+    // Both channels at once — the common case for an error a user must both see
+    // and hear. `assertive` picks the AT region; the visible tier is separate.
+    const report = (msg, { assertive = false, cls = "" } = {}) => {
+      notify(msg, cls);
+      announce(msg, assertive ? "app-alert" : "app-status");
+    };
+    // Assign-sheet outcomes. #codes-status IS correctly primed (empty, in static
+    // markup, role=status) — but it lives inside <section id="codes" hidden> and
+    // only reaches the screen when preselectAssign(scroll=true) lends it to the
+    // modal. blinkBoard / unassignBoard / pins-apply / testPulse are all
+    // reachable straight from a fleet card with that sheet closed, so their
+    // errors landed in a hidden node: not just unannounced, but invisible —
+    // the button simply looked dead. Route to whichever surface is really there.
+    // getClientRects() is the test that catches display:none, [hidden], AND a
+    // collapsed <details> ancestor in one go.
+    const sheetStatus = (msg, cls = "") => {
+      const el = document.getElementById("codes-status");
+      if (el.getClientRects().length) { el.textContent = msg; el.className = cls; }
+      else report(msg, { cls: cls === "assign-err" ? "danger" : "" });
+    };
+
     // Minute granularity past 90 s — not just taste: card HTML that only
     // changes once a minute lets the diff-skip in the render functions hold
     // repaints (and the keyboard focus they would steal) between real changes.
@@ -1571,6 +1781,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       try {
         data = await (await fetch("/fleet", { signal: AbortSignal.timeout(1500) })).json();
         banner.style.display = "none";
+        announce("");   // clears "Hub unreachable"; recovery is news too
         fleetFails = 0; fleetSeen = true;
         // /fleet answering means THIS origin is a hub — an override saved while
         // the copy was hosted elsewhere would point mqtt at the wrong broker.
@@ -1580,6 +1791,11 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       } catch {
         uplinkBusy = false;
         banner.style.display = "block";
+        // The hub going down mid-class was previously a purely visual event: an
+        // amber band appeared and AT said nothing, so a blind student kept
+        // driving a rover that wasn't there. The guard in announce() means this
+        // polls every few seconds without repeating itself.
+        announce("Hub unreachable — retrying…");
         // Hosted copy with no hubd behind it (github.io, a laptop server):
         // /fleet will never answer. After a few misses with zero fleet signal,
         // offer the hub-address gate instead of "retrying…" forever.
@@ -1587,6 +1803,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
           banner.style.display = "none"; // the gate below says it better
           document.getElementById("hub-host-label").textContent =
             "No hub behind this page — enter your hub's address:";
+          announce("No hub behind this page — enter your hub's address.");
           hostGate.style.display = "flex";
         }
         return;
@@ -1604,6 +1821,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       const msg = UPLINK_MSG[data.uplink];
       uplinkEl.textContent = msg || "";
       uplinkEl.style.display = msg ? "block" : "none";
+      announce(msg || "");   // losing the venue uplink was silent to AT too
     }
 
     /* Device-served Wi-Fi setup (hubd /wifi/*). Only meaningful when this page
@@ -1638,6 +1856,14 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         const ms = document.getElementById("wifi-pop-status");
         if (ms) ms.textContent = text;                    // popover open: keep it live
         $("net-chip-label").textContent = s && s.ssid ? s.ssid : "set up Wi-Fi";
+        // Put the STATE in the name. The chip's accessible name was bare
+        // "WhiteSky-Beckon, button" — no role hint, no state, not even a clue
+        // it was the network control; the words that distinguish online from
+        // needs-venue-sign-in were written to #wifi-status, which lives inside
+        // <div id="wifi-setup" hidden> and only surfaces if you open the
+        // popover. `text` above already reads exactly right — reuse it rather
+        // than compose a second wording that can drift from the visible one.
+        netChip.setAttribute("aria-label", text);
         netChip.classList.toggle("warn", !healthy);
         // Nothing to forget until a network is actually stored.
         $("wifi-forget").style.display = s && s.ssid ? "inline-block" : "none";
@@ -1669,7 +1895,15 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // The scan states render as rows INSIDE the list panel, not as a
       // detached status line: an empty list that collapses to zero height
       // jump-cuts the popover every scan.
-      const note = t => { $("wifi-list").innerHTML = `<p class="list-note">${esc(t)}</p>`; };
+      // #wifi-msg right below the list is already a correctly-primed
+      // role="status" — but the scan lifecycle bypassed it and wrote here
+      // instead, so "Scanning…", "Scan failed" and "No networks found" were
+      // three different states wearing one silence. Mirror into the region that
+      // already exists rather than minting a second one.
+      const note = t => {
+        $("wifi-list").innerHTML = `<p class="list-note">${esc(t)}</p>`;
+        $("wifi-msg").textContent = t;
+      };
       // #wifi-join is MOVED into the list (under the tapped row), so it must be
       // parked back on the panel before any innerHTML write — otherwise a
       // rescan silently deletes the node and every later $("wifi-join") is null.
@@ -1677,6 +1911,10 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         const join = $("wifi-join");
         join.hidden = true;   // attribute, not style: [hidden] is !important
         $("wifi-panel").insertBefore(join, $("wifi-msg"));
+        // The row that opened it is no longer expanded — say so, or it keeps
+        // the claim after the panel it referred to has been parked away.
+        $("wifi-list").querySelectorAll(".wifi-net[aria-expanded='true']")
+          .forEach(b => b.setAttribute("aria-expanded", "false"));
       };
       async function scanWifi() {
         if (scanning) return;                 // Rescan spam must not stack fetches
@@ -1693,9 +1931,12 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         // Strongest first: a picker that lists the network you're standing next
         // to fourth is asking you to read, not to pick.
         nets.sort((a, b) => b.signal - a.signal);
+        // The arrival of results is an innerHTML subtree swap — silent on its
+        // own. Say how many, so the scan has an audible end as well as a start.
+        $("wifi-msg").textContent = `${nets.length} network${nets.length === 1 ? "" : "s"} found.`;
         // SSIDs come off the air — escape before they touch innerHTML.
         $("wifi-list").innerHTML = nets.map(n =>
-          `<button class="wifi-net"
+          `<button class="wifi-net" aria-expanded="false" aria-controls="wifi-join"
              data-ssid="${esc(n.ssid)}" data-open="${n.security === "NO"}">
              <span>${esc(n.ssid)}</span>
              <span class="hint">${n.security === "NO" ? "open" : esc(n.security)} · ${n.signal}%</span>
@@ -1715,6 +1956,10 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         // sat at the bottom of the panel, past the whole list, so on a real
         // scan (10+ SSIDs) Connect was off-screen and the tap looked dead.
         btn.after(join);
+        // Reset the others first. aria-expanded was set on tap and never set
+        // back, so every row you'd ever tapped went on claiming to be expanded.
+        $("wifi-list").querySelectorAll(".wifi-net[aria-expanded='true']")
+          .forEach(b => b.setAttribute("aria-expanded", "false"));
         btn.setAttribute("aria-expanded", "true");
         join.hidden = false;
         $("wifi-join-ssid").textContent = chosen;
@@ -2112,6 +2357,13 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       const engaged = !!estopState;
       const prof = myScope && myScope.scope === "all" && driveClient && driveClient.connected;
       document.getElementById("estop-banner").style.display = engaged ? "flex" : "none";
+      // The AT channel, decoupled from the banner's display toggle. alertNow's
+      // change-guard means this is spoken once when the latch engages and once
+      // when it clears — not every 2 s tick for the length of the emergency.
+      alertNow(engaged
+        ? "Emergency stop engaged — rovers refuse drive commands until it is cleared" +
+          (estopState.by ? ` (engaged by ${estopState.by})` : "")
+        : "");
       if (engaged) {   // textContent, so a hostile "by" can't inject markup
         document.getElementById("estop-meta").textContent =
           "rovers refuse drive commands until it is cleared" +
@@ -2159,6 +2411,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         publicClient.on("error", () => {
           document.getElementById("hub-host-label").textContent =
             `Couldn't reach "${hubHost}" — try again:`;
+          announce(`Couldn't reach "${hubHost}" — try again.`);
           hostGate.style.display = "flex";
         });
       }
@@ -2197,6 +2450,14 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       emptyEl.innerHTML = stalled
         ? `Can't reach the hub's live feed — reconnecting… <span class="hint">If this doesn't clear in a minute, power-cycle the hub and reload this page.</span>`
         : emptyDefault;
+      // This block swaps the DIAGNOSIS — "no rovers yet, power one on" vs
+      // "can't reach the feed" point at opposite ends of the room — and
+      // announced neither, so a blind student debugged whichever one they
+      // guessed. The `stalled === emptyStalled` early-return above already
+      // guarantees this only fires on a real transition.
+      announce(stalled
+        ? "Can't reach the hub's live feed — reconnecting."
+        : "");
     }, 3000);
 
     // ---- Manual control: code gate → direct MQTT → scoped joystick + wire log ----
@@ -2254,9 +2515,49 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       const prevSeen = topicSeen.get(topic);
       topicSeen.set(topic, { payload, at: Date.now(), n: (prevSeen?.n || 0) + 1, dir });
       if (wirePaused) return; // paused = freeze what's on screen for reading
+      // Closed drawer = no DOM at all. This is the whole ballgame on a busy
+      // fleet, and the load is asymmetric in the worst possible direction: the
+      // anonymous client subscribes robots/+/sys, but the PROFESSOR's
+      // subscribes robots/+/# — every channel, pwm included, and pwm is 10 Hz
+      // per driving student. Twenty students is ~200 msg/s, and this function
+      // ran its full DOM path for every one of them whether or not the drawer
+      // was open. The professor's tab is the only one with the e-stop chip, so
+      // its INP degraded precisely under the classroom load where the e-stop
+      // matters. The topicSeen bookkeeping above still runs — the Topics tree
+      // reads it, and Pause freezes the VIEW, not the wire.
+      // Buffer the DATA either way — that's an array push, no DOM, no layout —
+      // and cap it at the same MAX_LOG the DOM is capped at. Only the DOM work
+      // is skipped while closed, so opening the drawer still shows the recent
+      // history it always did rather than an empty box that fills in later.
+      logPending.push({ dir, text, topic, payload });
+      if (logPending.length > MAX_LOG) logPending.splice(0, logPending.length - MAX_LOG);
+      if (document.getElementById("log-body").hidden) return;
+      if (!logFlushQueued) { logFlushQueued = true; requestAnimationFrame(flushLog); }
+    }
+    // One layout per FRAME instead of one per message. The old code appended
+    // inside logLine and then read log.scrollHeight — a read straight after a
+    // write, i.e. a forced synchronous reflow, per message. Batching also
+    // collapses a burst of 200 msg/s into a single append + single trim +
+    // single scroll.
+    const logPending = [];
+    let logFlushQueued = false;
+    function flushLog() {
+      logFlushQueued = false;
+      if (!logPending.length) return;
       const log = document.getElementById("wire-log");
-      // Respect a reader who scrolled up: only auto-follow from the bottom.
+      // Read the follow decision ONCE, before any write this frame — this is
+      // the layout read that used to happen per message. Still captured BEFORE
+      // appending, which is what keeps a reader who scrolled up from being
+      // yanked back to the bottom.
       const following = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
+      const frag = document.createDocumentFragment();
+      for (const { dir, text, topic, payload } of logPending) frag.append(buildLogLine(dir, text, topic, payload));
+      logPending.length = 0;
+      log.appendChild(frag);
+      while (log.children.length > MAX_LOG) log.removeChild(log.firstChild);
+      if (following) log.scrollTop = log.scrollHeight;
+    }
+    function buildLogLine(dir, text, topic, payload) {
       const line = document.createElement("div");
       line.className = `log-line log-${dir}`;
       const robot = text.startsWith("robots/") ? text.split("/")[1] : "";
@@ -2276,14 +2577,21 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
                   cell("log-payload", payload));
       line.title = text;   // the full line, for anything the columns clip
       if (lineHidden(line)) line.style.display = "none";
-      log.appendChild(line);
-      while (log.children.length > MAX_LOG) log.removeChild(log.firstChild);
-      if (following) log.scrollTop = log.scrollHeight;
+      return line;   // flushLog appends it — see the batching note above
     }
     document.getElementById("wire-pause").addEventListener("click", (e) => {
       wirePaused = !wirePaused;
-      e.target.setAttribute("aria-pressed", String(wirePaused));
+      // Label swaps, aria-pressed is GONE — APG offers two shapes for a toggle
+      // and this file was wearing half of each: it announced "Resume, toggle
+      // button, pressed", the label naming the next action while the state
+      // named the current one. A contradiction, read aloud.
+      // Of the two legal shapes, the swapping label is the one to keep here:
+      // the alternative (static "Pause" + aria-pressed) would have left the
+      // paused state carried by #wire-pause's background tint and nothing else
+      // — colour alone, SC 1.4.1. The word IS the second channel. The tint
+      // rides along on .paused now that no ARIA state selects it.
       e.target.textContent = wirePaused ? "Resume" : "Pause";
+      e.target.classList.toggle("paused", wirePaused);
     });
     document.getElementById("wire-topic").addEventListener("change", (e) => {
       wireTopic = e.target.value;
@@ -2366,6 +2674,13 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         line.textContent = "Your rover stopped answering";
         sub.textContent = `Last heard ${fmtUptime(Date.now() - rec.seenAt)} ago — check its power.`;
       }
+      // The driver's rover dying was a purely visual event: the sentence
+      // appeared above the joystick and a blind student kept dragging the
+      // stick, with #motor-readout dutifully reporting the numbers it WOULD be
+      // sending. announce()'s guard holds it to one utterance per transition —
+      // and fmtUptime's minute granularity past 90 s (see its own note) is what
+      // stops the age text re-firing this on every 2 s tick.
+      announce(stale ? "Your rover stopped answering — check its power." : "");
     }
     // The collapsed row's pulse: link health without opening it — the
     // freshest beacon fleet-wide.
@@ -2519,13 +2834,24 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         const g = document.createElement("button");
         g.className = "tw-group"; g.dataset.group = key;
         g.setAttribute("aria-expanded", String(open));
+        // aria-expanded now REFERS to something. The rows used to be appended to
+        // the same fragment as siblings of g, so the attribute was a claim with
+        // no referent — nothing was owned, nothing was controlled. A container
+        // with a stable id is the cheapest way to make the disclosure true.
+        // CSS is class-based throughout (.tw-row / .tw-group), no direct-child
+        // combinators, so the extra wrapper changes no layout.
+        const subId = `twg-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+        g.setAttribute("aria-controls", subId);
         g.innerHTML = `<svg class="chev" viewBox="0 0 10 10" width="10" height="10" fill="currentColor" aria-hidden="true"><polygon points="1,3 9,3 5,8"/></svg>`;
         g.title = label;   // the full name, for whatever the 232px rail clips
         const nm = document.createElement("span"); nm.className = "tw-name"; nm.textContent = label;
         g.append(nm);
         if (alias) { const s = document.createElement("span"); s.className = "tw-alias"; s.textContent = ` · ${alias}`; g.append(s); }
-        frag.append(g);
-        if (open) for (const r of rows) frag.append(r);
+        const sub = document.createElement("div");
+        sub.id = subId;
+        if (!open) sub.hidden = true;   // [hidden] wins — the base rule guarantees it
+        for (const r of rows) sub.append(r);
+        frag.append(g, sub);
       };
       for (const [id, alias] of rovers) {
         const rows = CHANNELS.filter(c => match(`robots/${id}/${c.seg}`))
@@ -2556,7 +2882,6 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       const c = chanFor(topicSel), seen = topicSeen.get(topicSel);
       const grid = document.createElement("div"); grid.className = "td-grid";
       const card = () => { const d = document.createElement("div"); d.className = "td-card"; return d; };
-      const h = (t) => Object.assign(document.createElement("div"), { className: "panel-head", innerHTML: `<h2>${esc(t)}</h2>` });
 
       const left = card();
       const head = document.createElement("div"); head.className = "panel-head";
@@ -2591,7 +2916,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       }
 
       const right = card();
-      right.append(h("Last message"));
+      right.append(panelHead("Last message"));
       const pre = document.createElement("pre"); pre.className = "td-pre";
       // Pretty-print when it parses; show the raw bytes when it doesn't —
       // an unparseable payload is exactly the thing you opened this to see.
@@ -2634,8 +2959,6 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         }
         return dl;
       };
-      const head = (t) => Object.assign(document.createElement("div"),
-        { className: "panel-head", innerHTML: `<h2>${t}</h2>` });
       const hint = (t) => Object.assign(document.createElement("p"), { className: "hint", textContent: t });
       const wrap = document.createDocumentFragment();
 
@@ -2646,7 +2969,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // The split below is deliberate and load-bearing: THIS section is what
       // the page OBSERVES about its own link, the two after it are the wire
       // contract mirrored (with the src: citations that keep them honest).
-      wrap.append(head("This page"), list([
+      wrap.append(panelHead("This page"), list([
         ["Hub", hostLabel || "—"],
         ["Served from", standalone ? "a standalone copy" : "the hub itself"],
         // wsPort, not a literal "9001" — the connect call and this row must
@@ -2664,7 +2987,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // this row is a read, not a guess. src for the fallback, used only when
       // no hubd is behind the page: pi/deploy/mosquitto.conf (`listener 1883` /
       // `protocol mqtt`) + CONTRACT.md § Discovery & isolation.
-      wrap.append(head("How a rover connects"),
+      wrap.append(panelHead("How a rover connects"),
         hint("The firmware is a raw-TCP MQTT client — a different door into the same broker, and the same topics once inside."),
         list([
           ["Endpoint", brokerLocator || `mqtt://${brokerHost}:1883`],
@@ -2685,7 +3008,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // seam is the lesson: MQTT brokers every rover message, while for a
       // phone the broker only introduces the peers and the media then flows
       // LAN-direct, never through here.
-      wrap.append(head("What you may publish"),
+      wrap.append(panelHead("What you may publish"),
         list([
           [["robots/#", "every rover — telemetry, drive, LED"], "read + write"],
           [["pair/#", "phone pairing — WebRTC signaling only; video goes peer-to-peer"], "read + write"],
@@ -2719,7 +3042,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         location.reload();
       });
       row.append(inp, go);
-      wrap.append(Object.assign(document.createElement("div"), { className: "panel-head", innerHTML: "<h2>Which hub</h2>" }), p, row);
+      wrap.append(panelHead("Which hub"), p, row);
       host.replaceChildren(wrap);
     }
 
@@ -2738,6 +3061,15 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // vanishing exactly when you look at Fleet is the confusing case.
       el.hidden = !n;
       el.textContent = String(n);
+      // The badge has to say what it MEANS, for two reasons. (1) The navitem's
+      // aria-label used to be "Fleet", and aria-label overrides the entire
+      // subtree — so this count reached AT from no panel at all, which is a
+      // funny way for a "status light readable from every panel" to behave.
+      // That label is gone; the <span>Fleet</span> names the button now.
+      // (2) In the collapsed rail the CSS drops this to a bare amber dot
+      // (font-size: 0), so the number is gone and the meaning rides on hue
+      // alone — colour is not a channel. The name carries it in both states.
+      el.setAttribute("aria-label", `${n} board${n === 1 ? "" : "s"} need a name`);
     }
 
     for (const b of document.querySelectorAll(".navitem[data-panel]"))
@@ -2787,7 +3119,15 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // behind a closed drawer leaves scrollTop pinned at the top. Opening onto
       // the oldest message, on a log whose point is the live tail, reads as
       // frozen. Land on the newest; from there the follow logic keeps up.
-      if (!open) { const l = document.getElementById("wire-log"); l.scrollTop = l.scrollHeight; }
+      if (!open) {
+        // Drain whatever buffered while closed: logLine keeps the data but
+        // skips the DOM behind a hidden drawer, so this is where those lines
+        // become elements. flushLog() reads the follow position first, and at
+        // zero height that read says "at the bottom" — which is exactly the
+        // intent, and the explicit scroll below settles it either way.
+        flushLog();
+        const l = document.getElementById("wire-log"); l.scrollTop = l.scrollHeight;
+      }
     });
     if (localStorage.getItem("hubLogOpen") === "true") logToggle.click();
     setPanel(localStorage.getItem("hubPanel") || "fleet");
@@ -2862,9 +3202,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     // mutation) — qos 0, nothing retained.
     function blinkBoard(board, robot) {
       if (!driveClient || !driveClient.connected) {
-        const status = document.getElementById("codes-status");
-        status.textContent = "Not connected — unlock professor controls first.";
-        status.className = "assign-err";
+        sheetStatus("Not connected — unlock professor controls first.", "assign-err");
         return;
       }
       const topic = `robots/${robot}/cmd/identify`;
@@ -2879,9 +3217,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     // mid-class. The robot's code is untouched; only the board forgets it.
     function unassignBoard(board, robot) {
       if (!driveClient || !driveClient.connected) {
-        const status = document.getElementById("codes-status");
-        status.textContent = "Not connected — unlock professor controls first.";
-        status.className = "assign-err";
+        sheetStatus("Not connected — unlock professor controls first.", "assign-err");
         return;
       }
       if (!confirm(`Unassign ${board} from ${robot}? It reboots into the unassigned pool.`)) return;
@@ -2979,7 +3315,16 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
                                  || rec.robot !== assignPending.oldRobot);
       if (rebooted && rec.robot === assignPending.robot) {
         settle(`${assignPending.board} is back under ${rec.robot}.`, "assign-ok");
-        setTimeout(closeAssignSheet, 1600);   // readable, then out of the way
+        // The 1.6 s auto-close is gone. It closed the sheet, which runs
+        // modalRestore() and moves #codes-status back into <section id="codes"
+        // hidden> — i.e. it yanked a role="status" region out of the
+        // accessibility tree 1.6 s after writing to it. A polite region waits
+        // for the current utterance to finish, so on any busy queue the success
+        // message was cancelled before it was ever spoken; the sheet just
+        // vanished. It's also a plain SC 2.2.1 failure for anyone who reads
+        // slowly — 1.6 s to read a sentence you can't pause or extend, and none
+        // of 2.2.1's exceptions (real-time, essential, >20 h) apply.
+        // The ✕ / Escape / backdrop already close it. Let the user decide.
       } else if (rebooted && rec.robot !== assignPending.robot) {
         settle(`${assignPending.board} rebooted but landed under ${rec.robot} — try again.`, "assign-err");
       } else if (Date.now() - assignPending.sentAt > 30000) {
@@ -3078,9 +3423,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       if (!b) return;
       const p = readPinFields();
       if (!p) {
-        const status = document.getElementById("codes-status");
-        status.textContent = "Fill all six pins first (pick a board that's online to auto-fill them).";
-        status.className = "assign-err";
+        sheetStatus("Fill all six pins first (pick a board that's online to auto-fill them).", "assign-err");
         return;
       }
       if (b.dataset.flip === "left")  [p.in1, p.in2] = [p.in2, p.in1];
@@ -3093,8 +3436,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     });
 
     document.getElementById("pins-apply").addEventListener("click", () => {
-      const status = document.getElementById("codes-status");
-      const setErr = m => { status.textContent = m; status.className = "assign-err"; };
+      const setErr = m => sheetStatus(m, "assign-err");
       if (!assignTarget) return setErr("Pick a board first.");
       if (!driveClient || !driveClient.connected) return setErr("Connect as professor first.");
       const pins = readPinFields();
@@ -3110,16 +3452,14 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       const cfg = { target: assignTarget.board, pins };
       driveClient.publish(topic, JSON.stringify(cfg), { qos: 1, retain: false });
       logLine("out", `${topic} ${JSON.stringify(cfg)}`);
-      status.textContent = `Sent — ${assignTarget.board} reboots with the new map and reappears in a few seconds.`;
-      status.className = "assign-ok";
+      sheetStatus(`Sent — ${assignTarget.board} reboots with the new map and reappears in a few seconds.`, "assign-ok");
     });
 
     // Calibration pulses: short, low-duty, targeted at the one selected board
     // (pool boards share the topic — "target" keeps the rest parked). The
     // firmware's watchdog ends the pulse even if this page dies mid-drive.
     function testPulse(left, right, expect) {
-      const status = document.getElementById("codes-status");
-      const setErr = m => { status.textContent = m; status.className = "assign-err"; };
+      const setErr = m => sheetStatus(m, "assign-err");
       if (!assignTarget) return setErr("Pick a board first.");
       if (!driveClient || !driveClient.connected) return setErr("Connect as professor first.");
       const topic = `robots/${assignTarget.robot}/pwm`;
@@ -3127,8 +3467,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
                     target: assignTarget.board };
       driveClient.publish(topic, JSON.stringify(pwm));
       logLine("out", `${topic} ${JSON.stringify(pwm)}`);
-      status.textContent = `Pulse sent — ${assignTarget.board} should ${expect}. Wrong? Use the flip buttons, then Apply.`;
-      status.className = "";
+      sheetStatus(`Pulse sent — ${assignTarget.board} should ${expect}. Wrong? Use the flip buttons, then Apply.`);
     }
     document.getElementById("pins-test-fwd").addEventListener("click", () => testPulse(130, 130, "roll forward"));
     document.getElementById("pins-test-spin").addEventListener("click", () => testPulse(-130, 130, "spin in place to the LEFT"));
@@ -3143,6 +3482,17 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       document.getElementById("signin").style.display = show ? "" : "none";
     }
     function gateMsg(text) {
+      // The AT channel first, and unconditionally. #gate-error carried
+      // role="alert" and could never fire from it: the element is display:none
+      // by default, ships with its text already in the markup, and its
+      // ANCESTOR (#signin) is display:none until updateSigninVisibility() runs
+      // a line later — so the message was composed inside a doubly-hidden
+      // subtree and the subtree was then revealed with the text in place.
+      // Populate-then-reveal announces in some browser/AT pairs and not others.
+      // The silent auto-login path ("Your saved code no longer works") is the
+      // one that stung: a professor signed out with an explanation only sighted
+      // people received. #app-alert is always rendered, so this always fires.
+      alertNow(text || "");
       // While the professor sign-in popover is open, messages belong to it
       // alone.
       const pop = document.getElementById("prof-pop-status");
@@ -3222,8 +3572,20 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         if (driveClient !== client) return; // superseded while connecting
         sessionUp = true;
         myCred = { user: username, pass: password };
-        // Remembered so a locked phone or reload lands back in, signed in.
-        localStorage.setItem("hubCred", JSON.stringify(myCred));
+        // sessionStorage, NOT localStorage. The stated requirement — "a locked
+        // phone or reload lands back in, signed in" — is exactly what
+        // sessionStorage gives: it survives reload and restore, and dies with
+        // the tab. localStorage persisted the professor's plaintext password
+        // forever, with no opt-in and no expiry, on a page whose own design
+        // notes assume a shared projector machine holding "a semester-long
+        // tab". Any student: F12 → Application → Local Storage → the code. It
+        // also meant any future HTML-injection bug in this file escalated
+        // straight to permanent credential theft, and the CSP's `connect-src
+        // http:` would happily exfiltrate it.
+        // Zero UX cost for the case the comment names. If cross-session
+        // persistence is ever actually wanted, it needs an explicit checkbox,
+        // not a silent default.
+        sessionStorage.setItem("hubCred", JSON.stringify(myCred));
         onScope(username);      // before setConnPill: the chip label reads identity-name
         setConnPill("live");
         client.subscribe("robots/+/#");
@@ -3239,7 +3601,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         if (!silent) gateMsg("The hub rejected that code — check it and try again.");
         else {
           // Explain the surprise logout instead of silently showing the gate.
-          localStorage.removeItem("hubCred");
+          sessionStorage.removeItem("hubCred");
           gateMsg("Your saved code no longer works — it may have been rotated. Enter it again.");
         }
       });
@@ -3268,7 +3630,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       document.getElementById("id-chip").classList.remove("show");
       document.getElementById("signin-chip").classList.add("show");
       closeChipPop();         // the logout button lives in the account popover
-      localStorage.removeItem("hubCred");
+      sessionStorage.removeItem("hubCred");
       updateSigninVisibility();
       renderRobots();
     });
@@ -3280,16 +3642,35 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     let chipPopRestore = null, chipPopOwner = null;
     function closeChipPop() {
       if (chipPop.hidden) return;
+      const owner = chipPopOwner;   // captured: the restore below can replace it
       chipPopRestore?.(); chipPopRestore = null;
       chipPop.hidden = true;
-      chipPopOwner?.setAttribute("aria-expanded", "false");
+      owner?.setAttribute("aria-expanded", "false");
       chipPopOwner = null;
+      // Give focus BACK. openChipPop moves it into the popover and this never
+      // returned it, so Escape / outside-click / a successful sign-in all
+      // teleported a keyboard user to the top of the document with no
+      // announcement — the sign-in path being the cruellest, since the unlock
+      // had worked and there was zero evidence of it.
+      // The fallback is not ceremony: onScope() hides #signin-chip and shows
+      // #id-chip, so on the sign-in path the opener is gone by the time we get
+      // here. Focus must land on something nameable, never <body>.
+      const visible = (el) => el?.isConnected && el.getClientRects().length > 0;
+      const back = [owner, document.getElementById("id-chip"), document.getElementById("home-btn")]
+        .find(visible);
+      back?.focus();
     }
-    function openChipPop(owner, node, restore) {
+    function openChipPop(owner, node, restore, label) {
       if (!chipPop.hidden && chipPopOwner === owner) return closeChipPop(); // toggle
       closeChipPop();
       chipPop.replaceChildren(node);
       chipPopRestore = restore;
+      // Focus lands here, so it needs a role and a name — it was an anonymous
+      // roleless div, which AT announces as a nameless group. The owners now
+      // say aria-haspopup="dialog"; this is the dialog they promised.
+      chipPop.setAttribute("role", "dialog");
+      chipPop.setAttribute("aria-label",
+        label || owner.getAttribute("aria-label") || owner.textContent.trim() || "Panel");
       chipPop.hidden = false;
       chipPopOwner = owner;
       owner.setAttribute("aria-expanded", "true");
@@ -3349,9 +3730,15 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // phone keyboards capitalize despite autocapitalize="none" (bench
       // 2026-07-12: "Jonas" bounced with the format error).
       const name = claimDraft.trim().toLowerCase();
-      if (!name) { claimErr = "Enter your robot name first."; renderRobots(); return; }
+      // announce() as well as render: claimErr is drawn by renderRobots() into
+      // an innerHTML rebuild of #robots, so the error is CREATED inside a
+      // newly-inserted subtree — nothing announces that, and the rebuild also
+      // destroys the input the student was focused in. They pressed Claim,
+      // focus vanished to <body>, and no error reached them at all.
+      if (!name) { claimErr = "Enter your robot name first."; announce(claimErr); renderRobots(); return; }
       if (!publicClient || !publicClient.connected) {
         claimErr = "Not connected to the hub yet — try again in a moment.";
+        announce(claimErr);
         renderRobots();
         return;
       }
@@ -3405,20 +3792,40 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     // to put them back — run on close AND when another modal takes the body
     // over, so replaceChildren never silently discards a wired-up node.
     let modalRestore = null;
+    // Restoring focus by NODE REFERENCE doesn't survive this page. Every modal
+    // in the fleet grid is opened from a button inside #robots, and
+    // renderRobots() rebuilds that wholesale (innerHTML) on any real state
+    // change — a rover going offline mid-drive rewrites its card, Drive button
+    // and all. So by close time the invoker is routinely a detached node, and
+    // `?.focus?.()` made that completely silent: focus landed on <body>, which
+    // for a keyboard user means being teleported to the top of the document
+    // mid-emergency with nothing announced. Remember a re-findable SELECTOR
+    // instead, and never let the fallback chain end at <body>.
+    let modalInvokerSel = null;
     function openModal(title, node) {
       modalRestore?.(); modalRestore = null;
       modalTitle.textContent = title;
       modalBody.replaceChildren(node);
       modal.hidden = false;
-      modalInvoker = document.activeElement;
+      const active = document.activeElement;
+      modalInvokerSel =
+        active?.dataset?.driveOpen ? `[data-drive-open="${CSS.escape(active.dataset.driveOpen)}"]`
+        : active?.dataset?.tel ? `[data-tel="${CSS.escape(active.dataset.tel)}"]`
+        : active?.dataset?.assign ? `[data-assign="${CSS.escape(active.dataset.assign)}"]`
+        : null;
+      modalInvoker = active;
       document.getElementById("modal-close").focus();
     }
     function closeModal() {
       modal.hidden = true;
       modalRestore?.(); modalRestore = null;
       modalBody.replaceChildren(); // drop the <img>/<iframe> so its connection closes
-      modalInvoker?.focus?.();
-      modalInvoker = null;
+      const live = (el) => el?.isConnected && el.getClientRects().length > 0;
+      const back = (live(modalInvoker) && modalInvoker)
+        || (modalInvokerSel && document.querySelector(modalInvokerSel))
+        || document.getElementById("home-btn");   // last resort — never <body>
+      back?.focus?.();
+      modalInvoker = null; modalInvokerSel = null;
     }
     document.getElementById("modal-close").addEventListener("click", closeModal);
     modal.querySelector(".modal-backdrop").addEventListener("click", closeModal);
@@ -3427,7 +3834,22 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       if (e.key === "Escape") return closeModal();
       // Minimal focus trap: Tab cycles within the sheet, never into the page behind.
       if (e.key === "Tab") {
-        const focusables = modal.querySelectorAll("button, a[href], input, iframe, [tabindex]:not([tabindex='-1'])");
+        // The filter is what makes the trap work rather than JAM. The bare
+        // querySelectorAll matched hidden and non-rendered controls, and this
+        // sheet always has some: exactly one of #joystick-wrap / #dpad-wrap is
+        // display:none, #unassign-btn is [hidden] for a pool board, and
+        // everything inside the collapsed <details id="assign-advanced"> still
+        // matched — so `last` was almost always #pins-apply, buried in a closed
+        // <details>. .focus() on a non-rendered element is a silent no-op, so
+        // after preventDefault() focus simply stopped moving: the user Tabbed
+        // against a dead wall with no error and no way out but Escape. Jamming
+        // is worse than leaking.
+        // getClientRects() catches display:none, [hidden], and a collapsed
+        // <details> ancestor in one test; :not([disabled]) covers #pins-apply
+        // and the Test buttons, which updatePinButtons() disables.
+        const focusables = [...modal.querySelectorAll(
+          "button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), summary, iframe, [tabindex]:not([tabindex='-1'])"
+        )].filter(el => el.getClientRects().length > 0);
         if (!focusables.length) return;
         const first = focusables[0], last = focusables[focusables.length - 1];
         if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
@@ -3588,6 +4010,20 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       }
       const frame = document.createElement("iframe");
       frame.className = "cfg-frame";
+      // SANDBOX. This frame's host comes from sys.ip — a field the BOARD
+      // publishes, over an ACL that grants robots/# to anyone, with nothing
+      // validating it. So the src is attacker-choosable: flash custom firmware,
+      // or just publish a crafted sys beacon pointing anywhere. Unsandboxed,
+      // that host could serve "Session expired — re-enter professor code",
+      // wearing this dashboard's own modal chrome and title, and the professor
+      // types the code into the attacker's origin. Cross-origin isolation
+      // doesn't stop a convincing credential prompt, and it doesn't stop
+      // top-level navigation on user activation.
+      // allow-same-origin is safe and necessary: the frame is already
+      // cross-origin from us, so it grants the panel only ITS own origin —
+      // which it needs for its own fetches. Omitting allow-top-navigation and
+      // allow-popups is the point.
+      frame.sandbox = "allow-scripts allow-forms allow-same-origin";
       frame.src = panel;                        // ?embed=1 hides the panel's own topbar
       frame.title = `${id} Wi-Fi and role`;
       openModal(`${id} — Wi-Fi & role`, frame);
@@ -3801,7 +4237,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         try { await firstFleet; } catch {}
         if (document.body.classList.contains("solo")) return;
         try {
-          const saved = JSON.parse(localStorage.getItem("hubCred"));
+          const saved = JSON.parse(sessionStorage.getItem("hubCred"));
           if (saved && saved.user) connect(saved.user, saved.pass, { silent: true });
         } catch {}
       }

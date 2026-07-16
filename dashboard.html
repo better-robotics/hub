@@ -81,13 +81,19 @@
       line-height: 1.47; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
       /* Respect the notch/home-indicator on phones. */
       padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      /* App frame: the PAGE never scrolls, the panes inside it do. That is what
+         keeps the rail wholly on screen without a single sticky rule — a rail
+         pinned by position:sticky is still a thing being pushed and caught, and
+         it slid under any notice that appeared above it. Chrome that cannot
+         move beats chrome that is told to come back. */
+      height: 100dvh; display: flex; flex-direction: column; overflow: hidden;
     }
 
     /* App chrome: a translucent, blurred sticky bar — the iOS navigation-bar
        hallmark. Falls back to an opaque bar where backdrop-filter is absent. */
     .topbar {
       display: flex; align-items: center; gap: 0.5rem; height: 50px; padding: 0 1.25rem;
-      position: sticky; top: 0; z-index: 20;
+      flex: none; z-index: 20;
       border-bottom: 0.5px solid var(--border-default);
       background: color-mix(in srgb, var(--bg) 82%, transparent);
       -webkit-backdrop-filter: saturate(180%) blur(20px);
@@ -165,14 +171,39 @@
        column, they just stand 430px of mostly-empty chrome next to each other.
        Desktop is the platform: a 232px rail costs nothing at 1200px and buys a
        persistent tree plus a persistent wire. */
-    .shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); }
+    .shell { flex: 1; min-height: 0; display: grid; grid-template-columns: 232px minmax(0, 1fr); }
+    /* Collapsed: icons only, and the content takes the width back. The rail
+       keeps --ctrl-h + its padding so the icons stay on the same optical
+       centre-line they had when labelled — the column narrows around them
+       rather than the glyphs moving. */
+    .shell.rail-collapsed { grid-template-columns: 3.4rem minmax(0, 1fr); }
+    .rail-collapsed .rail .navitem > span,
+    .rail-collapsed .tw { display: none; }
+    .rail-collapsed .rail { padding: 0.7rem 0.5rem; }
+    .rail-collapsed .navitem { justify-content: center; padding: 0.55rem 0; }
+    .rail-collapsed .nav-badge {
+      /* No room for a count beside the icon, so it becomes a corner dot — the
+         signal ("something needs a name") survives; the number doesn't fit. */
+      position: absolute; top: 0.15rem; right: 0.3rem; min-width: 0.5rem;
+      padding: 0; height: 0.5rem; font-size: 0; overflow: hidden;
+    }
+    .rail-collapsed .navitem { position: relative; }
     .rail {
-      position: sticky; top: 50px; align-self: start; max-height: calc(100dvh - 50px);
       border-right: 0.5px solid var(--border-default);
       padding: 0.7rem; display: flex; flex-direction: column; gap: 0.15rem;
-      min-height: calc(100dvh - 50px); overflow: hidden;
+      min-height: 0; overflow-y: auto;   /* the tree scrolls, the rail stays */
     }
     .rail-spacer { flex: 1 1 auto; min-height: 0.7rem; }
+    /* The panel glyph (tabler layout-sidebar): the divider inside the icon IS
+       the divider the button moves — it reads as the thing, not as a direction,
+       so it needs no flip to stay honest when collapsed. */
+    .rail-toggle {
+      align-self: flex-end; flex: none; background: none; border: 0; padding: 0.3rem;
+      border-radius: var(--radius-inner); color: var(--ink-faint); cursor: pointer;
+      min-height: 0; display: flex; margin-bottom: 0.15rem;
+    }
+    .rail-toggle:hover { background: var(--inset); color: var(--ink); }
+    .rail-collapsed .rail-toggle { align-self: center; }
     .navitem {
       /* The base control rule centres both axes (it's built for tiles). A source
          list is a column of LEFT-aligned rows, so every row here opts out.
@@ -196,14 +227,20 @@
 
     /* Content column. Was a centered 60rem reading column; the rail now
        supplies the structure that centering used to fake. */
-    main { padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+    .workarea { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+    /* display:contents: the wrapper names the group without being a box, so an
+       empty one occupies nothing — no JS needed to hide it, and no padding left
+       spending space at the top of a page with nothing wrong. Each notice owns
+       its gutter; a display:none notice owns nothing. */
+    .notices { display: contents; }
+    .notice { margin: 0.75rem 1.25rem 0; }
+    main { flex: 1; min-height: 0; overflow-y: auto; padding: 1.25rem;
+           display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
     .panel { display: flex; flex-direction: column; gap: 1rem; min-width: 0; flex: 1; }
     .panel-head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
     .panel-head h2 { font-size: var(--fs-title); font-weight: 700; margin: 0; }
     .panel-head .spacer { flex: 1 1 auto; }
-    /* Notices ride above the shell, full width: an engaged e-stop must not be
-       something you can navigate away from. They keep the page's own gutter. */
-    .notice { margin: 0.75rem 1.25rem 0; }
+
 
     /* Topic tree — nested under its own nav item. An indent GUIDE, not deep
        padding: 232px can't spend 2rem on hierarchy and still fit
@@ -456,6 +493,23 @@
       border: 0.5px solid var(--border-default); border-radius: var(--radius);
       padding: 0.4rem 0.7rem; min-height: var(--ctrl-h);
     }
+    /* A select was the last UA-default control on the page: the platform drew
+       its own chevron, and since min-height stretches the box past the height
+       that arrow was positioned for, it sat off the control's optical centre.
+       Draw ours instead — background-position centres against the real box at
+       any height, so it cannot drift again.
+       The stroke is baked (a data: URI can't read currentColor or a var), which
+       is only safe because the page is color-scheme: dark and single-theme: it
+       is --ink-faint. If the ink ramp moves, this moves with it. */
+    select {
+      appearance: none; -webkit-appearance: none;
+      padding-right: 1.9rem;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b929b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.6rem center;
+      background-size: 0.85rem 0.85rem;
+    }
+    select:hover { border-color: var(--border-strong); }
     /* The ring hugs the control. At offset 2px an outline also inherits
        radius + offset — so on an 8px field it drew a 10px ring floating 4.5px
        off the edge: detached, and rounder than the thing it was pointing at.
@@ -632,8 +686,17 @@
       padding: 0.2rem 0.7rem; border-color: var(--border-strong);
       background: transparent; color: var(--ink-muted); }
     #wire-pause[aria-pressed="true"] { background: var(--accent-soft); color: var(--link); }
-    #wire-filter, #wire-topic { font-size: var(--fs-small); padding: 0.2rem 0.4rem; border-radius: var(--radius);
-      border: 0.5px solid var(--border-strong); background: var(--inset); color: var(--ink); max-width: 9rem; }
+    /* Log-scale select: smaller type, a width cap, a stronger hairline for a
+       dense row. Nothing else — the base select already supplies the fill, the
+       radius, the ink AND the chevron.
+       This was an #id list re-declaring all of that, and its `background`
+       SHORTHAND reset the base's chevron to none, which is why these two drew
+       the platform's arrow instead of ours. Same shape the buttons were rescued
+       from ("primary-by-id-list, which no new button could join"), one control
+       class later. A class any select can join, and `border-color` rather than
+       `border`, so a variant tints the hairline without redefining it. */
+    .select-sm { font-size: var(--fs-small); max-width: 9rem;
+      padding: 0.2rem 1.7rem 0.2rem 0.5rem; border-color: var(--border-strong); }
     #wire-log {
       height: 11rem; overflow-y: auto; background: var(--inset);
       border: 0.5px solid var(--border-default); border-radius: var(--radius);
@@ -762,10 +825,9 @@
        rail's full-height min-height plus any notice above the shell push the
        column past the viewport, which leaves the drawer correct and permanently
        out of sight. */
-    #student-details { margin-top: auto; position: sticky; bottom: 0; z-index: 10;
+    #student-details { flex: none; margin: 0 1.25rem 1.25rem;
       border: 0.5px solid var(--border-default);
-      border-radius: var(--radius-lg); background: var(--surface); overflow: hidden; flex: none;
-      box-shadow: 0 -8px 24px -12px rgba(0,0,0,0.6); }
+      border-radius: var(--radius-lg); background: var(--surface); overflow: hidden; }
     .log-toggle h2 { font-size: var(--fs-body); font-weight: 600; color: var(--ink); margin: 0; }
     .log-toggle .wire-legend { margin: 0; }
     .wire-head { margin: 0; }
@@ -811,7 +873,8 @@
     @media print {
       @page { margin: 0.5in; }
       body > *:not(#qr-print) { display: none !important; }
-      body { background: #fff; }
+      /* Undo the app frame: a print has no viewport to fill and no panes to scroll. */
+      body { background: #fff; height: auto; overflow: visible; display: block; }
       #qr-print { display: flex; flex-direction: column; align-items: center; justify-content: center;
                   width: 1in; height: 1in; margin: 0.5in auto; color: #000; text-align: center;
                   border: 0.5pt solid #000; border-radius: 50%; }
@@ -915,31 +978,6 @@
     <button id="logout-btn" class="btn-tile">Lock</button>
   </div>
 
-  <!-- Global notices live ABOVE the shell, full width: an engaged e-stop must
-       not be a thing you can navigate away from. Same reason the topbar keeps
-       Stop all — chrome outranks the panel you happen to be looking at. -->
-  <div id="hub-host-gate" class="notice" style="gap:0.5rem; align-items:center; flex-wrap:wrap">
-    <span id="hub-host-label">Standalone copy — which hub?</span>
-    <input id="hub-host-input" type="text" placeholder="10.42.0.1 or hub.local" aria-label="Hub address"
-           autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="url">
-    <button id="hub-host-save" class="btn-primary">Connect</button>
-  </div>
-  <div id="banner" class="notice">Hub unreachable — retrying…</div>
-  <!-- Fleet e-stop banner: driven by the retained fleet/estop latch, so every
-       dashboard — anonymous fleet views included — shows the engaged state.
-       The Clear button appears only for a signed-in professor. -->
-  <div id="estop-banner" class="notice danger" role="alert" style="gap:0.6rem; align-items:center; flex-wrap:wrap">
-    <span style="flex:1; min-width:12rem; overflow-wrap:anywhere"><b>Emergency stop engaged</b> — <span id="estop-meta">rovers refuse drive commands until it is cleared</span><!--
-      Did every robot actually HEAR it? CONTRACT.md § Fleet e-stop has rovers
-      echo "estop":true in their sys beacon for exactly this check, and nothing
-      was reading it — a board that reconnects mid-emergency is the whole
-      reason the latch is retained. It belongs in the banner because the answer
-      only matters while engaged: a silent rover during an emergency earns a
-      second line, "everything is fine" never does.
-    --><span id="estop-confirm"></span></span>
-    <button id="estop-clear" class="btn-danger" style="display:none">Clear — release the fleet</button>
-  </div>
-  <div id="uplink" class="notice"></div>
   <!-- Device-served Wi-Fi setup (hubd /wifi/*) — lives entirely behind the
        top-right net-chip (initWifiSetup, same corner-popover pattern as the
        identity/e-stop chips); the chip already carries the warn tint when
@@ -976,15 +1014,22 @@
        empty chrome side by side and squeeze the detail. -->
   <div class="shell">
     <nav class="rail" aria-label="Sections">
-      <button class="navitem" data-panel="fleet" aria-current="page">
+      <!-- Top-right, against the divider it controls — the place every modern
+           sidebar puts this. It is NOT a navitem: collapsing is a control about
+           the rail, not a destination in it, so it neither looks nor tabs like
+           its siblings. -->
+      <button class="rail-toggle" id="rail-toggle" title="Collapse sidebar" aria-label="Collapse sidebar" aria-expanded="true">
+        <svg class="rail-chev" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
+      </button>
+      <button class="navitem" data-panel="fleet" title="Fleet" aria-label="Fleet" aria-current="page">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         <span>Fleet</span><span class="nav-badge" id="nav-unnamed" hidden></span>
       </button>
-      <button class="navitem" data-panel="code">
+      <button class="navitem" data-panel="code" title="Code" aria-label="Code">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
         <span>Code</span>
       </button>
-      <button class="navitem" data-panel="topics">
+      <button class="navitem" data-panel="topics" title="Topics" aria-label="Topics">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/></svg>
         <span>Topics</span>
       </button>
@@ -996,12 +1041,43 @@
         <div class="tw-tree" id="tw-tree" role="tree" aria-label="Topic tree"></div>
       </div>
       <span class="rail-spacer"></span>
-      <button class="navitem" data-panel="settings">
+      <button class="navitem" data-panel="settings" title="Settings" aria-label="Settings">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         <span>Settings</span>
       </button>
     </nav>
-    <main class="content">
+    <!-- The work area is a column: notices pinned at its top, the log drawer
+         pinned at its bottom, and only the panels between them scroll. Nothing
+         here is sticky, because nothing here scrolls past anything — the page
+         itself does not scroll at all. -->
+    <div class="workarea">
+      <!-- Notices belong to the WORK, not to the chrome: a full-width band above
+           the shell pushed the rail down the page to say the hub was retrying. -->
+      <div class="notices" id="notices">
+    <div id="hub-host-gate" class="notice" style="gap:0.5rem; align-items:center; flex-wrap:wrap">
+      <span id="hub-host-label">Standalone copy — which hub?</span>
+      <input id="hub-host-input" type="text" placeholder="10.42.0.1 or hub.local" aria-label="Hub address"
+             autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="url">
+      <button id="hub-host-save" class="btn-primary">Connect</button>
+    </div>
+    <div id="banner" class="notice">Hub unreachable — retrying…</div>
+    <!-- Fleet e-stop banner: driven by the retained fleet/estop latch, so every
+         dashboard — anonymous fleet views included — shows the engaged state.
+         The Clear button appears only for a signed-in professor. -->
+    <div id="estop-banner" class="notice danger" role="alert" style="gap:0.6rem; align-items:center; flex-wrap:wrap">
+      <span style="flex:1; min-width:12rem; overflow-wrap:anywhere"><b>Emergency stop engaged</b> — <span id="estop-meta">rovers refuse drive commands until it is cleared</span><!--
+        Did every robot actually HEAR it? CONTRACT.md § Fleet e-stop has rovers
+        echo "estop":true in their sys beacon for exactly this check, and nothing
+        was reading it — a board that reconnects mid-emergency is the whole
+        reason the latch is retained. It belongs in the banner because the answer
+        only matters while engaged: a silent rover during an emergency earns a
+        second line, "everything is fine" never does.
+      --><span id="estop-confirm"></span></span>
+      <button id="estop-clear" class="btn-danger" style="display:none">Clear — release the fleet</button>
+    </div>
+    <div id="uplink" class="notice"></div>
+      </div>
+      <main class="content">
       <section class="panel" id="p-fleet">
   <p id="empty">No rovers yet — power one on near the hub and it appears here within seconds.
     <span class="hint">New board with no firmware? <a href="https://better-robotics.github.io/">Flash it over USB</a>.</span></p>
@@ -1050,6 +1126,8 @@
        toll. (The old summary read "Details & troubleshooting", which never
        once rendered: the row is display:none until signIn, which retitles it
        first.) -->
+      </main>
+
   <!-- The log is GLOBAL chrome, below every panel — not a Topics sub-view.
        Trapping it in one destination would mean leaving the editor to watch
        what the editor just sent, which is the round trip this shell exists to
@@ -1069,7 +1147,7 @@
     </button>
     <div class="log-body" id="log-body" hidden>
     <div class="wire-head">
-      <select id="wire-filter" aria-label="Filter log to one rover"><option value="">all rovers</option></select>
+      <select class="select-sm" id="wire-filter" aria-label="Filter log to one rover"><option value="">all rovers</option></select>
       <!-- Topic filter. The log prints the topic on every line, so naming the
            options after the channels makes the filter teach itself in place.
            Replaced a binary toggle ("Beacons" — the firmware's word for sys,
@@ -1088,7 +1166,7 @@
            Only channels the wire actually carries: imu and led are in
            CONTRACT.md but no firmware publishes them, so offering them would be
            a filter that can never match. Add them when they ship. -->
-      <select id="wire-topic" aria-label="Filter log by topic">
+      <select class="select-sm" id="wire-topic" aria-label="Filter log by topic">
         <option value="">all topics</option>
         <option value="-sys">all except sys</option>
         <option value="sys">sys</option>
@@ -1111,7 +1189,7 @@
     <div id="wire-log" role="log" tabindex="0" aria-label="Live command and telemetry log"></div>
     </div>
   </section>
-    </main>
+    </div>
   </div>
 
   <div id="controls">
@@ -1690,8 +1768,13 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       activity: '<path d="M3 12h4l3 8l4 -16l3 8h4"/>',
       /* tabler outline/camera */
       camera: '<path d="M5 7h1a2 2 0 0 0 2 -2a1 1 0 0 1 1 -1h6a1 1 0 0 1 1 1a2 2 0 0 0 2 2h1a2 2 0 0 1 2 2v9a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-9a2 2 0 0 1 2 -2"/><path d="M9 13a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/>',
-      /* tabler outline/bolt */
-      zap: '<path d="M13 3l0 7l6 0l-8 11l0 -7l-6 0l8 -11"/>',
+      /* tabler outline/bulb — Identify makes a board's LED blink so you can find
+         it on the table, and a bolt reads as power, not light. Not the LED
+         schematic symbol (triangle + bar + rays): that is precise for an EE and
+         meaningless to a student scanning a bench for the one that's flashing. */
+      bulb: '<path d="M3 12h1m8 -9v1m8 8h1m-15.4 -6.4l.7 .7m12.1 -.7l-.7 .7"/>'
+          + '<path d="M9 16a5 5 0 1 1 6 0a3.5 3.5 0 0 0 -1 3a2 2 0 0 1 -4 0a3.5 3.5 0 0 0 -1 -3"/>'
+          + '<path d="M9.7 17l4.6 0"/>',
       /* tabler outline/user-plus */
       claim: '<path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/><path d="M16 19h6"/><path d="M19 16v6"/><path d="M6 21v-2a4 4 0 0 1 4 -4h4"/>',
       /* tabler outline/alert-triangle */
@@ -1769,7 +1852,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // Blink the board to find which one on the desk it is — professor-only,
       // and pointless on a board that isn't answering.
       if (prof && !offline)
-        actions.push(`<button class="btn-tile" data-blink="${esc(board)}" data-brobot="${esc(robot)}">${icon("zap")} Identify</button>`);
+        actions.push(`<button class="btn-tile" data-blink="${esc(board)}" data-brobot="${esc(robot)}">${icon("bulb")} Identify</button>`);
       // "Details", not "Telemetry": this sheet is the board's facts — IP, RAM,
       // Wi-Fi, signal, uptime, hardware, motor pins — and "Telemetry" named the
       // transport instead of the content, so nobody could tell it was the info
@@ -2211,42 +2294,51 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     const CHANNELS = [
       { seg: "sys", dir: "in", title: "Telemetry beacon",
         why: "The only topic a rover publishes — every 2 s, unprompted, answering nothing.",
-        fields: [["hw", "board model"], ["ip", "address on the hub's network"],
-                 ["rssi_dbm", "signal strength"], ["uptime_ms", "since boot"],
-                 ["free_heap", "bytes free"], ["cam", "camera present"],
-                 ["board", "MAC-derived board id"], ["name", "assigned robot name"],
-                 ["estop", "true while the fleet latch is engaged"]] },
+        src: "no envelope file: the firmware is the schema (rover_role.c, the sys publish)",
+        fields: [["uptime_ms", "since boot"], ["free_heap", "bytes free"],
+                 ["hw", "board model, compiled in"], ["board", "MAC-derived board id"],
+                 ["ip", "address on the hub's network"], ["net", "uplink SSID, or empty"],
+                 ["cam", "camera running"], ["rssi_dbm", "signal — only while joined"],
+                 ["estop", "present and true only while the latch is engaged"],
+                 ["synthetic", "false on real hardware"],
+                 ["pins", "live motor map — absent on camera boards, which have no motors"]] },
       { seg: "pwm", dir: "out", title: "Drive",
         why: "Wheel duty. The rover subscribes to this — it never publishes it.",
-        fields: [["l", "int −255…255, left"], ["r", "int −255…255, right"],
+        src: "envelopes/pwm.json",
+        fields: [["timestamp", "float, seconds"],
+                 ["left_motor", "int −255…255"], ["right_motor", "int −255…255"],
                  ["duration_ms", "int, optional, 400 default"]],
         note: "Every drive self-expires. The firmware stops the motors duration_ms after the last message, defaults to 400 ms when absent, and clamps at 4000 ms. Sustained motion is a refreshing stream — the safety floor, enforced below every client." },
       { seg: "led", dir: "out", title: "Set LED",
-        why: "Request/reply; the reply lands on <topic>/reply. No firmware publishes it yet.",
-        fields: [["on", "bool"], ["red", "0–255"], ["green", "0–255"], ["blue", "0–255"]] },
+        why: "Request/reply: the reply lands on this topic + /reply. No firmware publishes it yet.",
+        src: "envelopes/rpc_set_led.json",
+        fields: [["method", "\"set_led\""], ["on", "bool"],
+                 ["red", "0–255"], ["green", "0–255"], ["blue", "0–255"]],
+        note: "Reply: {\"status\":\"ok\"} or {\"status\":\"error\",\"message\":…}." },
       { seg: "cmd/config", dir: "out", title: "Assign a name",
         why: "Names a board post-join. A name is an address, not a credential — there is no password field.",
+        src: "no envelope file: ad-hoc JSON, the firmware is the schema",
         fields: [["name", "the robot name to wear"], ["hub", "optional SSID pin; \"\" clears"],
                  ["target", "optional board id, when boards share a name"]] },
       { seg: "cmd/identify", dir: "out", title: "Blink the LED",
         why: "Blinks ~6 s so you can find which board on the table this is.",
+        src: "no envelope file: ad-hoc JSON",
         fields: [["target", "optional board id"]] },
       { seg: "cmd/reprovision", dir: "out", title: "Reboot",
         why: "The BOOT button's remote twin.",
+        src: "no envelope file: ad-hoc JSON",
         fields: [["target", "optional board id"]] },
     ];
     const FLEET_TOPIC = {
       topic: "fleet/estop", seg: "estop", dir: "out", title: "Fleet e-stop", retained: true,
       why: "The room-wide latch, published retained so a rover that reconnects mid-emergency receives it on subscribe. Read for everyone, write for the professor.",
-      fields: [["engaged", "bool — the only field the firmware reads"],
+      src: "envelopes/estop.json",
+      fields: [["timestamp", "float, seconds"],
+               ["engaged", "bool — the only field the firmware reads"],
                ["by", "who engaged it (for humans)"], ["reason", "free text (for humans)"]],
       note: "Any unparseable payload here reads as ENGAGED — parse failure fails toward stopped. An empty retained publish reads as clear.",
     };
 
-    // Groups start OPEN and remember what you closed. A tree that opens fully
-    // collapsed hides the one thing it exists to show — that a rover publishes
-    // exactly one topic and subscribes to the rest. Closed-by-default is right
-    // when a tree is a filesystem you're navigating; this one is a diagram.
     let panel = "fleet", topicSel = null, twFilter = "", twClosed = new Set();
     const railTree = () => document.getElementById("topic-tree");
 
@@ -2396,6 +2488,12 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         }
         left.append(dl);
         if (c.note) left.append(Object.assign(document.createElement("p"), { className: "td-note", textContent: c.note }));
+        // Cite the source. This table is a MIRROR of envelopes/ and the firmware,
+        // and a mirror drifts — it shipped saying pwm carried `l`/`r` while the
+        // joystick three hundred lines down published left_motor/right_motor.
+        // The citation is what makes the next reader able to catch that.
+        if (c.src) left.append(Object.assign(document.createElement("p"),
+          { className: "hint", textContent: `source: ${c.src}` }));
       } else {
         left.append(Object.assign(document.createElement("p"), { className: "hint",
           textContent: "No envelope for this topic — the firmware is the schema." }));
@@ -2471,8 +2569,27 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       el.textContent = String(n);
     }
 
-    for (const b of document.querySelectorAll(".navitem"))
+    for (const b of document.querySelectorAll(".navitem[data-panel]"))
       b.addEventListener("click", () => setPanel(b.dataset.panel));
+
+    // Collapse the rail to icons. Persisted, because it's a standing preference
+    // about how you want the room laid out, not a per-visit choice.
+    const shell = document.querySelector(".shell");
+    const railToggle = document.getElementById("rail-toggle");
+    function setRail(collapsed) {
+      shell.classList.toggle("rail-collapsed", collapsed);
+      railToggle.setAttribute("aria-expanded", String(!collapsed));
+      const label = collapsed ? "Expand sidebar" : "Collapse sidebar";
+      railToggle.title = label;
+      railToggle.setAttribute("aria-label", label);
+      // The tree is hidden by CSS when collapsed; keep the [hidden] state in
+      // step so expanding again doesn't reveal a tree for a panel you left.
+      railTree().hidden = panel !== "topics";
+      try { localStorage.setItem("hubRailCollapsed", String(collapsed)); } catch {}
+    }
+    railToggle.addEventListener("click", () =>
+      setRail(!shell.classList.contains("rail-collapsed")));
+
     document.getElementById("tw-tree").addEventListener("click", (e) => {
       const row = e.target.closest(".tw-row"), grp = e.target.closest(".tw-group");
       if (row) { topicSel = row.dataset.topic; renderTopicTree(); renderTopicDetail(); }
@@ -2495,6 +2612,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     });
     if (localStorage.getItem("hubLogOpen") === "true") logToggle.click();
     setPanel(localStorage.getItem("hubPanel") || "fleet");
+    setRail(localStorage.getItem("hubRailCollapsed") === "true");
     // Drive input mode — the segmented control switches between the analog
     // joystick and the discrete D-pad. Only reveal an input once a target is
     // chosen (professor "all" scope hasn't picked a robot before then).

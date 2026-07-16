@@ -414,24 +414,40 @@
     .dir-pill.out { color: var(--link); border-color: color-mix(in srgb, var(--accent-text) 40%, transparent); background: var(--accent-soft); }
     .td-pre { background: var(--inset); border: 0.5px solid var(--border-default); border-radius: var(--radius); padding: 0.55rem 0.7rem; font-family: var(--mono); font-size: var(--fs-small); overflow-x: auto; color: var(--ink-muted); white-space: pre; margin: 0; }
     .td-note { font-size: var(--fs-small); color: var(--warn-ink); background: color-mix(in srgb, var(--warn) 8%, transparent); border: 0.5px solid color-mix(in srgb, var(--warn) 30%, transparent); border-radius: var(--radius); padding: 0.5rem 0.65rem; }
+    /* The board's own log in the Details sheet. Extends .td-pre — same inset
+       block, same mono scale — and adds only what a scrollback needs: a bounded
+       height, and vertical scroll to go with the horizontal one .td-pre already
+       has (log lines are long; the container scrolls, never the page).
+       --ink-muted, not --ink-faint: this is a wall of small mono text someone
+       reads to debug, not a placeholder. */
+    .dev-log { max-height: 16rem; overflow-y: auto; overscroll-behavior: contain;
+      font-size: var(--fs-micro); line-height: 1.45; color: var(--ink-muted); }
 
     /* Code: the ide bundle, same origin, in the shell. */
     #ide-host { flex: 1; display: flex; min-height: 32rem; }
     #ide-host iframe { flex: 1; border: 0.5px solid var(--border-default); border-radius: var(--radius-lg); background: var(--inset); min-height: 32rem; }
 
 
-    /* Narrow: the rail stacks above the content instead of eating 40% of the
-       width. A source list cannot become a horizontal strip — a tree has
-       nowhere to go in one — so the column stays a column and moves. Desktop is
-       the platform (this is graceful degradation, not the design target); the
-       likely right answer is a slide-over sheet behind a topbar control, which
-       keeps exactly one tree and gives the content all its width back. Unbuilt
-       on purpose — it wants a decision made against a real narrow viewport, not
-       a guess extrapolated from a desktop one. */
+    /* Phone: the rail becomes a floating tab bar (iOS 26's shape — a glass
+       capsule over the content, pill behind the current tab).
+       This block used to stack the rail on top of the page and say so: "a
+       source list cannot become a horizontal strip — a tree has nowhere to go
+       in one", with the likely answer filed as a slide-over sheet behind a
+       topbar control. That was true while the tree lived only in the rail. The
+       Messages merge retired it: Messages owns the tree AND the traffic, so on
+       a phone the tree renders inside the panel (moveTree(), the ONE tree
+       moving — never a second copy) and the rail is left holding exactly four
+       destinations, which is what a tab bar is for. HIG's 2–5 fits.
+       Bottom, because the old strip put navigation at the top of a phone — the
+       one place a thumb can't reach — and charged the log its height to do it.
+       Labels stay. Instagram drops them and earns it with a decade of
+       familiarity; a broadcast glyph meaning "Messages" is exactly the
+       vocabulary this tab exists to teach, so icon-only would ask the student
+       to learn the navigation before the lesson. */
     @media (max-width: 720px) {
       .shell { grid-template-columns: minmax(0, 1fr); }
-      /* The rail is a horizontal strip here, so its COLLAPSE handle has nothing
-         to collapse — and it was still absolutely positioned at
+      /* The rail is not a column here, so its COLLAPSE handle has nothing to
+         collapse — and it was still absolutely positioned at
          `left: calc(var(--rail-w) - 0.62rem)`, because this block changes
          grid-template-columns but never touches --rail-w. Measured at 320px:
          the chevron sat at x=222, y=375 — detached from the rail, floating in
@@ -439,15 +455,68 @@
          only job is to narrow a column that no longer exists. */
       .rail-toggle { display: none; }
       .rail {
-        position: static; flex-direction: row; flex-wrap: wrap; align-items: center;
-        min-height: 0; max-height: none; overflow: visible;
-        border-right: 0; border-bottom: 0.5px solid var(--border-default);
+        position: fixed; z-index: 30;
+        left: max(0.6rem, env(safe-area-inset-left));
+        right: max(0.6rem, env(safe-area-inset-right));
+        /* Clear the home indicator. Without the inset this bar sits ON the
+           gesture area, where the OS eats the first tap. */
+        bottom: calc(env(safe-area-inset-bottom) + 0.55rem);
+        flex-direction: row; gap: 0.15rem; align-items: stretch;
+        padding: 0.25rem; min-height: 0; max-height: none; overflow: visible;
+        border: 0.5px solid var(--border-default); border-radius: var(--radius-pill);
+        /* The topbar's material, not a second one — same mix, same blur, so the
+           page has ONE glass. Both fall back to a near-opaque bar where
+           backdrop-filter is missing; @media (prefers-reduced-transparency)
+           below makes that fallback the deliberate answer rather than a lucky
+           one. */
+        background: color-mix(in srgb, var(--bg) 82%, transparent);
+        -webkit-backdrop-filter: saturate(180%) blur(20px);
+        backdrop-filter: saturate(180%) blur(20px);
+        box-shadow: 0 6px 24px rgb(0 0 0 / 0.35);
       }
-      .navitem { width: auto; }
+      .navitem {
+        flex: 1 1 0; min-width: 0; position: relative;
+        flex-direction: column; justify-content: center; gap: 0.1rem;
+        padding: 0.3rem 0.15rem; border-radius: var(--radius-pill);
+        min-height: var(--tap);   /* a tab bar is only ever touched */
+      }
+      .navitem > span:first-of-type {
+        font-size: var(--fs-micro); line-height: 1.1;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+      }
       .rail-spacer { display: none; }
-      /* The tree needs the full row once the rail is horizontal. */
-      .tw { flex-basis: 100%; max-height: 40dvh; }
-      .tw-tree { max-height: 32dvh; }
+      /* No rate on a tab. It was tried cornered here (the move .rail-collapsed
+         makes for .nav-badge when a row runs out of width) and a ~90px tab has
+         no room for it beside a label — it read as debris stuck to the icon
+         rather than as the wire's pulse. The desktop rail keeps it: that rail
+         is a 232px column with room to be quiet in, and a tab bar is not.
+         What this costs, honestly: the badge exists so that leaving Messages
+         doesn't cost you "is the wire alive?" — which the log answered for free
+         back when it was global chrome. On a phone that answer is now one tap
+         away, in the panel head. A phone is a one-destination-at-a-time device;
+         it already made that trade everywhere else. */
+      .nav-meter { display: none; }
+      /* In the panel the tree is content, not a rail sub-list: it gives up the
+         rail's indent guide and takes a bounded height so the log — the reason
+         you opened this panel — is never pushed off the bottom of it. */
+      #p-messages > .tw { max-height: 34dvh; }
+      #p-messages > .tw .tw-tree { max-height: 27dvh; margin-left: 0; padding-left: 0; border-left: 0; }
+      /* The bar floats OVER the content, so the content must end above it or
+         the log's newest line — the whole point of a tail-following log — sits
+         under frosted glass. Instagram's feed can scroll past its bar; a log
+         that pins itself to the bottom cannot. */
+      .content { padding-bottom: calc(var(--tap) + env(safe-area-inset-bottom) + 1.4rem); }
+    }
+    /* The material must never be the only thing carrying legibility (HIG, and
+       SC 1.4.11 for the boundary). Reduce Transparency turns both glass
+       surfaces opaque; the border is what still says "this is a bar" once the
+       blur is gone, so it firms up rather than disappearing. */
+    @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+      .topbar, .rail {
+        background: var(--bg);
+        -webkit-backdrop-filter: none; backdrop-filter: none;
+        border-color: var(--ink-faint);
+      }
     }
     a { color: var(--link); text-decoration: none; }
     a:hover { text-decoration: underline; }
@@ -2919,6 +2988,36 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     let panel = "fleet", topicSel = null, twFilter = "", twClosed = new Set();
     const railTree = () => document.getElementById("topic-tree");
 
+    // ONE tree, moved — never a second copy. On a phone the rail is a tab bar
+    // (four destinations, no room for a source list), so the tree renders in
+    // the Messages panel instead; Messages owns both halves, which is what
+    // makes this a move rather than a redesign. Two trees would be two sources
+    // of truth over one topicSeen, free to disagree about what the wire
+    // carries — the failure this file already refuses for the log's filters.
+    // matchMedia, not resize: this fires on the breakpoint crossing, not on
+    // every pixel of a drag, and it fires once on load.
+    const phone = window.matchMedia("(max-width: 720px)");
+    function moveTree() {
+      const tree = railTree(), rail = document.querySelector(".rail");
+      const panel = document.getElementById("p-messages");
+      // Where it belongs NOW. Re-parenting an element it already parents is a
+      // no-op in the DOM, but it would still blow away focus inside the filter
+      // input mid-type, so ask first.
+      const home = phone.matches ? panel : rail;
+      if (tree.parentElement === home) return;
+      // Both anchors are named, not counted: .rail-spacer is what pins Settings
+      // to the bottom of the rail, so inserting before it puts the tree under
+      // Messages wherever the nav items move to.
+      if (phone.matches) panel.insertBefore(tree, document.getElementById("topic-detail"));
+      else rail.insertBefore(tree, rail.querySelector(".rail-spacer"));
+    }
+    // Crossing the breakpoint re-decides both: where the tree lives, and
+    // whether a stored "collapsed" applies at all in the layout we just entered.
+    phone.addEventListener("change", () => {
+      moveTree();
+      setRail(localStorage.getItem("hubRailCollapsed") === "true");
+    });
+
     function setPanel(name) {
       panel = name;
       for (const b of document.querySelectorAll(".navitem")) {
@@ -3324,7 +3423,15 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     const shell = document.querySelector(".shell");
     const railToggle = document.getElementById("rail-toggle");
     function setRail(collapsed) {
-      shell.classList.toggle("rail-collapsed", collapsed);
+      // Collapsed is a DESKTOP state — it means "narrow the column to icons",
+      // and a phone has no column to narrow (the toggle is display:none there).
+      // The preference still has to be honoured on return, so it stays stored
+      // and only the class is withheld: .rail-collapsed hides .navitem labels
+      // and .nav-meter, so letting it reach the tab bar would hand a student
+      // who once collapsed a laptop rail a phone with four unlabelled icons.
+      // hubPanel's "topics" was the same shape of bug — stored state outliving
+      // the context that gave it meaning.
+      shell.classList.toggle("rail-collapsed", collapsed && !phone.matches);
       railToggle.setAttribute("aria-expanded", String(!collapsed));
       const label = collapsed ? "Expand sidebar" : "Collapse sidebar";
       railToggle.title = label;
@@ -3380,6 +3487,9 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     // getElementById("p-topics") that no longer resolves — a stored preference
     // outlives the name it was stored under.
     const storedPanel = localStorage.getItem("hubPanel");
+    // Before setPanel: it sets the tree's [hidden], and on a phone the tree has
+    // to be in the panel by then or it lands hidden in the wrong parent.
+    moveTree();
     setPanel(storedPanel === "topics" ? "messages"
              : document.getElementById(`p-${storedPanel}`) ? storedPanel : "fleet");
     setRail(localStorage.getItem("hubRailCollapsed") === "true");
@@ -4145,7 +4255,6 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // sheet is the board's FACTS. (A student sees no wire log — instructor-only
       // — but the facts are the "why won't it move" answers; a raw MQTT stream
       // isn't.)
-      wrap.append(facts, cfgRow);
       const render = () => {
         const rec = board ? boards.get(board) : robots.get(robot);
         const sys = rec?.sys;
@@ -4177,10 +4286,93 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         b.addEventListener("click", () => openConfig(robot, sys.ip, board));
         cfgRow.append(b);
       };
+      // Same gate, same reason, one tick apart: the log is raw firmware output
+      // naming networks and internals. Collapse on the way out — a sign-out
+      // with the sheet open must stop the poll, not just hide the box.
+      const renderLog = () => {
+        const ok = myScope?.scope === "all";
+        tabs.hidden = !ok;                 // no tabs for a student: facts are the whole sheet
+        if (!ok && !logPre.hidden) showTab(false);   // sign-out with Log open must stop the poll
+      };
       renderCfg();
-      telemetrySync = () => { render(); renderCfg(); };   // the 2 s tick keeps both live
+
+      // Device log — the board's OWN ESP_LOG (robot's device_log.c), not the
+      // wire. The facts answer "what is it doing"; this answers "why did it
+      // reboot", and it is the only thing here that survives the reboot it
+      // describes (the ring lives in the chip's RTC memory).
+      //
+      // A TAB, not a section stacked under the facts: the log wants ~16rem of
+      // scrollback, and appending that to a sheet already holding the facts
+      // list pushes the sheet past the modal's 90vh and gives it two scrollbars,
+      // one inside the other. Switching views keeps the sheet's height a
+      // function of the taller panel instead of the sum of both.
+      //
+      // .segmented is the file's existing "switch which view shows" control (it
+      // drives joystick/D-pad) — same track, same thumb, same aria-pressed.
+      const tabs = document.createElement("div");
+      tabs.className = "segmented";
+      const tabFacts = document.createElement("button");
+      const tabLog = document.createElement("button");
+      tabFacts.textContent = "Facts";
+      tabLog.textContent = "Log";
+      tabs.append(tabFacts, tabLog);
+
+      const factsPane = document.createElement("div");
+      factsPane.className = "stack";
+      factsPane.append(facts, cfgRow);        // the facts list + its settings button
+
+      const logPre = document.createElement("pre");
+      logPre.className = "td-pre dev-log";    // the sheet's preformatted block + scrollback
+      logPre.tabIndex = 0;                    // a scrollable region must be keyboard-reachable
+      logPre.setAttribute("role", "log");
+      logPre.setAttribute("aria-label", `${board || robot} device log`);
+      logPre.hidden = true;
+
+      wrap.append(tabs, factsPane, logPre);
+
+      let logTimer = null;
+      const pullLog = async () => {
+        const sys = (board ? boards.get(board) : robots.get(robot))?.sys;
+        if (!sys?.ip) { logPre.textContent = "No address for this board yet."; return; }
+        // Stick to the bottom only if the reader is already there — otherwise a
+        // refresh yanks them off the line they were reading.
+        const atEnd = logPre.scrollTop + logPre.clientHeight >= logPre.scrollHeight - 8;
+        try {
+          const r = await fetch(`http://${boardHost(sys.ip)}/log`, { cache: "no-store" });
+          if (!r.ok) throw new Error(r.status);
+          // textContent, NEVER innerHTML: sys.ip is published over an ACL that
+          // admits anyone (hub_role.c connect_cb), so the host this text came
+          // from is chosen by whoever published the beacon, not by us.
+          logPre.textContent = (await r.text()) || "(empty)";
+          if (atEnd) logPre.scrollTop = logPre.scrollHeight;
+        } catch {
+          logPre.textContent =
+            "Couldn't reach this board's log. It may be on a network this page can't see, "
+            + "or running firmware from before /log existed.";
+        }
+      };
+      const showTab = (wantLog) => {
+        tabFacts.setAttribute("aria-pressed", String(!wantLog));
+        tabLog.setAttribute("aria-pressed", String(wantLog));
+        factsPane.hidden = wantLog;
+        logPre.hidden = !wantLog;
+        clearInterval(logTimer); logTimer = null;
+        if (!wantLog) return;
+        // Poll only while the tab is showing: 6 KB a pull against the one AP
+        // radio a whole class shares.
+        pullLog();
+        logTimer = setInterval(pullLog, 5000);
+      };
+      tabFacts.addEventListener("click", () => showTab(false));
+      tabLog.addEventListener("click", () => showTab(true));
+      showTab(false);
+
+      renderLog();
+      telemetrySync = () => { render(); renderCfg(); renderLog(); };   // the 2 s tick keeps all three live
       openModal(`${board || robot} — details`, wrap);
-      modalRestore = () => { telemetrySync = null; };
+      // Poll dies with the sheet. Without this the interval outlives every close
+      // and keeps pulling 6 KB off the board forever, once per sheet ever opened.
+      modalRestore = () => { telemetrySync = null; clearInterval(logTimer); logTimer = null; };
     }
 
     // Drive opens the same per-board modal as Camera/Telemetry, parented with

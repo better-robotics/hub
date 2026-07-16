@@ -113,6 +113,21 @@ vocabulary**, which is *encoded, not described* (2026-07-16):
   stricter: `logLine`'s DOM path is now behind `#p-messages.hidden` (an open
   drawer used to pay it from every panel), and a stored `hubPanel` of `topics`
   migrates on load — a preference outlives the name it was stored under.
+- **Under 720px the rail IS the tab bar** — `position: fixed`, bottom, glass
+  capsule, pill on the current tab (iOS 26's shape). It reuses `.topbar`'s exact
+  mix and blur: one glass, not two. Three things this costs, all paid:
+  `.content` carries `padding-bottom` for the bar + `env(safe-area-inset-bottom)`
+  or the log's newest line — the point of a tail-following log — sits under
+  frosted glass; `@media (prefers-reduced-transparency)` turns both surfaces
+  opaque, because a material may never be the only thing carrying legibility;
+  and `setRail` withholds `.rail-collapsed` on phones, since that class hides
+  `.navitem` labels and would hand a student who once collapsed a laptop rail a
+  phone with four unlabelled icons. Labels stay: Instagram drops them and earns
+  it with a decade of familiarity, but a broadcast glyph meaning "Messages" is
+  the vocabulary this tab exists to teach. The tree MOVES (`moveTree()`, on
+  `matchMedia`) into `#p-messages` — one tree, never a copy; two would be two
+  sources of truth over one `topicSeen`. `.nav-meter` is desktop-only: a ~90px
+  tab has no room for it, and the phone trades it for a tap into the panel head.
 
 **Compose, don't hand-roll.** Every shipped spacing/alignment defect so far
 was a new element skipping an existing pattern — a review on 2026-07-16 found

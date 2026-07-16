@@ -158,15 +158,45 @@ staged data was too polite.
   its title and its input — the sweep was never pointed at them. Gap belongs
   to `.stack`; a callsite that makes its own wrapper is the bug.
 
+  **Skip the dense-by-design containers, or the sweep cries wolf.** A log's
+  lines and a `.list-group`'s rows are SUPPOSED to touch — that's the
+  grouped-inset idiom, hairline separators and no gap. This never mattered
+  while `#wire-log` and the tree lived outside `<main>` (in the log drawer and
+  the rail); the Messages merge moved both inside it, so `main div` now reaches
+  them and reported ~40 "defects" in one run, every one correct behaviour.
+  A sweep that fires on healthy markup gets skimmed, and then it stops working.
+
   ```js
+  // Rows that must touch. Extend this, never the threshold.
+  const DENSE = '#wire-log, .tw-tree, [id^="twg-"], .list-group, dl, .rail, .segmented, #topic-tree';
   const bad = [];
-  for (const p of document.querySelectorAll("main, main section, main div, form, details, .robot, #chip-pop, #chip-pop div, .modal-card, .modal-card div, .stack"))
-    { const kids = [...p.children].filter(el => { const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+  for (const p of document.querySelectorAll("main, main section, main div, form, details, .robot, #chip-pop, #chip-pop div, .modal-card, .modal-card div, .stack, .panel, .panel-head, .wire-head, #topic-detail"))
+    { if (p.closest(DENSE) || p.matches(DENSE)) continue;
+      const kids = [...p.children].filter(el => { const r = el.getBoundingClientRect(), cs = getComputedStyle(el);
         return r.height > 8 && r.width > 0 && cs.display !== "none" && cs.position !== "absolute"; });
-      for (let i = 0; i < kids.length - 1; i++) { const g = kids[i+1].getBoundingClientRect().top - kids[i].getBoundingClientRect().bottom;
+      for (let i = 0; i < kids.length - 1; i++) { if (kids[i].matches(DENSE) || kids[i+1].matches(DENSE)) continue;
+        const g = kids[i+1].getBoundingClientRect().top - kids[i].getBoundingClientRect().bottom;
         if (g >= -1 && g < 5 && kids[i].tagName !== "H2" && kids[i].tagName !== "SUMMARY") bad.push([kids[i], kids[i+1], g]); } }
   bad
   ```
+
+- **The phone tab bar floats OVER the content** (`.rail` is `position: fixed`
+  under 720px), so it is invisible to both sweeps above — neither an overflow
+  nor a touching pair can see a control lying on top of another. Two things to
+  check by hand at 320/390, and `elementFromPoint` at a control's own centre is
+  the only honest test (a rect that merely *exists* proves nothing):
+  **`#estop-chip` must stay hittable** — it is the room's kill switch, it lives
+  in `.topbar`, and "an always-reachable Stop must survive any IA change" is
+  `dashboard-redesign.md`'s safety floor, the one it says to carry into every
+  layout (it was written because an exploration's sidebar dropped it). Reveal it with
+  `.classList.add("show")`: the real gate is `prof && !engaged`, so **engaging
+  the e-stop hides it on purpose** (the banner's Clear takes over) — a test that
+  engages first proves nothing and looks like a pass.
+  **The log's tail must clear the bar** — `.content`'s `padding-bottom` is what
+  buys that. Scroll `.content` to its end and assert
+  `#wire-log`'s `bottom <= .rail`'s `top`. A tail-following log pins the newest
+  line to its bottom edge, which is exactly where the glass floats; Instagram's
+  feed can scroll past its bar, this cannot.
 
 - **Horizontal overflow**: `document.documentElement.scrollWidth > innerWidth`
   must be false at every width.

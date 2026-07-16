@@ -1,7 +1,7 @@
 # Dashboard redesign — convergent direction
 
-A design note for `dashboard.html`. Live state and decisions belong in the apex
-tracker (**issue #4**, "Per-channel tiles on the dashboard"); this file is the
+A design note for `dashboard.html`. Live state and decisions belong in the
+tracking issue (**#4**, "Per-channel tiles on the dashboard"); this file is the
 durable synthesis, not a status page.
 
 ## What this is

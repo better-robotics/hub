@@ -11,11 +11,15 @@ one implementation.
 - **`pi/`** — Raspberry Pi implementation (Rust `hubd` + Mosquitto + Pi image).
   Was `better-robotics/hub-mqtt`. hubd also serves the
   [`better-robotics/ide`](https://github.com/better-robotics/ide) bundle
-  (its built dist — source + vendored Monaco/mqtt.js, fetched as a release
-  asset since `ide`'s `vendor/` is gitignored) at `/ide/` from `HUB_IDE_DIR`
-  (default `/usr/share/hub/ide`; installed by deploy/install.sh + baked by
-  build-image). `ide` is a browser-only client of this monorepo's own
-  MQTT/WS contract — no firmware or hubd changes needed when it updates.
+  (its built dist — source + vendored Blockly/Monaco/mqtt.js/MicroPython-WASM,
+  fetched as a release asset since `ide`'s `vendor/` is gitignored) at `/ide/`
+  from `HUB_IDE_DIR` (default `/usr/share/hub/ide`; installed by
+  deploy/install.sh + baked by build-image). It is **blocks-first Python**, not
+  a code editor: students land in a Blockly workspace and the MicroPython it
+  generates renders live beneath it (Monaco is that read-only preview, not the
+  authoring surface), running as WASM in the tab. `ide` is a browser-only
+  client of this monorepo's own MQTT/WS contract — no firmware or hubd changes
+  needed when it updates.
 
 The Pi build-embeds the top-level `dashboard.html`
 (`include_str!("../../../dashboard.html")`) and speaks the `envelopes/` contract.

@@ -19,12 +19,14 @@ chmod 0600 /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 
 # Each independently restartable: usb-gadget (recovery, before NM), serial
 # console on the gadget, the day-zero hub-XXXX AP, the dashboard chassis +
-# Wi-Fi setup (hubd), and the MQTT broker (Mosquitto).
+# Wi-Fi setup (hubd), the MQTT broker (Mosquitto), and the uplink watchdog
+# (idles unless the wedging USB radio is present).
 systemctl enable usb-gadget.service
 systemctl enable serial-getty@ttyGS0.service
 systemctl enable hub-ap.service
 systemctl enable hubd.service
 systemctl enable mosquitto.service
+systemctl enable hub-uplink-watchdog.service
 
 # --- Appliance diet: a single-purpose broker/AP box, offline by design ---
 # dphys-swapfile: no swap — mosquitto+hubd use a few MB on a 1–8 GB Pi, and a

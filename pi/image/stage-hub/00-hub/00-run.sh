@@ -20,6 +20,13 @@ install -m 0644 files/mosquitto-acl.conf "${ROOTFS_DIR}/etc/mosquitto/hub-acl.co
 install -m 0755 files/hub-ap-setup.sh "${ROOTFS_DIR}/usr/local/bin/hub-ap-setup.sh"
 install -m 0644 files/hub-ap.service  "${ROOTFS_DIR}/etc/systemd/system/hub-ap.service"
 
+# --- Uplink radio watchdog — the USB dongle's driver wedges when the venue AP
+# goes away and only a module reload clears it. Baked unconditionally: no
+# hardware exists at build time, and the script no-ops when its driver isn't
+# bound (a hub with no dongle just polls and finds nothing to do). ---
+install -m 0755 files/hub-uplink-watchdog.sh      "${ROOTFS_DIR}/usr/local/bin/hub-uplink-watchdog.sh"
+install -m 0644 files/hub-uplink-watchdog.service "${ROOTFS_DIR}/etc/systemd/system/hub-uplink-watchdog.service"
+
 # --- USB-gadget recovery channel (ECM ssh + ACM serial) ---
 install -m 0755 files/usb-gadget-setup.sh "${ROOTFS_DIR}/usr/local/bin/usb-gadget-setup.sh"
 install -m 0644 files/usb-gadget.service  "${ROOTFS_DIR}/etc/systemd/system/usb-gadget.service"

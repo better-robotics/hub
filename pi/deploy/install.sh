@@ -96,17 +96,19 @@ else
   echo "[install] no Wi-Fi radio — skipping the hub-XXXX AP unit (not a Pi/Wi-Fi host)"
 fi
 
-# ---- Uplink radio watchdog (only where the wedging driver is actually bound;
-# the watchdog is specific to rtl8192cu, not to "a second radio") ----
-if grep -qs rtl8192cu /sys/class/net/*/device/uevent 2>/dev/null \
-   || readlink -f /sys/class/net/*/device/driver 2>/dev/null | grep -q rtl8192cu; then
+# ---- Uplink radio watchdog. Gated on "is this a Wi-Fi host at all", the same
+# test as the AP above — NOT on the wedging driver being bound right now: the
+# dongle may be unplugged at install time and arrive later, and a watchdog that
+# silently wasn't installed is the failure it exists to prevent. The script
+# no-ops when its driver is absent. ----
+if compgen -G "/sys/class/net/wlan*" > /dev/null; then
   echo "[install] installing uplink watchdog unit…"
   install -m 0755 "$REPO_DIR/deploy/hub-uplink-watchdog.sh" /usr/local/bin/hub-uplink-watchdog.sh
   install -m 0644 "$REPO_DIR/deploy/hub-uplink-watchdog.service" /etc/systemd/system/hub-uplink-watchdog.service
   systemctl daemon-reload
   systemctl enable --now hub-uplink-watchdog.service
 else
-  echo "[install] no rtl8192cu radio — skipping the uplink watchdog (nothing to recover)"
+  echo "[install] no Wi-Fi radio — skipping the uplink watchdog (nothing to recover)"
 fi
 
 echo "[install] done. status:"

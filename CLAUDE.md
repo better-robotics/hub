@@ -46,7 +46,25 @@ vocabulary**, which is *encoded, not described* (2026-07-16):
 - **Tokens are the only source of sizes.** Radius scale (`--radius-inner`
   exists so a nested corner can't out-round its container), `--ctrl-h` (the
   one control height), the `--fs-*` type scale, ink ramp. A literal px/rem in
-  a control is a bug — the audit greps for it.
+  a control is a bug — the audit greps for it. **Spacing is the exception, and
+  knowingly so**: 29 hand-picked values, no `--space-*` scale. Retrofitting one
+  measured out at 104/173 declarations moving up to 3.2px — a visual redesign,
+  not a mechanical fix, so it wants its own pass with eyes on every breakpoint
+  rather than a blind sweep. Don't half-do it: a scale nothing uses is worse
+  than none. (`.stack`/`.list-group` are the real answer to most of it —
+  containers own spacing; the primitives are Every Layout's Stack and Sidebar,
+  which this file arrived at independently.)
+- **A token comment that states a contrast ratio is a claim, not a
+  measurement.** `--ink-faint` said `≥4.5:1` and shipped at 4.24; the tree's
+  arrows sat at 3.45/3.85 under a comment claiming they were the log's; and
+  `.notice.danger`'s "Emergency stop engaged" was 4.11. Dark-committed UI hides
+  this — everything looks high-contrast on near-black. `--danger-text` is
+  lifted off Apple's `#ff453a` for exactly this reason (conformance beats the
+  vendor value when they collide), and `--border-input` exists because an empty
+  field's fill is 1.18:1 on a card, so its border is the only thing making it
+  perceivable (SC 1.4.11). Measure with the `verify` skill's contrast audit —
+  it is the only rung that catches this, and a shared token's fix must be
+  re-checked at every dependent pairing.
 - **The base `<button>` IS the neutral tile**, and tiers are classes on top
   (`.btn-primary` / `.btn-accent` / `.btn-danger` / `.link-btn`). So a
   classless button is in-system by construction. It was previously
@@ -61,7 +79,22 @@ vocabulary**, which is *encoded, not described* (2026-07-16):
   reimplemented as a wall of pills).
 - **ONE warn hue = "act here"**, carried by the identity chip alone: the chip
   IS the Assign affordance in every state (tap who-it-is to change it). Amber
-  recedes to plain ink once a board is named.
+  recedes to plain ink once a board is named. Amber is never the *only*
+  channel — `.tchip.warn` carries a `!` mark, because "online" vs "needs venue
+  sign-in" on the network chip differed by hue alone and read as fine all class.
+- **`announce()` / `alertNow()` / `sheetStatus()` are the announcement
+  vocabulary** — the AT counterpart to `.notice`, and the same shape as the
+  button tier above: status used to be announced-by-whichever-sheet-is-open,
+  which no new status could join (four live regions existed; three sat inside
+  `hidden` storage). `#app-status` and `#app-alert` are `.sr-only`, **always
+  rendered, empty at rest** — that is the whole contract, and it's why they
+  can't live on the visual banners, which are display-toggled by design. A
+  region that isn't in the tree when its text arrives never fires; populate-
+  then-reveal is a coin flip across AT. Never write them directly, and never
+  put `role=alert` on a `display:none` banner (`#estop-banner` had one, with its
+  text pre-filled, containing a focusable button). Writes are change-guarded
+  because the 2 s clock re-renders unconditionally — verify with a
+  MutationObserver, not by eye.
 - `.gate-row`, `.cchip` corner chips (the card corner is the rover's topbar),
   the modal sheet, `#chip-pop` corner popover, the `--fs-body` panel beat.
 

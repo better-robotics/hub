@@ -93,6 +93,56 @@ that way.
     .filter(el => el.getBoundingClientRect().height > 0)   // must be []
   ```
 
+## Contrast audit
+
+**A token comment that states a ratio is a claim, not a measurement — measure
+it.** `--ink-faint` carried `/* ≥4.5:1 on --inset (placeholders live there) */`
+and shipped at **4.24** (2026-07-16), so every placeholder and `.log-payload` in
+the file was under AA behind a comment asserting it wasn't. Three more went with
+it: `.dir-out` 3.45, `.dir-in` 3.85 (the tree quietly took dimmer tokens than
+the log's, under a comment claiming the arrows were the same), and — worst —
+`.notice.danger`'s **"Emergency stop engaged" at 4.11**. Dark-committed UI is
+where this hides: everything *looks* high-contrast on near-black.
+
+Walk every rendered text node + every `::placeholder`, compare against the first
+opaque ancestor background, assert `>= 4.5` (`>= 3` for large text: `>= 24px`, or
+`>= 18.66px` bold). Standard WCAG 2.x relative-luminance math — write it fresh;
+the four things below are what make it *right for this file*, and each one
+turned a wrong answer into a real defect on 2026-07-16.
+
+- **Resolve colours through a 1×1 canvas** (`ctx.fillStyle = v` →
+  `getImageData`), never by parsing `getComputedStyle`. A `color-mix()` computes
+  to `color(srgb 0.31 0.62 0.78)` and an `oklch()` to `oklch(0.55 0.17 27)` —
+  taking the first three numbers reads those as RGB triples and reports
+  confident nonsense instead of throwing. Both variants were hit in one session.
+  Sanity-check the resolver before trusting it: white on black must be exactly 21.
+- **Reveal before measuring.** The first pass read *clean* and was wrong: the log
+  drawer was closed, so 19 elements had 0×0 boxes and were silently skipped —
+  the same species as the touching-pairs sweep never being pointed at
+  `#chip-pop`. Open `#log-body`, the popovers and the sheets, and force
+  `#estop-banner` engaged; that banner's string is the one that must never miss.
+  Skip `.sr-only` (never rendered, never seen) and filter on
+  `getClientRects().length`.
+- **`::placeholder` is not a text node** — a text-node walk cannot see it, and
+  it is where the real failure lived.
+- **A glyph in a `<span>` is TEXT.** `.dir-in`/`.dir-out` are `↓`/`↑` characters,
+  so SC 1.4.3's 4.5 applies — not SC 1.4.11's 3:1 for graphical objects. Check
+  for an actual `<svg>` before granting anything the 3:1 bar; that distinction
+  decided whether two of the four failures were real.
+- **Non-text still has a floor.** UI component boundaries and state need 3:1
+  (SC 1.4.11). An empty `input` is the case that bites: its fill is 1.18:1 on a
+  card, so the *border* is the only thing making the field perceivable —
+  `--border-input` exists for that and nothing else.
+- **A shared token's fix must be re-checked at every dependent pairing.** Moving
+  `--danger-text` changes `.notice.danger`'s text, its border mix, AND the
+  `.tchip.danger` fill that white sits on. Compute all of them before choosing.
+- **`color-mix(in srgb, …)` is not perceptually uniform.** Mixing toward black
+  in sRGB shifts lightness non-linearly: the e-stop chip's fill gives white
+  5.95:1 in srgb and **7.19:1** in `oklab` for the same 72%. When a mix exists
+  *to reach* a ratio, `in oklab` is the cheaper way to get there. (WCAG 2.x's
+  own math is known-shaky on dark backgrounds — APCA is the honest cross-check,
+  not a gate. Ship against 2.x; sanity-read with APCA.)
+
 ## Layout regression sweeps
 
 Run in `browser_evaluate` at 320 / 390 / 768 / 1200 — and stage *hostile*
@@ -121,7 +171,79 @@ staged data was too polite.
 - **Horizontal overflow**: `document.documentElement.scrollWidth > innerWidth`
   must be false at every width.
 
+- **An `<iframe>` IS a viewport** — media queries, `dvh` and layout all resolve
+  against it, and it's the way to sweep widths when the harness can't resize the
+  window (`resize_window` reported success while `innerWidth` stayed 1512 and
+  `outerWidth` read 0). Same-origin, so `contentWindow.ingestSys` reaches the
+  app inside it. Stage through the app's real ingestion path, never by poking
+  the store: `window.robots` is the `<div id="robots">` element (id-globals),
+  NOT the `robots` Map — the Map is script-scoped and unreachable. Assigning to
+  it "works" silently and renders nothing.
+
+## Delivery audit
+
+**Every pass above asks "is the page correct?" — none asks "what does it cost
+to deliver?", which is why this category hid for months in a file audited many
+times over.** It is not a general web-perf concern here: the Pi is one AP radio
+that `pi/CLAUDE.md` already measured into starvation, and a class opens the
+same page at once, so bytes are multiplied by ~30 against the known bottleneck.
+A correctness pass will never surface any of it.
+
+Measure a real open with `performance.getEntriesByType('resource')`, cold and
+again on reload; `transferSize ≈ decodedBodySize` ⇒ nothing is compressed. The
+findings that aren't re-derivable (all measured 2026-07-16):
+
+- **The file tree lies.** `du` calls the IDE bundle 17 MB; a real open transfers
+  **5.4 MB** — Monaco lazy-loads 8.9 MB of language workers that never arrive.
+  Ranking the work off file sizes got the priorities wrong.
+- **`no-cache` with no `ETag`/`Last-Modified` is not a caching policy, it's
+  "download it again"** — and it reads like caching in review. `/ide/` refetched
+  27 requests / 5.4 MB *every load*; with a validator, **15 KB**, the 3.5 MB
+  Monaco chunk down to 300 bytes. Same species as an exit code printed but never
+  propagated: a mechanism that looks like it's checking and isn't.
+- **gzip, not minification** — dashboard.html raw 632 KB → gzip **197 KB**;
+  minifying *first* buys only **23 KB** more, because **62% of the file is
+  already-minified vendor blob**. Minification does ~5% of the work and charges
+  the comments, a build step in two places, and an undebuggable page.
+- **Not `immutable`**, though the bundle ships content-hashed names for exactly
+  that: it needs a filename heuristic, and a false positive pins a mutable asset
+  in a student's cache forever. Revalidation costs one LAN round-trip and cannot
+  go stale — the bytes were the problem, not the round-trips.
+- **Payload vs purpose** — 3.58 MB of editor core ships for a *read-only* Python
+  preview. Ask it of any vendored asset.
+
 ## Gotchas
+
+- **Clear `localStorage` between probe runs.** `hubRailCollapsed`,
+  `hubLogOpen`, `hubPanel` and `hubDriveMode` persist per origin, so one
+  `setRail(true)` in an earlier probe silently collapsed the rail in *every*
+  later iframe load — a sweep then reports `.navitem` at 16px wide and it looks
+  like a real narrow-width defect. The measurement lied, not the page
+  (2026-07-16).
+- **`const` helpers are not on `window`.** Only `function` declarations become
+  globals in a classic script — `ingestSys`, `ingestEstop`, `renderEstop`,
+  `renderRobots`, `openConfig` are reachable; `announce`, `alertNow`,
+  `sheetStatus`, `panelHead`, `esc` are not. Drive behaviour through the
+  function-declaration entry points; that's better verification anyway (it
+  exercises the real path instead of the helper in isolation).
+- **A dead `python3 -m http.server` looks like a security bug.** When the server
+  dies mid-session the page keeps rendering from memory while storage and
+  same-origin frame access start throwing `SecurityError` / "Access is denied
+  for this document" — which reads exactly like a CSP `sandbox` regression. Curl
+  the URL before debugging the policy (2026-07-16).
+- **Don't hand-roll tag balance with regex.** Counting `<section>` was defeated
+  twice in one pass: once by an HTML comment that *contained* `<section id="codes"
+  hidden>`, once by a **CSS** comment containing `<h2#details-label>` (stripping
+  `<!-- -->` doesn't touch `/* */`). Both produced a confident "balanced" over a
+  real stray `</section>`. Use `html.parser` and let it tell you. Same family as
+  the `<script>`-inside-`<style>`-comment trap below.
+- **Live regions must be verified by BEHAVIOUR, not presence.** `role="status"`
+  on a rendered empty node is necessary, not sufficient. The test that matters:
+  fire the state change through its real path, then re-render N times and assert
+  the region did **not** mutate again — the 2 s clock calls `renderEstop()`
+  unconditionally, and an unguarded identical write is a no-op that several AT
+  re-announce. Watch it with a `MutationObserver`; repeat renders must produce
+  zero records.
 
 - The CSP `<meta>` (line ~6) governs cross-host board iframes (`frame-src`),
   camera streams (`img-src`), and probe fetches (`connect-src`) — a policy

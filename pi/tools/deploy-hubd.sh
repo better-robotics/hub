@@ -61,8 +61,15 @@ for f in reprovision.py; do
 done
 
 echo "[deploy] verifying /fleet…"
-# trailing echo: pi-serial.py drops output that shares a line with its
-# done-marker, and curl emits no final newline.
-pi "(curl -s http://127.0.0.1/fleet || curl -s http://127.0.0.1:8000/fleet); echo" 15
+# `&& echo`, never `; echo` — the trailing echo exists because pi-serial.py
+# drops output sharing a line with its done-marker and curl emits no final
+# newline, but as `;` it also RESET the status, so this "verification" reported
+# success even when both curls failed. And -sf, not -s: without -f, curl exits 0
+# on a 500. Two ways for a check to pass while the thing it checks is down.
+pi "(curl -sf http://127.0.0.1/fleet || curl -sf http://127.0.0.1:8000/fleet) && echo" 15
 echo
+# Reached only if every `pi` above exited 0 (set -e + pi-serial's real status).
+# This line used to print unconditionally — including the run where the remote
+# curl couldn't resolve github.com, nothing was installed, and the Pi went on
+# serving the previous binary while the deploy announced the new one.
 echo "[deploy] done — hubd ${SHA:0:7} live"

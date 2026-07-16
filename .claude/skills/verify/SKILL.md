@@ -201,10 +201,12 @@ findings that aren't re-derivable (all measured 2026-07-16):
   27 requests / 5.4 MB *every load*; with a validator, **15 KB**, the 3.5 MB
   Monaco chunk down to 300 bytes. Same species as an exit code printed but never
   propagated: a mechanism that looks like it's checking and isn't.
-- **gzip, not minification** — dashboard.html raw 632 KB → gzip **197 KB**;
-  minifying *first* buys only **23 KB** more, because **62% of the file is
-  already-minified vendor blob**. Minification does ~5% of the work and charges
-  the comments, a build step in two places, and an undebuggable page.
+- **gzip, not minification** — dashboard.html raw 646 KB → gzip **204 KB**
+  (**31.6%**); minifying *first* buys only ~23 KB more, because **62% of the
+  file is already-minified vendor blob**. Minification does ~5% of the work and
+  charges the comments, a build step in two places, and an undebuggable page.
+  The ratio is the durable part — the byte counts drift every time the page
+  grows, and did within a day of first being written down here.
 - **Not `immutable`**, though the bundle ships content-hashed names for exactly
   that: it needs a filename heuristic, and a false positive pins a mutable asset
   in a student's cache forever. Revalidation costs one LAN round-trip and cannot

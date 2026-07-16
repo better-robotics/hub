@@ -17,16 +17,23 @@ mosquitto_passwd -b -c /etc/mosquitto/hub-passwd professor change-me
 chown mosquitto:mosquitto /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 chmod 0600 /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 
-# Each independently restartable: usb-gadget (recovery, before NM), serial
-# console on the gadget, the day-zero hub-XXXX AP, the dashboard chassis +
-# Wi-Fi setup (hubd), the MQTT broker (Mosquitto), and the uplink watchdog
-# (idles unless the wedging USB radio is present).
-systemctl enable usb-gadget.service
-systemctl enable serial-getty@ttyGS0.service
-systemctl enable hub-ap.service
-systemctl enable hubd.service
+# Enable every unit deploy/payload.tsv marks — the same list 00-run.sh just
+# installed from, so a unit can't be placed in the rootfs and then forgotten
+# here. The manifest is staged to /tmp by ../customize-image.sh: this step runs
+# inside the chroot and can't see the stage dir, which is exactly why this list
+# used to be retyped. Each is independently restartable: usb-gadget (recovery,
+# before NM), the day-zero hub-XXXX AP, the dashboard chassis + Wi-Fi setup
+# (hubd), and the uplink watchdog (idles unless the wedging USB radio is
+# present).
+while read -r src dest mode enable on_host; do
+    [ "$enable" = yes ] || continue
+    systemctl enable "$(basename "$dest")"
+done < <(grep -Ev '^[[:space:]]*(#|$)' /tmp/hub-payload.tsv)
+
+# Not manifest rows: the broker's unit ships with the package, and the serial
+# console is a stock template unit instantiated on the gadget's tty.
 systemctl enable mosquitto.service
-systemctl enable hub-uplink-watchdog.service
+systemctl enable serial-getty@ttyGS0.service
 
 # --- Appliance diet: a single-purpose broker/AP box, offline by design ---
 # dphys-swapfile: no swap — mosquitto+hubd use a few MB on a 1–8 GB Pi, and a

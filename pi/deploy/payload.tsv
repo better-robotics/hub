@@ -1,0 +1,74 @@
+# payload.tsv — the files the hub installs, and where they go. One list, four
+# readers:
+#
+#   deploy/install.sh                     installs onto a running host
+#   image/stage-hub/00-hub/00-run.sh      installs into the image's rootfs
+#   image/stage-hub/00-hub/01-run-chroot.sh   enables the units, in the chroot
+#   .github/workflows/build-image.yml     stages the files, then asserts every
+#                                         row landed in the finished .img
+#
+# Each reader has real context the others don't (a native build, ${ROOTFS_DIR},
+# an offline chroot), so they stay separate scripts — but the src->dest mapping
+# was the same list retyped four times, and a new unit only has to be forgotten
+# in one of them to ship an image missing it. Add a unit here and every reader
+# picks it up.
+#
+# Format: whitespace-separated, '#' comment lines and blanks skipped. Readers
+# parse it with a process substitution, never a pipe — a pipe runs the loop body
+# in a subshell, so anything it accumulates (install.sh collects the units to
+# enable) is silently lost at `done`:
+#
+#   while read -r src dest mode enable on_host; do
+#     ...
+#   done < <(grep -Ev '^[[:space:]]*(#|$)' payload.tsv)
+#
+#   src      path relative to pi/
+#   dest     absolute path on the hub (image readers prefix ${ROOTFS_DIR})
+#   mode     install -m
+#   enable   yes = a systemd unit to enable; '-' = a plain file
+#   on_host  what deploy/install.sh does with the row. The image ignores this
+#            column and bakes every row: no hardware exists at build time, so
+#            there is nothing to test against. Values:
+#              always  install unconditionally
+#              wifi    only on a host that has a Wi-Fi radio
+#              image   skip — baked into the Pi image only
+#
+# src                                 dest                                             mode  enable  on_host
+
+# The dashboard/HTTP chassis. (The hubd binary itself is not a row: install.sh
+# builds it natively, the image takes it from a CI artifact — the one file
+# whose source genuinely differs per context.)
+deploy/hubd.service                   /etc/systemd/system/hubd.service                 0644  yes     always
+
+# Mosquitto: the actual broker (hubd is not an MQTT client). The package ships
+# its own unit and includes /etc/mosquitto/conf.d/*.conf, so the config is a
+# drop-in rather than a unit of ours. The passwd file is generated, not copied
+# — install.sh and 01-run-chroot.sh each seed it where mosquitto_passwd exists.
+deploy/mosquitto.conf                 /etc/mosquitto/conf.d/hub.conf                   0644  -       always
+mosquitto-acl.example.conf            /etc/mosquitto/hub-acl.conf                      0644  -       always
+
+# Day-zero hub-XXXX AP (open, 10.42.0.1) — a hub nobody can find isn't a hub.
+# The profile is created once on first boot; NetworkManager owns it after.
+# The setup script picks the built-in radio by driver, never by interface name.
+deploy/hub-ap-setup.sh                /usr/local/bin/hub-ap-setup.sh                   0755  -       wifi
+deploy/hub-ap.service                 /etc/systemd/system/hub-ap.service               0644  yes     wifi
+
+# Uplink radio watchdog — the USB dongle's driver wedges when the venue AP goes
+# away, and only a module reload clears it. Gated on "is this a Wi-Fi host at
+# all", the same test as the AP above, and NOT on the wedging driver being bound
+# right now: the dongle may be unplugged at install time and arrive later, and a
+# watchdog that silently wasn't installed is the failure it exists to prevent.
+# The script no-ops when its driver is absent.
+deploy/hub-uplink-watchdog.sh         /usr/local/bin/hub-uplink-watchdog.sh            0755  -       wifi
+deploy/hub-uplink-watchdog.service    /etc/systemd/system/hub-uplink-watchdog.service  0644  yes     wifi
+
+# USB-C recovery plane: ECM ethernet (ssh pi@10.55.0.1) + ACM serial. Image-only
+# — it needs the dwc2 peripheral-mode overlay on the boot partition, which
+# install.sh (host-agnostic, any systemd box) has no business writing.
+deploy/usb-gadget-setup.sh            /usr/local/bin/usb-gadget-setup.sh               0755  -       image
+deploy/usb-gadget.service             /etc/systemd/system/usb-gadget.service           0644  yes     image
+
+# Hub IP + router status on every interactive login (serial autologin and ssh
+# both source /etc/profile.d/*.sh). Image-only: it answers "what's my hub's
+# address" for the appliance's recovery console, which a generic host has not got.
+deploy/hub-login-banner.sh            /etc/profile.d/hub-status.sh                     0644  -       image

@@ -1,35 +1,30 @@
 #!/bin/bash -e
 # Host context (has ROOTFS_DIR): drop hub artifacts into the target rootfs.
-# Run by ../customize-image.sh against the loop-mounted image; CI stages
-# files/ first — binaries cross-built, units + scripts copied from deploy/
-# (the single source of truth, also used off-Pi by deploy/install.sh).
+# Run by ../customize-image.sh against the loop-mounted image; CI stages files/
+# first — the hubd binary cross-built, everything else copied out of deploy/ per
+# deploy/payload.tsv, which is the one src->dest list this step, 01-run-chroot.sh,
+# deploy/install.sh, and the build-image verify step all read.
 
 # --- hub dashboard chassis (serves the dashboard + device-served Wi-Fi setup;
-# the old BLE provisiond was deleted 2026-07-09, provisioning is /wifi/* now) ---
+# the old BLE provisiond was deleted 2026-07-09, provisioning is /wifi/* now).
+# The binary is the one payload.tsv can't carry: here it's a CI artifact, while
+# install.sh builds it natively — same dest, different source. ---
 install -d "${ROOTFS_DIR}/opt/hub"
-install -m 0755 files/hubd            "${ROOTFS_DIR}/opt/hub/hubd"
-install -m 0644 files/hubd.service       "${ROOTFS_DIR}/etc/systemd/system/hubd.service"
+install -m 0755 files/hubd "${ROOTFS_DIR}/opt/hub/hubd"
 
-# --- Mosquitto broker config (the package itself comes from 00-packages;
-# the passwd file is generated in the chroot, 01-run-chroot.sh) ---
-install -m 0644 files/mosquitto.conf     "${ROOTFS_DIR}/etc/mosquitto/conf.d/hub.conf"
-install -m 0644 files/mosquitto-acl.conf "${ROOTFS_DIR}/etc/mosquitto/hub-acl.conf"
-
-# --- Day-zero hub-XXXX AP (wlan0, open, 10.42.0.1) — a hub nobody can find
-# isn't a hub; the profile is created once on first boot, NM owns it after ---
-install -m 0755 files/hub-ap-setup.sh "${ROOTFS_DIR}/usr/local/bin/hub-ap-setup.sh"
-install -m 0644 files/hub-ap.service  "${ROOTFS_DIR}/etc/systemd/system/hub-ap.service"
-
-# --- Uplink radio watchdog — the USB dongle's driver wedges when the venue AP
-# goes away and only a module reload clears it. Baked unconditionally: no
-# hardware exists at build time, and the script no-ops when its driver isn't
-# bound (a hub with no dongle just polls and finds nothing to do). ---
-install -m 0755 files/hub-uplink-watchdog.sh      "${ROOTFS_DIR}/usr/local/bin/hub-uplink-watchdog.sh"
-install -m 0644 files/hub-uplink-watchdog.service "${ROOTFS_DIR}/etc/systemd/system/hub-uplink-watchdog.service"
-
-# --- USB-gadget recovery channel (ECM ssh + ACM serial) ---
-install -m 0755 files/usb-gadget-setup.sh "${ROOTFS_DIR}/usr/local/bin/usb-gadget-setup.sh"
-install -m 0644 files/usb-gadget.service  "${ROOTFS_DIR}/etc/systemd/system/usb-gadget.service"
+# --- Everything payload.tsv maps into place: hubd's unit, the Mosquitto broker
+# config + ACL (the package itself comes from 00-packages; the passwd file is
+# generated in the chroot, 01-run-chroot.sh), the day-zero AP, the uplink
+# watchdog, the USB-gadget recovery channel, and the login banner. Per-row
+# rationale lives in the manifest.
+#
+# The manifest's `on_host` column is deploy/install.sh's gate and is ignored
+# here: no hardware exists at build time, so the image bakes every row
+# unconditionally and each script decides at runtime (the watchdog no-ops when
+# its driver isn't bound; hub-ap-setup.sh needs a radio to find). ---
+while read -r src dest mode enable on_host; do
+  install -D -m "$mode" "files/$(basename "$src")" "${ROOTFS_DIR}${dest}"
+done < <(grep -Ev '^[[:space:]]*(#|$)' files/payload.tsv)
 
 # dwc2 in peripheral mode + libcomposite so the USB-C port presents the gadget.
 CONFIG="${ROOTFS_DIR}/boot/firmware/config.txt"
@@ -149,11 +144,6 @@ address=/connectivitycheck.android.com/10.42.0.1
 address=/www.msftconnecttest.com/10.42.0.1
 address=/www.msftncsi.com/10.42.0.1
 CAPPROBEEOF
-
-# Login banner: print the hub's IP + router status on every interactive login
-# (serial autologin and ssh both source /etc/profile.d/*.sh). This is where
-# "what's my hub's address / is it up" is answered.
-install -m 0644 files/hub-login-banner.sh "${ROOTFS_DIR}/etc/profile.d/hub-status.sh"
 
 # Autologin on the USB-ACM serial console (physical-cable possession is the auth
 # boundary, same as holding the SD card): drops straight to a `pi` shell. Note

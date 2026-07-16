@@ -25,6 +25,7 @@ KEYMAP=us
 
 [ -n "${HUB_SSH_PUBKEY:-}" ] || { echo "HUB_SSH_PUBKEY not set" >&2; exit 1; }
 [ -f "$STEP_DIR/files/hubd" ]  || { echo "stage files not staged (no $STEP_DIR/files/hubd)" >&2; exit 1; }
+[ -f "$STEP_DIR/files/payload.tsv" ] || { echo "payload manifest not staged (no $STEP_DIR/files/payload.tsv)" >&2; exit 1; }
 [ "$(id -u)" = 0 ]             || { echo "must run as root" >&2; exit 1; }
 
 # --- grow the image: Lite ships sized-to-content, apt needs headroom. The
@@ -117,9 +118,12 @@ in_chroot apt-get update
 # shellcheck disable=SC2046  # word splitting is the point
 in_chroot apt-get install -y $(cat "$STEP_DIR/00-packages")
 (cd "$STEP_DIR" && ROOTFS_DIR="$ROOTFS" bash 00-run.sh)
+# 01 runs inside the chroot and can't reach the stage dir, so the payload
+# manifest rides in with it: it enables exactly the units 00-run.sh installed.
 install -m 0755 "$STEP_DIR/01-run-chroot.sh" "$ROOTFS/tmp/01-run-chroot.sh"
+install -m 0644 "$STEP_DIR/files/payload.tsv" "$ROOTFS/tmp/hub-payload.tsv"
 in_chroot bash /tmp/01-run-chroot.sh
-rm -f "$ROOTFS/tmp/01-run-chroot.sh"
+rm -f "$ROOTFS/tmp/01-run-chroot.sh" "$ROOTFS/tmp/hub-payload.tsv"
 
 # ---- ide bundle — hubd serves it at /ide/ (see hubd.rs) ----
 # Fetched on the CI host (the chroot has DNS but this needs no chroot). The

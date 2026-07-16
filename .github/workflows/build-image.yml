@@ -60,22 +60,21 @@ jobs:
       # --- stage artifacts the customization installs into the rootfs ---
       - name: Stage hub files
         run: |
+          set -euo pipefail
           # files/ holds only gitignored build artifacts, so git won't
           # materialize the dir on checkout — create it before staging.
           mkdir -p image/stage-hub/00-hub/files
-          cp "$RUNNER_TEMP/hubd-artifact/hubd"              image/stage-hub/00-hub/files/hubd
-          chmod +x                                          image/stage-hub/00-hub/files/hubd
-          cp deploy/hubd.service                            image/stage-hub/00-hub/files/hubd.service
-          cp deploy/usb-gadget.service                      image/stage-hub/00-hub/files/usb-gadget.service
-          cp deploy/usb-gadget-setup.sh                     image/stage-hub/00-hub/files/usb-gadget-setup.sh
-          cp deploy/hub-ap.service                          image/stage-hub/00-hub/files/hub-ap.service
-          cp deploy/hub-ap-setup.sh                         image/stage-hub/00-hub/files/hub-ap-setup.sh
-          cp deploy/hub-uplink-watchdog.service             image/stage-hub/00-hub/files/hub-uplink-watchdog.service
-          cp deploy/hub-uplink-watchdog.sh                  image/stage-hub/00-hub/files/hub-uplink-watchdog.sh
-          cp deploy/hub-login-banner.sh                     image/stage-hub/00-hub/files/hub-login-banner.sh
-          # Mosquitto broker config + ACL (passwd is generated in the chroot).
-          cp deploy/mosquitto.conf                          image/stage-hub/00-hub/files/mosquitto.conf
-          cp mosquitto-acl.example.conf                     image/stage-hub/00-hub/files/mosquitto-acl.conf
+          cp "$RUNNER_TEMP/hubd-artifact/hubd"  image/stage-hub/00-hub/files/hubd
+          chmod +x                              image/stage-hub/00-hub/files/hubd
+          # Everything else is whatever deploy/payload.tsv lists — the same one
+          # list 00-run.sh installs from, 01-run-chroot.sh enables from, and the
+          # verify step below asserts against. The manifest ships with them so
+          # the bake can read it (see customize-image.sh).
+          cp deploy/payload.tsv image/stage-hub/00-hub/files/payload.tsv
+          while read -r src dest mode enable on_host; do
+            cp "$src" "image/stage-hub/00-hub/files/$(basename "$src")"
+          done < <(grep -Ev '^[[:space:]]*(#|$)' deploy/payload.tsv)
+          ls -l image/stage-hub/00-hub/files
 
       - name: Fetch base image
         run: |
@@ -98,16 +97,23 @@ jobs:
           sudo mkdir -p /mnt/hub
           sudo mount "${LOOP}p2" /mnt/hub
           echo "=== /opt/hub ===" && sudo ls -l /mnt/hub/opt/hub
-          sudo test -f /mnt/hub/opt/hub/hubd                                          # router binary baked
-          sudo test -f /mnt/hub/usr/local/bin/usb-gadget-setup.sh                     # recovery channel
+          sudo test -f /mnt/hub/opt/hub/hubd                                          # router binary baked (the one non-manifest file — see payload.tsv)
           sudo test -f /mnt/hub/etc/NetworkManager/system-connections/usb-gadget.nmconnection
           sudo chroot /mnt/hub dpkg-query -W network-manager                          # NM present (drives /wifi setup)
-          sudo test -f /mnt/hub/usr/local/bin/hub-ap-setup.sh                          # day-zero AP
-          sudo test -L /mnt/hub/etc/systemd/system/multi-user.target.wants/hubd.service        # hubd enabled
-          sudo test -L /mnt/hub/etc/systemd/system/multi-user.target.wants/usb-gadget.service  # gadget enabled
-          sudo test -L /mnt/hub/etc/systemd/system/multi-user.target.wants/hub-ap.service      # day-zero AP enabled
-          sudo test -f /mnt/hub/usr/local/bin/hub-uplink-watchdog.sh                           # uplink recovery
-          sudo test -L /mnt/hub/etc/systemd/system/multi-user.target.wants/hub-uplink-watchdog.service
+          # Every payload.tsv row landed in the rootfs, and every unit it marks
+          # `enable` is enabled. Derived from the manifest the bake installed
+          # from, so this can't drift into asserting a stale list — which is the
+          # whole point: a unit added to the manifest is verified for free, and
+          # one that silently didn't install fails the build here.
+          echo "=== payload ==="
+          while read -r src dest mode enable on_host; do
+            sudo test -f "/mnt/hub$dest" || { echo "MISSING from image: $dest (from $src)"; exit 1; }
+            if [ "$enable" = yes ]; then
+              sudo test -L "/mnt/hub/etc/systemd/system/multi-user.target.wants/$(basename "$dest")" \
+                || { echo "NOT ENABLED in image: $(basename "$dest")"; exit 1; }
+            fi
+            echo "  ✓ $dest"
+          done < <(grep -Ev '^[[:space:]]*(#|$)' deploy/payload.tsv)
           ! sudo chroot /mnt/hub dpkg-query -W comitup 2>/dev/null                    # comitup gone
           # Appliance diet (01-run-chroot.sh) — absences are contract too:
           ! sudo chroot /mnt/hub dpkg-query -W bluez 2>/dev/null                      # no bluetooth stack
@@ -140,6 +146,42 @@ jobs:
           sudo umount /mnt/boot
           sudo umount /mnt/hub && sudo losetup -d "$LOOP"
           echo "✓ image: hubd + usb-gadget recovery, base config owned by customize-image.sh"
+
+      # The run page shows a build graph, not a bill of materials — but "what is
+      # actually on this card" is the question a flashed image raises, and the
+      # answer was only readable by expanding the log. Rendered from the same
+      # manifest the bake installed from and the verify step above just asserted,
+      # so it reports verified truth and can't drift into a stale prose copy.
+      # Deliberately NOT a parallel job: the payload isn't built, so a job could
+      # only describe it — and a second place describing the payload is the
+      # duplication payload.tsv exists to remove.
+      - name: Summarize what's on the card
+        run: |
+          set -euo pipefail
+          {
+            echo "## What's on this card"
+            echo
+            echo "Base \`$BASE_IMG\` + \`hubd\` at \`/opt/hub/hubd\` (static musl aarch64: dashboard, \`/fleet\`, device-served Wi-Fi setup)"
+            echo "and the [ide](https://github.com/better-robotics/ide) bundle at \`/usr/share/hub/ide\`, served at \`/ide/\`."
+            echo
+            echo "### Payload — [\`pi/deploy/payload.tsv\`](../blob/${GITHUB_SHA}/pi/deploy/payload.tsv)"
+            echo
+            echo "| installed at | mode | at boot |"
+            echo "|---|---|---|"
+            while read -r src dest mode enable on_host; do
+              if [ "$enable" = yes ]; then boot="enabled"; else boot="—"; fi
+              echo "| \`$dest\` | \`$mode\` | $boot |"
+            done < <(grep -Ev '^[[:space:]]*(#|$)' deploy/payload.tsv)
+            echo
+            echo "### Packages"
+            echo
+            # awk, not `paste -sd', '` — paste treats -d as a CYCLIC delimiter
+            # list, so that renders "a,b c,d" rather than a comma-space join.
+            echo "Added: $(awk '{printf "%s`%s`", sep, $0; sep=", "} END{print ""}' image/stage-hub/00-hub/00-packages)"
+            echo
+            echo "Removed (appliance diet — no bluetooth, no swap, no uncontracted radio firmware):"
+            echo "see \`01-run-chroot.sh\`; the verify step asserts each absence."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # Compress after verify (verify reads the raw .img — no decompress round-trip).
       - name: Compress image

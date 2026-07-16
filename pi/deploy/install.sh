@@ -27,22 +27,44 @@ echo "[install] staging $PREFIX…"
 install -d "$PREFIX"
 install -m 0755 "$REPO_DIR/target/release/hubd" "$PREFIX/hubd"
 
-echo "[install] installing hubd systemd unit…"
-install -m 0644 "$REPO_DIR/deploy/hubd.service" /etc/systemd/system/hubd.service
-systemctl daemon-reload
-systemctl enable --now hubd.service
-
 # ---- Mosquitto: the actual MQTT broker (hubd is not an MQTT client) ----
 # Debian's packaged mosquitto ships its own systemd unit and includes
 # /etc/mosquitto/conf.d/*.conf — so we drop our config there rather than write
-# a custom unit. Broker-native ACL enforces classroom scoping (professor/team);
-# see mosquitto-acl.example.conf.
+# a custom unit (deploy/payload.tsv puts it there). Broker-native ACL enforces
+# classroom scoping (professor/team); see mosquitto-acl.example.conf.
+# Installed before the payload below so /etc/mosquitto and the `mosquitto` user
+# exist when the config, ACL, and their ownership land.
 echo "[install] installing Mosquitto broker…"
 apt-get update -qq
 apt-get install -y -qq mosquitto mosquitto-clients
 
-install -m 0644 "$REPO_DIR/deploy/mosquitto.conf"           /etc/mosquitto/conf.d/hub.conf
-install -m 0644 "$REPO_DIR/mosquitto-acl.example.conf"      /etc/mosquitto/hub-acl.conf
+# ---- Payload: every file deploy/payload.tsv maps into place ----
+# That manifest is the one list — the Pi image installs the same rows and CI
+# asserts them in the built .img, so a new unit is one line there rather than
+# four edits that can disagree. Its `on_host` column is read here and only here:
+#   always  install unconditionally
+#   wifi    only on a host with a Wi-Fi radio — the day-zero AP and the uplink
+#           watchdog have nothing to do without one. This gates on "is this a
+#           Wi-Fi host at all", NOT on any particular radio being plugged in
+#           right now; see payload.tsv for why that distinction is load-bearing.
+#   image   baked into the Pi image only (it needs boot-partition changes this
+#           host-agnostic installer has no business making).
+echo "[install] installing payload…"
+units=()
+while read -r src dest mode enable on_host; do
+  if [[ $on_host == image ]]; then
+    continue
+  fi
+  if [[ $on_host == wifi ]] && ! compgen -G "/sys/class/net/wlan*" > /dev/null; then
+    echo "[install]   skip $dest — no Wi-Fi radio on this host"
+    continue
+  fi
+  install -D -m "$mode" "$REPO_DIR/$src" "$dest"
+  echo "[install]   $dest"
+  if [[ $enable == yes ]]; then
+    units+=("$(basename "$dest")")
+  fi
+done < <(grep -Ev '^[[:space:]]*(#|$)' "$REPO_DIR/deploy/payload.tsv")
 
 # Password file — one identity. The hub's own Wi-Fi is the classroom's real
 # boundary (mosquitto-acl.example.conf); professor is the one credential
@@ -60,6 +82,15 @@ chmod 0600 /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 
 systemctl enable mosquitto.service
 systemctl restart mosquitto.service   # pick up the conf.d drop-in
+
+# Every unit payload.tsv marked `enable`, in one pass — mosquitto's own unit is
+# above because the package, not the manifest, ships it. (Guarded: a zero-arg
+# `systemctl enable` is an error, and the Wi-Fi gate above can thin this list.)
+if [[ ${#units[@]} -gt 0 ]]; then
+  echo "[install] enabling units: ${units[*]}"
+  systemctl daemon-reload
+  systemctl enable --now "${units[@]}"
+fi
 
 # ---- IDE bundle (optional — needs internet at install time) ----
 # hubd serves better-robotics/ide's built dist at /ide/ when present
@@ -82,33 +113,6 @@ if curl -fsSL https://github.com/better-robotics/ide/releases/latest/download/id
   echo "[install] IDE bundle installed → http://<this-host-ip>/ide/"
 else
   echo "[install] no internet — skipped the IDE bundle ($([[ -d $IDE_DIR ]] && echo 'existing copy kept' || echo 'not installed'))"
-fi
-
-# ---- Day-zero hub-XXXX AP (Pi-radio-specific: needs a Wi-Fi radio; the
-# setup script selects the builtin by driver, never by interface name) ----
-if compgen -G "/sys/class/net/wlan*" > /dev/null; then
-  echo "[install] installing day-zero hub AP unit…"
-  install -m 0755 "$REPO_DIR/deploy/hub-ap-setup.sh" /usr/local/bin/hub-ap-setup.sh
-  install -m 0644 "$REPO_DIR/deploy/hub-ap.service"  /etc/systemd/system/hub-ap.service
-  systemctl daemon-reload
-  systemctl enable --now hub-ap.service
-else
-  echo "[install] no Wi-Fi radio — skipping the hub-XXXX AP unit (not a Pi/Wi-Fi host)"
-fi
-
-# ---- Uplink radio watchdog. Gated on "is this a Wi-Fi host at all", the same
-# test as the AP above — NOT on the wedging driver being bound right now: the
-# dongle may be unplugged at install time and arrive later, and a watchdog that
-# silently wasn't installed is the failure it exists to prevent. The script
-# no-ops when its driver is absent. ----
-if compgen -G "/sys/class/net/wlan*" > /dev/null; then
-  echo "[install] installing uplink watchdog unit…"
-  install -m 0755 "$REPO_DIR/deploy/hub-uplink-watchdog.sh" /usr/local/bin/hub-uplink-watchdog.sh
-  install -m 0644 "$REPO_DIR/deploy/hub-uplink-watchdog.service" /etc/systemd/system/hub-uplink-watchdog.service
-  systemctl daemon-reload
-  systemctl enable --now hub-uplink-watchdog.service
-else
-  echo "[install] no Wi-Fi radio — skipping the uplink watchdog (nothing to recover)"
 fi
 
 echo "[install] done. status:"

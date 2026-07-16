@@ -13,6 +13,12 @@ the network values, which you supply.
   (Debian's packaged mosquitto includes it and runs it under its own unit).
 - `install.sh` — native-builds `hubd`, installs it to `/opt/hub/`, and
   installs + configures Mosquitto (config, ACL, seeded creds).
+- `payload.tsv` — **the list of what gets installed where**, and the one place
+  to add a unit. `install.sh` reads it here; the Pi image installs the same rows
+  and CI asserts every one of them landed in the built `.img`. Its `on_host`
+  column is the only thing that differs between a running host and the image:
+  the AP and uplink watchdog need a Wi-Fi radio, and the USB recovery plane is
+  image-only (it needs boot-partition changes this installer doesn't make).
 
 ```sh
 git clone https://github.com/better-robotics/hub-mqtt && cd hub-mqtt

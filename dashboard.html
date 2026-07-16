@@ -153,10 +153,24 @@
     .tchip > svg { flex: none; }
     .tchip > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .tchip.warn { color: var(--warn-ink); border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
-    /* The e-stop chip: danger red, not the amber "act here" channel — amber
-       asks for attention, this one takes an action. Professor-only. */
-    .tchip.danger { color: var(--danger-text);
-      border-color: color-mix(in srgb, var(--danger-text) 55%, transparent); }
+    /* The e-stop chip: SOLID red, white text — the one filled control in a row
+       of outline status chips, so the room's kill switch is found instantly.
+       The fill is darker than --danger-text (#ff453a): white on the bright red
+       misses AA (~3:1), so it's mixed toward black to clear 4.5:1. Amber stays
+       the "act here" channel; this red is "act NOW". Professor-only. */
+    .tchip.danger { color: #fff;
+      background: color-mix(in srgb, var(--danger-text) 72%, #000);
+      border-color: color-mix(in srgb, var(--danger-text) 72%, #000); }
+    .tchip.danger:hover { background: color-mix(in srgb, var(--danger-text) 80%, #000); }
+    /* Professor identity by STATE: neutral when locked, blue when unlocked.
+       The signed-out door (#signin-chip, label "Professor") stays a quiet
+       outline chip — it's a dormant affordance. Signing in swaps it for
+       #id-chip, which goes solid Duke blue + white: blue means "you ARE the
+       professor", the elevated session you can act from. White on --accent
+       (#00539B) clears AA at ~8:1. :not(.warn) so a reconnecting tint still
+       wins — that state must read as trouble, not as a calm blue. */
+    #id-chip:not(.warn) { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+    #id-chip:not(.warn):hover { background: color-mix(in srgb, var(--accent) 88%, #fff); }
     /* Compact widths: chips give way to icon-only BEFORE the identity
        label (the topbar's shrink-order doctrine) — the red octagon and the
        account-corner person glyph are the meaning, aria-label keeps the
@@ -205,7 +219,7 @@
        so they cannot disagree about where the line is. The chevron points the
        way the line will go, which is the one thing this control has to say. */
     .rail-toggle {
-      position: absolute; z-index: 5; top: 0.5rem;
+      position: absolute; z-index: 5; top: 50%; transform: translateY(-50%);
       left: calc(var(--rail-w) - 0.62rem);
       width: 1.25rem; height: 1.25rem; min-height: 0; padding: 0;
       display: flex; align-items: center; justify-content: center;
@@ -365,22 +379,16 @@
          (an unclaimed rover on an anonymous view has none) carried a big dead
          region under its name — read as a broken card, not a short one. */
       display: grid; gap: 0.9rem; align-items: start;
-      /* auto-fit (not fill): with one or two cards the empty tracks collapse
-         and the cards grow, instead of hugging a phantom column grid. Tracks
-         flex to 1fr — a fixed 26rem max would count repetitions at 26rem and
-         leave an iPad-portrait width as one column beside a dead right half —
-         while the card itself caps at 26rem for readability. */
-      grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+      /* Fixed 20rem tracks, not 1fr: a card is its content, so it never stretches
+         to fill a phantom third of a wide row. auto-fill packs as many as fit and
+         wraps the rest, left-aligned — the app-launcher grid, uniform cards with a
+         ragged right edge, rather than a few very wide cards on a sparse fleet.
+         min(20rem, 100%) lets the single track shrink to fit a phone narrower
+         than 20rem instead of overflowing it. This retired the old 1fr-vs-max-
+         width contradiction (tracks said "fill the row", the card said "cap at
+         26rem"), which left dead space inside every track. */
+      grid-template-columns: repeat(auto-fill, min(20.5rem, 100%));
     }
-    /* The cap belongs to the LONE card, not every card. Tracks are 1fr ("fill
-       the row") while .robot capped at 26rem ("never exceed 416px") — a direct
-       contradiction, and the leftover was visible: with two cards the tracks
-       came out 452.8px, so each card left 36.8px dead inside its own track.
-       That read as a 51px gap between cards (against a declared 14.4px) and a
-       right edge 37px short of every other section on the page. The cap only
-       ever earned its place for ONE card, which would otherwise stretch across
-       the whole 920px grid; :only-child says exactly that and nothing more. */
-    .robot:only-child { max-width: 26rem; }
     .robot {
       background: var(--surface); border: 0.5px solid var(--border-default);
       border-radius: var(--radius-lg); padding: 1.1rem 1.2rem; box-shadow: var(--shadow-card);
@@ -839,7 +847,15 @@
     .warn-note { color: var(--warn-ink); font-size: 0.85rem; margin-top: 0.45rem; }
 
     /* Per-card action row: Camera / Wi-Fi & role / Drive as tinted tiles. */
+    /* Buttons share the row equally and fill it, so the last one's right edge
+       lands on the card's content edge — the same edge the identity chip sits
+       on (margin-left:auto). That's what makes the chip align with Details
+       instead of floating past a short, left-packed row. flex-basis:0 + grow
+       means equal thirds; min-width:0 lets a long label shrink rather than
+       wrap. At the card's width the equal width is within a pixel or two of the
+       buttons' natural size, so it reads as the same row, now edge-aligned. */
     .card-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.85rem; }
+    .card-actions > button { flex: 1 1 0; min-width: 0; }
     /* The drawer is one panel with a hairline lid — the same grouped-inset
        shape as .list-group, at page scale.
        STICKY to the viewport bottom, not just last in the column: chrome you

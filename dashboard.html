@@ -2276,9 +2276,13 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       ideMounted = true;
       // ASK before framing. An iframe fires no "error" for an HTTP 404 — it just
       // renders the 404 body — so a hub with no HUB_IDE_DIR would show a broken
-      // frame and no reason. Same origin, so a HEAD is free and honest.
+      // frame and no reason.
+      // GET, not HEAD: hubd answers HEAD /ide/ with a 404 while GET /ide/ serves
+      // the page, so probing with HEAD reports "no editor" on a hub that has
+      // one. Ask the same way the iframe will ask. Same origin and the index is
+      // small, so the duplicate fetch costs a cache hit, once, per session.
       let ok = false;
-      try { ok = (await fetch("/ide/", { method: "HEAD" })).ok; } catch { ok = false; }
+      try { ok = (await fetch("/ide/")).ok; } catch { ok = false; }
       if (!ok) { document.getElementById("ide-missing").hidden = false; return; }
       const f = document.createElement("iframe");
       f.src = "/ide/";

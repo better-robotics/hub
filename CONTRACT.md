@@ -92,7 +92,7 @@ never inside it. Enforcement: `robot/src/rover_role.c` `motor_apply`.)
 ### Fleet e-stop — the retained latch above the per-command floor
 
 The self-expiry above makes every *individual* command safe; `fleet/estop`
-is the room-wide latch on top of it, for the moment the professor needs
+is the room-wide latch on top of it, for the moment the instructor needs
 everything stopped and **staying** stopped:
 
 - **Topic `fleet/estop`, published retained** (`envelopes/estop.json`;
@@ -114,7 +114,7 @@ everything stopped and **staying** stopped:
   intended shape — a hub power-cycle is a room reset, and every drive is
   still individually bounded by the self-expiry floor either way.
 
-Scoping: **read for everyone, write for the professor.** Anonymous included —
+Scoping: **read for everyone, write for the instructor.** Anonymous included —
 the read-only fleet view must show the engaged banner. On the Pi this is ACL
 (`pi/mosquitto-acl.example.conf`); the ESP32 hub has no per-topic ACL, so
 there write-restraint is convention, like the rest of its scoping.
@@ -146,7 +146,7 @@ user block:
 | identity | scope | why |
 |----------|-------|-----|
 | anonymous — any robot or browser, authenticated or not | `robots/#` rw, `pair/#` rw, `fleet/estop` read | nothing durable is protected by gating drive/read access once the Wi-Fi perimeter is the real boundary — the per-identity password/rotate/pairing machinery this replaced never stopped a determined student from reading a credential off a card, it just made every fresh board a manual provisioning step |
-| `professor` | + `fleet/estop` rw | the one thing the open ACL can't hand out for free: engaging/clearing the room-wide e-stop needs a real credential so a stray keypress can't halt or release the room (§ Fleet e-stop) |
+| `instructor` | + `fleet/estop` rw | the one thing the open ACL can't hand out for free: engaging/clearing the room-wide e-stop needs a real credential so a stray keypress can't halt or release the room (§ Fleet e-stop) |
 
 **`pair/#` gets the same open rw as `robots/#`** — a rendezvous namespace for
 WebRTC signaling: workbench's phone↔desktop pairing exchanges offer/answer/ICE
@@ -154,7 +154,7 @@ over `pair/<room>/…`, then media flows LAN-direct. The signaling transport is
 untrusted by design regardless — peers authenticate end-to-end via the ECDSA
 P-256 pair ceremony, and rooms are unguessable UUIDs carried by the pairing
 QR. The ESP32 hub role grants this for free too (its `connect_cb` admits every
-client; only username `professor` needs a password, and only for
+client; only username `instructor` needs a password, and only for
 `fleet/estop`).
 
 **Control channels** (`robots/<id>/cmd/*`, device → robot, ad-hoc JSON — no
@@ -175,9 +175,9 @@ they guard a robot spoofing *its own* telemetry — not a classroom threat.
 Enforcement is now nearly the same shape on both hosts: the **Pi**'s ACL is
 three top-level rules plus one user block; the **ESP32** hub role's
 `connect_cb` (`robot/src/hub_role.c`) mirrors it at connect time — admit every
-client, check a password only for username `professor`. MQTT still beats
+client, check a password only for username `instructor`. MQTT still beats
 Zenoh for the same reason as before, narrowed to the one identity that still
 needs it: esp-mqtt authenticates with **username/password** natively, the
 capability `zenoh-pico` lacked (`robot/CLAUDE.md` usrpwd scar) — without it,
-even the single `professor` credential would have been unenforceable at the
+even the single `instructor` credential would have been unenforceable at the
 ESP32 hub.

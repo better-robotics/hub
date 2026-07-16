@@ -8,7 +8,7 @@
       "env": {
         "HUB_HOST": "${HUB_HOST:-hub.local}",
         "HUB_PASS": "${HUB_PASS}",
-        "HUB_USER": "${HUB_USER:-professor}"
+        "HUB_USER": "${HUB_USER:-instructor}"
       }
     }
   }

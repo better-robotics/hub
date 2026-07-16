@@ -4,7 +4,7 @@
   "display_name": "Better Robotics — Hub Fleet",
   "version": "0.3.0",
   "description": "Drive and observe the classroom rovers from your AI, over the hub's MQTT contract.",
-  "long_description": "Connects Claude Desktop (or any MCPB-capable client) to a Better Robotics classroom hub. Your team code scopes what your AI can do — drive your own rover, watch live telemetry on the wire, blink it to find it on the desk. The professor identity additionally manages team codes, access requests, and rover assignment. Join the hub's Wi-Fi, install this, and ask your AI to drive: no code is needed up front — it starts read-only and can request access in the chat, which your team approves with one click on its signed-in dashboard (match the pairing code). Or enter your team code here to skip the pairing step.",
+  "long_description": "Connects Claude Desktop (or any MCPB-capable client) to a Better Robotics classroom hub. Your team code scopes what your AI can do — drive your own rover, watch live telemetry on the wire, blink it to find it on the desk. The instructor identity additionally manages team codes, access requests, and rover assignment. Join the hub's Wi-Fi, install this, and ask your AI to drive: no code is needed up front — it starts read-only and can request access in the chat, which your team approves with one click on its signed-in dashboard (match the pairing code). Or enter your team code here to skip the pairing step.",
   "author": {
     "name": "Better Robotics",
     "url": "https://github.com/better-robotics"
@@ -38,13 +38,13 @@
     "hub_user": {
       "type": "string",
       "title": "Team name (optional)",
-      "description": "Your team identity — the same name your dashboard sign-in uses (professors: professor). Leave blank to start read-only and pair from the chat instead: ask your AI to request access, then approve it on your team's signed-in dashboard.",
+      "description": "Your team identity — the same name your dashboard sign-in uses (instructors: instructor). Leave blank to start read-only and pair from the chat instead: ask your AI to request access, then approve it on your team's signed-in dashboard.",
       "required": false
     },
     "hub_pass": {
       "type": "string",
       "title": "Team code (optional)",
-      "description": "Your team's code, from the professor's QR card or your dashboard sign-in. Leave blank to pair from the chat instead (see Team name).",
+      "description": "Your team's code, from the instructor's QR card or your dashboard sign-in. Leave blank to pair from the chat instead (see Team name).",
       "sensitive": true,
       "required": false
     }

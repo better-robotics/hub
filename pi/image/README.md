@@ -99,7 +99,7 @@ range), and WPA2 on the hub AP (open for now — the ESP32 join scar, see
 `pi/CLAUDE.md`).
 
 Security: the broker ships with the open ACL and one PLACEHOLDER credential
-baked in — the `professor` password, gating only `fleet/estop` writes; every
+baked in — the `instructor` password, gating only `fleet/estop` writes; every
 other robot/browser client needs no login at all. Change it with
 `mosquitto_passwd` before a real class. The serial
 console autologs in as `pi`, and `pi` has passwordless sudo (baked by

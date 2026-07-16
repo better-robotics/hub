@@ -26,16 +26,16 @@ def newc(user=None, pw=None):
 
 
 def test_reject():
-    """professor with a wrong password → CONNACK not-authorised, through the WS listener."""
+    """instructor with a wrong password → CONNACK not-authorised, through the WS listener."""
     st = {}
-    c = newc("professor", "WRONG")
+    c = newc("instructor", "WRONG")
     c.on_connect = lambda cl, u, f, rc, p: st.__setitem__("rc", getattr(rc, "value", rc))
     c.connect(HOST, WS_PORT, 10)
     c.loop_start(); time.sleep(3); c.loop_stop()
     try: c.disconnect()
     except Exception: pass
     ok = st.get("rc") not in (0, None)
-    print(f"  reject (wrong professor pw over WS): CONNACK rc={st.get('rc')} -> {'OK' if ok else 'FAIL'}")
+    print(f"  reject (wrong instructor pw over WS): CONNACK rc={st.get('rc')} -> {'OK' if ok else 'FAIL'}")
     return ok
 
 
@@ -73,7 +73,7 @@ def main():
 
     tmp = tempfile.mkdtemp()
     passwd, acl, conf = (os.path.join(tmp, n) for n in ("passwd", "acl.conf", "broker.conf"))
-    subprocess.run(["mosquitto_passwd", "-b", "-c", passwd, "professor", "change-me"], check=True)
+    subprocess.run(["mosquitto_passwd", "-b", "-c", passwd, "instructor", "change-me"], check=True)
     shutil.copy(os.path.join(REPO, "mosquitto-acl.example.conf"), acl)  # the real ACL, single-sourced
     os.chmod(passwd, 0o600); os.chmod(acl, 0o600)
     with open(conf, "w") as f:

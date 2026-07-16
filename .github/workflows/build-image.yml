@@ -137,7 +137,7 @@ jobs:
           # usb0 recovery-link fixes (both hardware-discovered on the 2026-07-10 first boot):
           sudo test -f /mnt/hub/etc/NetworkManager/conf.d/10-usb0-managed.conf        # NM must manage usb0 (udev defaults g_ether to unmanaged)
           sudo test -f /mnt/hub/etc/NetworkManager/dnsmasq-shared.d/10-usb0-no-route.conf  # never capture the laptop's default route/DNS
-          sudo test -f /mnt/hub/etc/mosquitto/hub-passwd                          # professor's placeholder credential seeded
+          sudo test -f /mnt/hub/etc/mosquitto/hub-passwd                          # instructor's placeholder credential seeded
           sudo test -f /mnt/hub/etc/NetworkManager/dnsmasq-shared.d/20-ap-capport.conf  # option-114 dashboard advertisement (AP leg only)
           # Base config — customize-image.sh owns what pi-gen used to (since 2026-07-10):
           sudo chroot /mnt/hub getent passwd pi                                       # first user baked

@@ -1,6 +1,6 @@
 name: broker tests
 
-# Guards the classroom broker model: the ACL scoping (professor/team isolation,
+# Guards the classroom broker model: the ACL scoping (instructor/team isolation,
 # anonymous read-only fleet) over raw TCP, and the MQTT-over-WebSocket path the
 # browser dashboard actually uses. Runs when the broker config, ACL, or the
 # test scripts change.

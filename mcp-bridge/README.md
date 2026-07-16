@@ -9,14 +9,14 @@ The rovers are ESP32s — they can't host an LLM, so the intelligence runs on th
 
 ```
   Claude Code ──stdio──► hub_mcp.py ──MQTT :1883──► Mosquitto ──► ESP32 rovers
-   (on the hub)          (this tool,  as `professor`)   (broker)   (esp-mqtt)
+   (on the hub)          (this tool,  as `instructor`)   (broker)   (esp-mqtt)
 ```
 
 **A robot's name is a topic address, not a credential.** The hub's own Wi-Fi
 is the security boundary: every MQTT client — robot or browser — gets full
 read+write on `robots/#` and `pair/#` with no username/password at all.
 HUB_USER/HUB_PASS matter for exactly one tool: `estop()`, the sole action
-still gated behind the `professor` credential (the only `fleet/estop` write
+still gated behind the `instructor` credential (the only `fleet/estop` write
 grant in the Pi ACL). Every other tool here works fine connected
 anonymously. No role logic lives in this server. It is the first real MQTT
 *client* in this repo (hubd is deliberately not one).
@@ -49,8 +49,8 @@ Naming and repair (also open — no credential needed):
 | `assign(board, name, hub_pin="")` | `cmd/config` | (re)assign a board to a name — the topic id it publishes/listens under |
 | `flip(board, direction)` | `cmd/config` | fix motor orientation: `left`, `right`, or `swap` |
 
-Professor-gated (the one credentialed action — needs `HUB_PASS` set to the
-`professor` password):
+Instructor-gated (the one credentialed action — needs `HUB_PASS` set to the
+`instructor` password):
 
 | tool | topic | what it does |
 |------|-------|--------------|
@@ -65,7 +65,7 @@ confirmation is missing.
 ```sh
 pip install -r requirements.txt          # or: uv pip install -r requirements.txt
 HUB_HOST=hub.local python hub_mcp.py                       # anonymous — everything but estop() works
-HUB_HOST=hub.local HUB_PASS=<professor-pw> python hub_mcp.py  # adds estop()
+HUB_HOST=hub.local HUB_PASS=<instructor-pw> python hub_mcp.py  # adds estop()
 ```
 
 Environment knobs (defaults match `../pi/mosquitto.example.conf`):
@@ -74,8 +74,8 @@ Environment knobs (defaults match `../pi/mosquitto.example.conf`):
 |-----|---------|------|
 | `HUB_HOST` | `localhost` | broker host (`hub.local` reaches either hub) |
 | `HUB_PORT` | `1883` | raw MQTT — **not** the `:9001` WebSocket port |
-| `HUB_USER` | `professor` | ACL identity (ignored without a `HUB_PASS`) |
-| `HUB_PASS` | *(empty)* | the `professor` password from your `mosquitto-passwd`; empty = connect anonymous, which is fine for every tool except `estop()` |
+| `HUB_USER` | `instructor` | ACL identity (ignored without a `HUB_PASS`) |
+| `HUB_PASS` | *(empty)* | the `instructor` password from your `mosquitto-passwd`; empty = connect anonymous, which is fine for every tool except `estop()` |
 
 ## Register with Claude Code
 
@@ -96,7 +96,7 @@ from your environment — never a committed secret:
 }
 ```
 
-So: `pip install -r mcp-bridge/requirements.txt`, `export HUB_PASS=<professor-pw>`,
+So: `pip install -r mcp-bridge/requirements.txt`, `export HUB_PASS=<instructor-pw>`,
 open the repo, approve `hub-fleet`. (`${CLAUDE_PROJECT_DIR}` makes the path work
 regardless of where you launched Claude; `${HUB_PASS}` stays in your shell, out
 of git.)
@@ -113,6 +113,6 @@ the safety floor if the session drops.
 ## Scope
 
 A demo/operator bridge, not a control-loop runtime — MQTT QoS 0, one shared
-`professor` credential, no rate limiting. Per-device identity and the `set_led`
+`instructor` credential, no rate limiting. Per-device identity and the `set_led`
 reply path are hub#1. For hard-real-time motion, close the loop on the rover;
 this is for supervisory, natural-language operation.

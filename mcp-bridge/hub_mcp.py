@@ -19,7 +19,7 @@ A robot's name is a topic address now, not a credential — the hub's own
 Wi-Fi is the security boundary, so every client (robot or browser) gets full
 read+write on `robots/#` and `pair/#` with no username/password at all (see
 mosquitto-acl.example.conf). HUB_USER/HUB_PASS only matter for one thing:
-`estop()`, the sole action still gated behind the `professor` credential.
+`estop()`, the sole action still gated behind the `instructor` credential.
 Every other tool here works fine connected anonymously — empty HUB_PASS is
 the documented default and just means "connect anonymous."
 
@@ -49,7 +49,7 @@ from mcp.server.fastmcp import FastMCP
 # ---- config (env-driven; defaults match mosquitto.example.conf) -------------
 HUB_HOST = os.environ.get("HUB_HOST", "localhost")
 HUB_PORT = int(os.environ.get("HUB_PORT", "1883"))          # raw MQTT, not the :9001 WS port
-HUB_USER = os.environ.get("HUB_USER", "professor")           # only used by estop() — the one gated action
+HUB_USER = os.environ.get("HUB_USER", "instructor")           # only used by estop() — the one gated action
 HUB_PASS = os.environ.get("HUB_PASS", "")
 MOTOR_MAX = 255                                              # 8-bit PWM magnitude; sign = direction
 
@@ -178,7 +178,7 @@ def estop(engaged: bool = True, reason: str = "") -> str:
     halts every rover on the hub now and makes them refuse all drive commands
     until estop(engaged=False) clears it. Published RETAINED on fleet/estop, so
     a rover that reboots or reconnects mid-emergency latches anyway. Needs the
-    professor credential (the only fleet/estop write grant in the Pi ACL)."""
+    instructor credential (the only fleet/estop write grant in the Pi ACL)."""
     body: dict = {"timestamp": time.time(), "engaged": engaged, "by": HUB_USER}
     if reason:
         body["reason"] = reason
@@ -352,7 +352,7 @@ def main() -> None:
         # except estop() works out of the box with no HUB_PASS at all.
         print(f"[hub_mcp] no HUB_PASS — connecting anonymous"
               f"{f' (HUB_USER={HUB_USER!r} ignored without a pass)' if HUB_USER else ''}; "
-              "estop() will fail without the professor credential",
+              "estop() will fail without the instructor credential",
               file=sys.stderr)
     # Async connect + paho's retry loop: the server must come up (and stay up)
     # even when launched off the hub's Wi-Fi — an enabled-but-unconfigured

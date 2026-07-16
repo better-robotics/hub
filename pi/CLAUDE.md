@@ -129,7 +129,7 @@ broker-native, not a Rust relay, and no longer per-robot.
   password to protect that the perimeter doesn't already cover. Directional
   per-channel rules (imu robot→device, pwm device→robot) stay dropped — they'd
   guard a robot spoofing its OWN telemetry, not a classroom threat.
-- **`professor`** — the only named user block, and the only gated identity:
+- **`instructor`** — the only named user block, and the only gated identity:
   `readwrite fleet/estop` on top of the open baseline. It protects the one
   thing the open ACL can't hand out for free — engaging/clearing the
   fleet-wide emergency stop (`../CONTRACT.md` § Fleet e-stop) — so a stray
@@ -149,13 +149,13 @@ never a credential.
 refused.** So a CONNACK *not authorized* proves the client **sent a username**
 — which, for a rover, means firmware older than 2026-07-13 (`rover_role.c`
 still passing `.credentials` from NVS: its assigned name, or the `unassigned`
-pool). `professor` is the only entry in `hub-passwd`, so the broker rejects an
+pool). `instructor` is the only entry in `hub-passwd`, so the broker rejects an
 identity it was never told about. Nothing is wrong with the broker or the ACL:
 reflash the board. Expect this from any board that sat out the migration —
 the broker migrated in one commit, firmware migrates one flash at a time.
 (Scar 2026-07-15: a supermini's rejection was chased as an ACL bug for hours.)
 
-**Where the professor credential actually lives** (deleted
+**Where the instructor credential actually lives** (deleted
 `classroom.example.json5` 2026-07-16 — it described this value while being
 loaded by nothing, so it was a third place to forget, and its own header had
 admitted it stopped being runtime config on 2026-07-08; the rationale it
@@ -165,9 +165,9 @@ carried already lives in `mosquitto-acl.example.conf`'s header):
   **only if absent** — re-running install never clobbers a rotated one.
 - `/etc/mosquitto/hub-passwd` is the live truth (salted+hashed).
 - **The ESP32 hub keeps its own**: `robot`'s `hub_role.c` `connect_cb` reads
-  NVS per-connect (`rover_config_load_professor_pass`), falling back to the
-  compile-time `PROFESSOR_PASS` when unset; set it via the portal's
-  `POST /wifi/professor`, no reflash or reboot. Two hubs, two independent
+  NVS per-connect (`rover_config_load_instructor_pass`), falling back to the
+  compile-time `INSTRUCTOR_PASS` when unset; set it via the portal's
+  `POST /wifi/instructor`, no reflash or reboot. Two hubs, two independent
   definitions of one secret — rotate the Pi and the ESP hub still admits its
   own. **The split is structural, not a TODO**: there is no shared store (the
   two hubs are alternatives, rarely on one network), and the values aren't

@@ -21,7 +21,7 @@ configured:
  │ the rover is │          │  any board,  │           │  Mosquitto + │
  │ its own hub: │          │  role = hub: │           │  hubd (pi/): │
  │ AP + broker  │          │  AP + broker │           │  open ACL +  │
- │ + dashboard  │          │  + dashboard │           │  professor   │
+ │ + dashboard  │          │  + dashboard │           │  instructor   │
  └──────┬───────┘          └──────┬───────┘           └──────┬───────┘
         ▲                     ▲ ▲ ▲                     ▲ ▲ ▲ ▲ ▲
    one phone —             rovers & phones           the whole room —
@@ -34,7 +34,7 @@ configured:
  a room resizes LIVE: an island yields when any hub-… appears, and every
  board prefers the Pi · a board can be locked to ONE hub (the hub pin),
  so a rogue hub-… can't absorb it · the Wi-Fi perimeter is the boundary on
- every tier — the only gated credential anywhere is professor, for fleet/estop
+ every tier — the only gated credential anywhere is instructor, for fleet/estop
 ```
 
 ## The dashboard
@@ -46,7 +46,7 @@ with the hub's address typed once), two tiers — each enforced by the
 | tier | credential | can |
 |---|---|---|
 | anyone | none | watch every robot live (telemetry, cameras, per-board settings) and drive any of them — joystick / D-pad, wire log visible (it's a teaching surface) |
-| professor | `professor:password` | everything anyone can, plus engage/clear the fleet-wide **e-stop** · **Assign**: Blink 💡 a board's LED to find it on the desk, then give it a name, hub pin, motor pins |
+| instructor | `instructor:password` | everything anyone can, plus engage/clear the fleet-wide **e-stop** · **Assign**: Blink 💡 a board's LED to find it on the desk, then give it a name, hub pin, motor pins |
 
 The hub's own Wi-Fi is the real boundary, not a login — a robot's name in the
 topic is an address, not a credential. Fresh boards arrive in an
@@ -63,7 +63,7 @@ mcp-bridge/         MCP tool server — drive the fleet from an LLM over the sam
 pi/                 the Raspberry Pi hub
 ├── src/            hubd — dashboard/HTTP chassis + device-served Wi-Fi setup (nmcli)
 │                   + serves the ide bundle at /ide/ when installed
-├── mosquitto*.conf broker config + the open ACL (professor gated on fleet/estop only)
+├── mosquitto*.conf broker config + the open ACL (instructor gated on fleet/estop only)
 ├── deploy/         systemd install: hubd · Mosquitto · day-zero hub AP · USB-gadget recovery
 ├── image/          the CI-baked, flash-and-go Pi image (official Lite base + customize-image.sh)
 └── examples/       broker ACL + WebSocket transport tests (CI-gated)
@@ -94,7 +94,7 @@ the rovers).
 to *hub* on its `rover.local` settings page, join its Wi-Fi, open
 `http://hub.local`.
 
-`pi/deploy/install.sh` seeds a placeholder `professor` credential into
+`pi/deploy/install.sh` seeds a placeholder `instructor` credential into
 `/etc/mosquitto/hub-passwd` — the only login the classroom has — change it
 before a real class (`mosquitto_passwd`).
 

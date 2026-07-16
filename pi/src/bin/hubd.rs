@@ -840,7 +840,7 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                     .unwrap_or_default();
                 // Clickjacking: the meta CSP in dashboard.html CANNOT express
                 // frame-ancestors (it's header-only), and this server sent no
-                // X-Frame-Options — so the professor's dashboard was framable by
+                // X-Frame-Options — so the instructor's dashboard was framable by
                 // any page. SAMEORIGIN, not DENY: the dashboard frames its own
                 // /ide/ bundle, and DENY would break that too.
                 let frame = "X-Frame-Options: SAMEORIGIN\r\n";

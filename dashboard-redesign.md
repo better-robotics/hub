@@ -68,10 +68,14 @@ arrive with the sensor kit, not before.
 Safe and consistent to do before then (framing, not framework):
 
 - Reframe the live-message surface so it reads as a concept, not a debug drawer.
-  (Done: the student label is now "Live messages" rather than "Details &
-  troubleshooting".)
+  (Done: the drawer is labeled **Messages**, not "Details & troubleshooting".
+  It said "Live messages" until the scope split was retired (`16a2e9f`) took the
+  line that set the title with it, and the markup's hardcoded "Log" won by
+  default for three months — a debug word, which is the exact framing this bullet
+  exists to prevent. The label is now static markup with no scope branch to lose,
+  and "Live" is gone: one word, matching the tab this surface is headed for.)
 - One-line cross-references that point between surfaces ("every stick move
-  publishes to your rover's `pwm` topic — watch it in Live messages"). Cheap,
+  publishes to your rover's `pwm` topic — watch it in Messages"). Cheap,
   and it plants pub/sub before the explorer exists. Adds DOM → run the `verify`
   layout sweep (320/390/768/1200) before shipping.
 

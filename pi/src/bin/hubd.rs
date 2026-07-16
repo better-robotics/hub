@@ -67,7 +67,7 @@ fn ide_mime(path: &std::path::Path) -> &'static str {
 /// Build the full HTTP response bytes for a `/ide` request. Bytes, not
 /// String — the bundle has binary assets (png/ico/woff2) that the string
 /// response path used by the API routes would corrupt.
-async fn ide_serve(raw_path: &str) -> Vec<u8> {
+async fn ide_serve(raw_path: &str, req: &str) -> Vec<u8> {
     let path = raw_path.split('?').next().unwrap_or(raw_path);
     if path == "/ide" {
         // Trailing slash matters: the page's relative module imports resolve
@@ -84,13 +84,43 @@ async fn ide_serve(raw_path: &str) -> Vec<u8> {
     if rel.split('/').any(|seg| seg == "..") || rel.starts_with('/') {
         return b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec();
     }
-    match tokio::fs::read(dir.join(rel)).await {
+    let full = dir.join(rel);
+    // A validator from the file's own mtime+size, not a digest of its bytes:
+    // hashing a 3.5 MB asset per request would cost the Pi more than the
+    // download it saves. Weak by HTTP's definition, exact enough for a bundle
+    // that only changes when install.sh replaces it.
+    let etag = tokio::fs::metadata(&full).await.ok().and_then(|m| {
+        let secs = m.modified().ok()?.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
+        Some(format!("\"{:x}-{:x}\"", secs, m.len()))
+    });
+    // `Cache-Control: no-cache` means "revalidate before reuse" — but shipped
+    // with no validator there was nothing to revalidate WITH, so every browser
+    // refetched the whole bundle every load: 27 requests, 5.4 MB measured on a
+    // cold open, times a classroom, on the one AP radio. no-cache was never
+    // wrong; it just needed an ETag to be honest. A 304 is ~90 bytes where the
+    // body is up to 3.5 MB.
+    //
+    // Deliberately NOT `immutable` on the content-hashed names: it would need a
+    // filename heuristic, and a false positive pins a mutable asset in every
+    // student's cache forever with no way to bust it. Revalidating costs a LAN
+    // round-trip and can never go stale — the bytes were the problem.
+    if let (Some(tag), Some(want)) = (&etag, header_value(req, "if-none-match")) {
+        if want.split(',').any(|c| c.trim() == tag) {
+            return format!(
+                "HTTP/1.1 304 Not Modified\r\nETag: {tag}\r\nCache-Control: no-cache\r\n\
+                 Access-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n"
+            )
+            .into_bytes();
+        }
+    }
+    match tokio::fs::read(&full).await {
         Ok(bytes) => {
             let mut resp = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {}\r\n\
-                 Cache-Control: no-cache\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n",
+                 Cache-Control: no-cache\r\n{}Access-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n",
                 ide_mime(std::path::Path::new(rel)),
-                bytes.len()
+                bytes.len(),
+                etag.map(|t| format!("ETag: {t}\r\n")).unwrap_or_default(),
             )
             .into_bytes();
             resp.extend_from_slice(&bytes);
@@ -404,6 +434,16 @@ fn content_length(headers: &[u8]) -> usize {
         .unwrap_or(0)
 }
 
+/// Case-insensitive scan for a request header's value — `content_length`'s
+/// shape, over the `&str` form the route match already holds. Stops at the
+/// blank line so a body can't impersonate a header.
+fn header_value<'a>(req: &'a str, name: &str) -> Option<&'a str> {
+    req.lines()
+        .take_while(|l| !l.is_empty())
+        .find_map(|l| l.split_once(':').filter(|(k, _)| k.eq_ignore_ascii_case(name)))
+        .map(|(_, v)| v.trim())
+}
+
 async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, ssid: String) {
     loop {
         let Ok((mut sock, peer)) = listener.accept().await else { continue };
@@ -424,24 +464,37 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
             // without this the query string fell through every arm to the
             // 404 handler, live-observed on macOS's CNA sheet.
             let path = raw_path.split('?').next().unwrap_or(raw_path);
-            // CORS/PNA preflight: a PUBLIC https page (the setup wizard on
-            // github.io) fetching this LOCAL server triggers Chrome's Private
-            // Network Access check — an OPTIONS preflight that must be
-            // answered with Allow-Private-Network, or the fetch is blocked.
-            if method == "OPTIONS" {
-                let resp = "HTTP/1.1 204 No Content\r\n\
-                            Access-Control-Allow-Origin: *\r\n\
-                            Access-Control-Allow-Private-Network: true\r\n\
-                            Access-Control-Allow-Methods: GET, POST\r\n\
-                            Access-Control-Allow-Headers: Content-Type\r\n\
-                            Connection: close\r\n\r\n";
-                let _ = sock.write_all(resp.as_bytes()).await;
-                return;
-            }
+            // NO CORS/PNA PREFLIGHT — deliberately, and it must not come back
+            // without the threat model coming with it.
+            //
+            // This used to answer every OPTIONS, unconditionally and before any
+            // path match, with `Access-Control-Allow-Origin: *` plus
+            // `Access-Control-Allow-Private-Network: true` — the explicit opt-out
+            // of the browser protection whose entire job is stopping public web
+            // pages from reaching 10.42.0.1. With `Allow-Methods: GET, POST` and
+            // `Allow-Headers: Content-Type`, ANY page on the internet passed
+            // preflight for a JSON POST to any route here. A student browses a
+            // page with a hostile ad on the classroom Wi-Fi; its JS posts
+            // {ssid,password} to /wifi/connect; wifi.rs shells out to nmcli and
+            // the room's uplink is repointed at an attacker's AP. The response
+            // is unreadable cross-origin, which buys nothing — the side effect
+            // already happened. The address isn't a secret; it's the documented
+            // constant.
+            //
+            // It existed for the github.io setup wizard, and that flow was
+            // deleted 2026-07-09 in favour of device-served Wi-Fi setup (see
+            // CLAUDE.md § "Wi-Fi setup is device-served" — "no hosted website").
+            // The device-served flow is SAME-ORIGIN: it never preflights, so
+            // nothing legitimate here needs this. It was the deleted feature's
+            // residue, and pure liability.
+            //
+            // Sending nothing means an unexpected OPTIONS falls through to the
+            // 404 arm below, which is the correct answer for a server with no
+            // cross-origin API.
             // Workbench IDE bundle — binary-safe path, bypasses the string
             // response builder below.
             if method == "GET" && (path == "/ide" || path.starts_with("/ide/")) {
-                let _ = sock.write_all(&ide_serve(path).await).await;
+                let _ = sock.write_all(&ide_serve(path, &req).await).await;
                 return;
             }
             // The Wi-Fi setup panel POSTs `{ssid, password}` here; the body is
@@ -590,11 +643,24 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
             let location = (status == "302 Found")
                 .then_some("Location: http://10.42.0.1/welcome\r\n")
                 .unwrap_or_default();
-            // ACAO *: /fleet is public-read JSON, and the rover setup page
-            // (better-robotics.github.io) prefills the hub address from it.
+            // ACAO *, scoped to /fleet ONLY. The reason given for it — "/fleet
+            // is public-read JSON, and the rover setup page prefills the hub
+            // address from it" — is true of exactly one route, but the header
+            // was being stamped on every response, including /wifi/* and the
+            // dashboard itself. Handing a blanket read grant to every origin
+            // for endpoints that drive nmcli is surface with no caller.
+            let cors = (path == "/fleet")
+                .then_some("Access-Control-Allow-Origin: *\r\n")
+                .unwrap_or_default();
+            // Clickjacking: the meta CSP in dashboard.html CANNOT express
+            // frame-ancestors (it's header-only), and this server sent no
+            // X-Frame-Options — so the professor's dashboard was framable by
+            // any page. SAMEORIGIN, not DENY: the dashboard frames its own
+            // /ide/ bundle, and DENY would break that too.
+            let frame = "X-Frame-Options: SAMEORIGIN\r\n";
             let resp = format!(
                 "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\n\
-                 {location}Access-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{body}",
+                 {location}{cors}{frame}Connection: close\r\n\r\n{body}",
                 body.len()
             );
             let _ = sock.write_all(resp.as_bytes()).await;

@@ -104,6 +104,12 @@
        long venue SSID must shed characters, not lines. */
     .topbar h1 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin: 0;
       display: flex; align-items: baseline; min-width: 0; white-space: nowrap; flex: 1 1 auto; }
+    /* The wordmark is the home affordance (→ Fleet), so it is a real button —
+       but it carries none of the base control's chrome: a masthead is not a
+       tile. Just the text, a pointer, and a focus ring. */
+    .logo-btn { display: inline-flex; align-items: baseline; gap: 0; background: none;
+      border: 0; padding: 0; margin: 0; font: inherit; cursor: pointer; min-height: 0;
+      border-radius: var(--radius-inner); }
     h1 .logo-accent { font-weight: 700; color: var(--ink); flex: none; }
     h1 .logo-base { font-weight: 400; color: var(--ink-muted); flex: none; }
     /* Top-right status cluster — ambient state lives in the chrome (the
@@ -171,12 +177,13 @@
        column, they just stand 430px of mostly-empty chrome next to each other.
        Desktop is the platform: a 232px rail costs nothing at 1200px and buys a
        persistent tree plus a persistent wire. */
-    .shell { flex: 1; min-height: 0; display: grid; grid-template-columns: 232px minmax(0, 1fr); }
+    .shell { flex: 1; min-height: 0; position: relative;
+      --rail-w: 232px; display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); }
     /* Collapsed: icons only, and the content takes the width back. The rail
        keeps --ctrl-h + its padding so the icons stay on the same optical
        centre-line they had when labelled — the column narrows around them
        rather than the glyphs moving. */
-    .shell.rail-collapsed { grid-template-columns: 3.4rem minmax(0, 1fr); }
+    .shell.rail-collapsed { --rail-w: 3.4rem; }
     .rail-collapsed .rail .navitem > span,
     .rail-collapsed .tw { display: none; }
     .rail-collapsed .rail { padding: 0.7rem 0.5rem; }
@@ -194,16 +201,23 @@
       min-height: 0; overflow-y: auto;   /* the tree scrolls, the rail stays */
     }
     .rail-spacer { flex: 1 1 auto; min-height: 0.7rem; }
-    /* The panel glyph (tabler layout-sidebar): the divider inside the icon IS
-       the divider the button moves — it reads as the thing, not as a direction,
-       so it needs no flip to stay honest when collapsed. */
+    /* A handle centred on the divider: --rail-w places both the track and this,
+       so they cannot disagree about where the line is. The chevron points the
+       way the line will go, which is the one thing this control has to say. */
     .rail-toggle {
-      align-self: flex-end; flex: none; background: none; border: 0; padding: 0.3rem;
-      border-radius: var(--radius-inner); color: var(--ink-faint); cursor: pointer;
-      min-height: 0; display: flex; margin-bottom: 0.15rem;
+      position: absolute; z-index: 5; top: 0.5rem;
+      left: calc(var(--rail-w) - 0.62rem);
+      width: 1.25rem; height: 1.25rem; min-height: 0; padding: 0;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: var(--radius-pill); border: 0.5px solid var(--border-default);
+      background: var(--surface); color: var(--ink-faint); cursor: pointer;
     }
-    .rail-toggle:hover { background: var(--inset); color: var(--ink); }
-    .rail-collapsed .rail-toggle { align-self: center; }
+    .rail-toggle:hover { color: var(--ink); border-color: var(--border-strong); background: var(--inset); }
+    /* Chip-scale, so it reaches 44pt the way every other chip here does. */
+    .rail-toggle::after { content: ""; position: absolute; inset: 50% 50% auto auto;
+      width: var(--tap); height: var(--tap); transform: translate(50%, -50%); }
+    @media (pointer: fine) { .rail-toggle::after { width: 100%; height: 100%; } }
+    .rail-collapsed .rail-toggle svg { transform: rotate(180deg); }
     .navitem {
       /* The base control rule centres both axes (it's built for tiles). A source
          list is a column of LEFT-aligned rows, so every row here opts out.
@@ -422,8 +436,14 @@
 
     /* Controls: drive + codes are cards that share a row when width allows and
        stack below ~53rem — the wide canvas reads as panels, not a long scroll. */
+    /* Off-screen storage now (the drive panel and assign sheet move into the
+       modal on demand; a professor sign-in error is the only thing that ever
+       renders here). It sits after .shell in the body flex column, so any
+       margin here is dead space stealing height the shell should fill — the old
+       margin-top left a 32px gap below the whole app. A visible gate-error gets
+       its own padding on #signin instead, where it can't affect the shell. */
     #controls {
-      display: grid; gap: 1rem; margin-top: 2rem; align-items: start;
+      display: grid; gap: 1rem; align-items: start; margin: 0;
       grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr));
     }
     #signin, #codes {
@@ -584,9 +604,14 @@
     /* Corner chips: who-are-you comes from the live fleet, not typing. */
     /* Which host serves this page — one glanceable token matching the Wi-Fi
        name the user just joined (two hubs on the air look identical otherwise). */
-    #host-chip { font-size: 0.75rem; font-weight: 400; opacity: 0.6; margin-left: 0.8rem;
-                 letter-spacing: 0.02em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .gate-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    /* Containers own spacing, not callsites. A panel's own children get the
+       panel gap, but #settings-body and #topic-detail are ONE child each that
+       JS then fills — so their contents inherited nothing and stacked edge to
+       edge ("Which hub" jammed against the list above it). They are panel
+       regions too, so they carry the panel rhythm. This is the whole reason the
+       rule is a container property and not a margin on each element. */
+    #settings-body, #topic-detail { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
     .gate-row input { flex: 1 1 11rem; min-width: 0; }
     /* Orientation buttons publish immediately (unlike the fields above, which
        commit on Assign) — the divider marks the change of contract. */
@@ -600,9 +625,6 @@
     /* 0.2rem — the card title→meta beat (.card-meta), same semantic pair. */
     #drive-status-sub { color: var(--ink-muted); font-size: 0.85rem; margin-top: 0.2rem; }
     /* Live status: the telemetry dl pattern, titled to the joystick's beat. */
-    #live-status-title { font-weight: 600; margin-bottom: 0.75rem; }
-    #live-status-facts dd.ok { color: var(--success); }
-    #live-status-facts dd.warn { color: var(--warn-ink); }
     #details-age { color: var(--ink-faint); font-size: 0.85rem; font-weight: 400; }
     /* Fleet vitals table — scrolls inside its own box; the page never grows
        a horizontal scrollbar on a phone. min-width:0 on the details (a
@@ -631,9 +653,9 @@
       box-shadow: 0 1px 2px rgba(0,0,0,0.35);
     }
 
-    /* min(15rem, 100%) — same shrinkable floor as the fleet grid: with the
-       live-status column aboard, a hard 15rem × 2 would overflow a 320px phone. */
-    .drive-grid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr)); }
+    /* One input at a time (joystick OR d-pad), so the grid is just a centering
+       wrapper now that live-status no longer rides beside it. */
+    .drive-grid { display: grid; gap: 1.25rem; grid-template-columns: minmax(0, 1fr); }
     #joystick-wrap, #dpad-wrap { display: none; text-align: center; }
     .stick-pad {
       position: relative; width: 11rem; height: 11rem; margin: 0 auto;
@@ -856,8 +878,25 @@
       border-radius: 50%; font-size: var(--fs-body); flex: 0 0 auto; }
     #modal-close:hover { filter: brightness(1.25); }
     #modal-body { overflow: auto; -webkit-overflow-scrolling: touch; }
-    #modal-body img.cam-full { width: 100%; display: block; background: #000;
+    /* Class, not #modal-body img: the stream now renders in two places — a
+       camera-only modal is gone, but the same geometry serves the frame inside
+       the Drive sheet, which is nested, not a direct modal child. */
+    .cam-full { width: 100%; display: block; background: #000;
       aspect-ratio: 4 / 3; object-fit: contain; }
+    /* The camera above the drive controls: rounded to match the sheet, gone
+       entirely on a board with no camera so the controls rise to the top.
+       Height-capped so the joystick stays on screen with it — you drive by
+       what the camera sees, which is useless if reaching the stick means
+       scrolling the camera out of view. object-fit keeps the 4:3 letterboxed
+       inside the cap rather than stretching. */
+    #drive-cam { margin: 0.85rem 0; }
+    #drive-cam:empty { display: none; }
+    /* Cap the height at whatever the modal has left after the fixed controls
+       (~24rem: title, status, mode toggle, joystick, readouts, padding), so the
+       stick never scrolls off with the camera. Letterboxed inside that cap —
+       cropping a driving view could hide the obstacle you're steering around. */
+    #drive-cam .cam-full { border-radius: var(--radius);
+      max-height: calc(90vh - 27rem); margin-inline: auto; }
     #modal-body iframe.cfg-frame { width: 100%; height: min(72vh, 40rem); border: 0; display: block; background: var(--bg); }
     #modal-body .modal-note { padding: 1.25rem; color: var(--ink-muted); font-size: 0.9rem; line-height: 1.5; }
     /* Join-QR sheet + its print-only sticker twin. The SVG carries its own
@@ -944,7 +983,7 @@
   </style>
 </head>
 <body>
-  <header class="topbar"><h1><span class="logo-accent">Better</span><span class="logo-base">Robotics</span><span id="host-chip"></span></h1>
+  <header class="topbar"><h1><button id="home-btn" class="logo-btn" aria-label="Fleet — home"><span class="logo-accent">Better</span><span class="logo-base">Robotics</span></button></h1>
     <span class="topbar-right">
       <!-- Stop all sits LEFT of the status chips and behind a divider. It is
            the only ACTION in a row of popover-openers, and the only control
@@ -1013,14 +1052,14 @@
        AND an expanding iCloud Drive. Two nav columns would stand 430px of mostly
        empty chrome side by side and squeeze the detail. -->
   <div class="shell">
+    <!-- The toggle rides ON the divider it moves, so it costs the rail no
+         height and Fleet keeps the top row. It sits outside .rail on purpose:
+         .rail scrolls, and a clipped child cannot straddle its own border. Out
+         of flow, so it claims no grid track. -->
+    <button class="rail-toggle" id="rail-toggle" title="Collapse sidebar" aria-label="Collapse sidebar" aria-expanded="true">
+      <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18"/></svg>
+    </button>
     <nav class="rail" aria-label="Sections">
-      <!-- Top-right, against the divider it controls — the place every modern
-           sidebar puts this. It is NOT a navitem: collapsing is a control about
-           the rail, not a destination in it, so it neither looks nor tabs like
-           its siblings. -->
-      <button class="rail-toggle" id="rail-toggle" title="Collapse sidebar" aria-label="Collapse sidebar" aria-expanded="true">
-        <svg class="rail-chev" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg>
-      </button>
       <button class="navitem" data-panel="fleet" title="Fleet" aria-label="Fleet" aria-current="page">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
         <span>Fleet</span><span class="nav-badge" id="nav-unnamed" hidden></span>
@@ -1213,6 +1252,14 @@
           <p id="drive-status-sub"></p>
         </div>
       </div>
+      <!-- The camera lives WITH driving, above the controls — you steer by what
+           you see. openDrive fills this only when the board reports a camera
+           (sys.cam); a board without one leaves it empty and the controls rise
+           to the top. This replaced a separate Camera button + a Live-status
+           panel: the button opened the same stream in its own modal (two ways
+           to see one rover), and Live status restated sys fields the Details
+           sheet already owns. -->
+      <div id="drive-cam"></div>
       <!-- Plain toggle buttons (aria-pressed), not a tablist: the full tabs
            contract (aria-controls, roving tabindex, arrow keys) isn't
            implemented, and claiming the role without it misleads AT. -->
@@ -1241,14 +1288,6 @@
             </div>
             <div id="dpad-readout">hold a direction to drive</div>
           </div>
-        </div>
-        <!-- Live status beside the controls: only fields the sys beacon
-             actually carries (uptime_ms, cam, rssi_dbm where firmware sends
-             it) plus link health derived from beacon age — the one answer to
-             "why won't it move" that needs no new telemetry. -->
-        <div id="live-status" style="display:none">
-          <div id="live-status-title">Live status</div>
-          <dl id="live-status-facts"></dl>
         </div>
       </div>
     </div>
@@ -1458,9 +1497,15 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     // below, so naming it again up here is pure duplication. A classroom
     // hub's SSID (hub-XXXX) stays — it names the ROOM, not any one robot,
     // which the fleet list never tells you on its own.
+    // Which hub this page is on. Held in a variable, not read back out of a
+    // topbar node — Settings shows the same value (its "Hub" row), and the
+    // topbar no longer carries it, so the DOM can't be the source of truth for
+    // two surfaces. A rover-XXXX SSID means an island (a lone rover's own AP),
+    // which has no hub name to show.
+    let hostLabel = "";
     function setHostChip(ssid, host) {
       const cls = host === "pi" ? "Pi" : host === "esp32" ? "ESP32" : "";
-      document.getElementById("host-chip").textContent =
+      hostLabel =
         ssid && ssid.startsWith("rover-") ? "" :
         ssid ? `${ssid}${cls ? " · " + cls : ""}` : (standalone ? (hubHost ? `→ ${hubHost}` : "") : location.host);
     }
@@ -1847,8 +1892,9 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // still be test-driven from the bench, before it's handed to a robot.
       if (!offline && (!isPool || prof))
         actions.push(`<button class="btn-accent" data-drive-open="${esc(robot)}" data-drive-board="${esc(board)}">${icon("drive")} Drive</button>`);
-      if (!offline && sys.cam && sys.ip)
-        actions.push(`<button class="btn-tile" data-cam-ip="${esc(sys.ip)}" data-id="${esc(robot)}" data-board="${esc(board)}">${icon("camera")} Camera</button>`);
+      // No separate Camera button: the stream lives inside Drive now, above the
+      // controls, because you steer by what the camera sees. A camera board
+      // opens straight into that view.
       // Blink the board to find which one on the desk it is — professor-only,
       // and pointless on a board that isn't answering.
       if (prof && !offline)
@@ -1935,7 +1981,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       for (const [b, rec] of boards) if (rec.seenAt < cutoff) boards.delete(b);
       renderRobots(); watchAssign(); syncPinsPanel(false);
       syncWireFilter(); telemetrySync?.();
-      renderDriveStatus(); renderLiveStatus(); renderDetailsAge();
+      renderDriveStatus(); renderDetailsAge();
       // The e-stop confirmation count is derived from sys beacons, so it moves
       // on this clock, not on the retained latch that only arrives once.
       renderEstop();
@@ -1945,6 +1991,11 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       if (panel === "topics" && document.activeElement?.id !== "tw-filter") {
         renderTopicTree(); renderTopicDetail();
       }
+      // Settings shows hostLabel, which arrives async from /fleet — so a panel
+      // opened before the first beacon would sit on "—" forever. Repaint it on
+      // the clock like Topics, but never under the hand editing the host field.
+      if (panel === "settings" && !document.activeElement?.closest?.("#settings-body input"))
+        renderSettings();
     }, 2000);
 
     // Anonymous mqtt.js connection — Mosquitto's ACL grants every connection,
@@ -2220,7 +2271,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // elsewhere. Null = whole-robot drive, the normal single-rover case.
       targetBoard = board || null;
       applyDriveMode();  // reveal whichever input (joystick / D-pad) is active
-      renderDriveStatus(); renderLiveStatus(); // paint now, not at the next tick
+      renderDriveStatus(); // paint now, not at the next tick
     }
 
     // ---- Live status: the driver's "is it working?" surface ----
@@ -2251,30 +2302,6 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         // (board id == robot id) doesn't read its name twice.
         : [target, rec.sys?.board, rec.sys?.hw].filter(Boolean)
             .filter((v, i, a) => a.indexOf(v) === i).join(" · ");
-    }
-    function renderLiveStatus() {
-      const wrap = document.getElementById("live-status");
-      if (!target || modal.hidden) {
-        wrap.style.display = "none";
-        return;
-      }
-      const rec = driveRec(), sys = rec?.sys;
-      const age = rec ? Date.now() - rec.seenAt : Infinity;
-      const rows = [["Link", age <= 10000 ? "OK" : rec ? `lost ${fmtUptime(age)} ago` : "no beacon yet",
-                     age <= 10000 ? "ok" : "warn"]];
-      if (sys) {
-        if (typeof sys.rssi_dbm === "number")
-          rows.push(["Signal", `${sys.rssi_dbm >= -60 ? "Strong" : sys.rssi_dbm >= -75 ? "OK" : "Weak"} · ${sys.rssi_dbm} dBm`,
-                     sys.rssi_dbm >= -60 ? "ok" : sys.rssi_dbm >= -75 ? "" : "warn"]);
-        if (typeof sys.uptime_ms === "number") rows.push(["Uptime", fmtUptime(sys.uptime_ms), ""]);
-        if (typeof sys.cam === "boolean") rows.push(["Camera", sys.cam ? "Ready" : "Off", sys.cam ? "ok" : ""]);
-      }
-      const html = rows.map(([k, v, cls]) =>
-        `<dt>${k}</dt><dd${cls ? ` class="${cls}"` : ""}>${esc(v)}</dd>`).join("");
-      const facts = document.getElementById("live-status-facts");
-      wrap.style.display = "";
-      // Same diff-skip as the fleet grid: identical repaints cost focus/scroll.
-      if (facts.dataset.html !== html) { facts.dataset.html = html; facts.innerHTML = html; }
     }
     // The collapsed row's pulse: link health without opening it — the
     // freshest beacon fleet-wide.
@@ -2524,7 +2551,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       const host = document.getElementById("settings-body");
       const rows = [];
       const brokerHost = hubHost || location.hostname || "—";
-      rows.push(["Hub", document.getElementById("host-chip").textContent || "—"]);
+      rows.push(["Hub", hostLabel || "—"]);
       rows.push(["Broker", `${brokerHost}:9001`]);
       rows.push(["This page", standalone ? "standalone copy" : "served by the hub"]);
       const dl = document.createElement("dl");   // already the grouped-inset grid
@@ -2571,6 +2598,8 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
 
     for (const b of document.querySelectorAll(".navitem[data-panel]"))
       b.addEventListener("click", () => setPanel(b.dataset.panel));
+    // The wordmark is home — Fleet, the default destination.
+    document.getElementById("home-btn").addEventListener("click", () => setPanel("fleet"));
 
     // Collapse the rail to icons. Persisted, because it's a standing preference
     // about how you want the room laid out, not a per-visit choice.
@@ -2609,6 +2638,12 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       logToggle.setAttribute("aria-expanded", String(!open));
       document.getElementById("log-body").hidden = open;
       try { localStorage.setItem("hubLogOpen", String(!open)); } catch {}
+      // Jump to the newest on open. While hidden, #wire-log has zero height, so
+      // the follow-the-bottom check in logLine can't run — every line appended
+      // behind a closed drawer leaves scrollTop pinned at the top. Opening onto
+      // the oldest message, on a log whose point is the live tail, reads as
+      // frozen. Land on the newest; from there the follow logic keeps up.
+      if (!open) { const l = document.getElementById("wire-log"); l.scrollTop = l.scrollHeight; }
     });
     if (localStorage.getItem("hubLogOpen") === "true") logToggle.click();
     setPanel(localStorage.getItem("hubPanel") || "fleet");
@@ -3200,15 +3235,13 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     document.getElementById("robots").addEventListener("click", (e) => {
       // Delegated on #robots (which persists across re-renders); the buttons inside
       // are rebuilt every 2s, so we match on closest, not the exact target.
-      const cam = e.target.closest("[data-cam-ip]");
       const blk = e.target.closest("[data-blink]");
       const asg = e.target.closest("[data-assign]");
       const tel = e.target.closest("[data-tel]");
       const drv = e.target.closest("[data-drive-open]");
       const clm = e.target.closest("[data-claim]");
       const cls = e.target.closest("[data-claimsend]");
-      if (cam) openCamera(cam.dataset.id, cam.dataset.camIp, cam.dataset.board);
-      else if (drv) openDrive(drv.dataset.driveOpen, drv.dataset.driveBoard);
+      if (drv) openDrive(drv.dataset.driveOpen, drv.dataset.driveBoard);
       else if (tel) openTelemetry(tel.dataset.tel, tel.dataset.telBoard);
       else if (blk) blinkBoard(blk.dataset.blink, blk.dataset.brobot);
       else if (asg) preselectAssign(asg.dataset.assign, asg.dataset.brobot, true);
@@ -3340,31 +3373,41 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     function openDrive(robot, board) {
       selectTarget(robot, board);
       const panel = document.getElementById("drive-panel");
+      // Mount the camera above the controls when this board has one — you drive
+      // by what it sees. Built fresh each open so closing tears the MJPEG
+      // connection down (removing the <img> ends the stream).
+      const camHost = document.getElementById("drive-cam");
+      camHost.textContent = "";
+      const rec = driveRec();
+      if (rec?.sys?.cam && rec.sys.ip) camHost.appendChild(driveCam(robot, board, rec.sys.ip));
       openModal(`${board || robot} — drive`, panel);
       modalRestore = () => {
         stopStick(); dpadStop();
+        document.getElementById("drive-cam").textContent = "";   // end the stream
         target = null; targetBoard = null;
         applyDriveMode();
         document.getElementById("drive-store").appendChild(panel);
       };
     }
 
-    function openCamera(id, ip, board) {
+    // The live stream + its can't-reach fallback. A board is reachable only
+    // from the hub's own Wi-Fi, so a failure here is a network location problem,
+    // not a broken rover — say which.
+    function driveCam(id, board, ip) {
       const img = document.createElement("img");
       img.className = "cam-full";
       img.src = `http://${boardHost(ip)}:81/stream`;
       img.alt = `${id} camera`;
       img.addEventListener("error", () => {
-        if (!img.isConnected) return;           // modal already closed / replaced
-        img.style.display = "none";             // a broken <img> is just a black box behind the hint
+        if (!img.isConnected) return;
         const hint = document.createElement("div");
         hint.className = "modal-note";
         hint.textContent = `Couldn't load the stream — this device can't reach ${ip}. ` +
                            "Boards are reachable only from the classroom Wi-Fi (hub-…) — join it, then retry. " +
                            `Still nothing? Join the board's own ${board || "rover-…"} Wi-Fi and reopen from rover.local.`;
-        modalBody.prepend(hint);
+        img.replaceWith(hint);
       });
-      openModal(`${id} — camera`, img);
+      return img;
     }
     function openConfig(id, ip, board) {
       // The panel is /wifi, addressed DIRECTLY: `/` is a redirect that drops the

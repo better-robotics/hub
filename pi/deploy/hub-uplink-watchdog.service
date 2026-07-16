@@ -1,0 +1,20 @@
+[Unit]
+Description=Recover the USB uplink radio when its driver wedges (rtl8192cu)
+# Needs NM to read device/profile state and to re-join after the reload. Does
+# not touch the AP (wlan0/brcmfmac), so it deliberately has no relation to
+# hub-ap.service — the whole point is that the AP stays up through a reload.
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/hub-uplink-watchdog.sh
+# Reloads a kernel module and drives nmcli.
+User=root
+# The script polls forever; a clean exit is its own give-up path (see the
+# TEAR DOWN clause in its header) and must NOT be restarted into a loop.
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

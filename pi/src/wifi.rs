@@ -76,9 +76,19 @@ pub async fn ap_ssid() -> String {
     nmcli_out(&["-g", "802-11-wireless.ssid", "con", "show", "hub-ap"]).await.trim().to_string()
 }
 
-/// Visible networks, strongest-labelled first duplicate wins, AP's own SSID
-/// excluded is unnecessary (nmcli lists infrastructure APs, not our own AP).
+/// Visible networks, strongest-labelled first duplicate wins, and the hub's own
+/// AP filtered out.
+///
+/// That filter used to be absent, on the stated grounds that it was
+/// "unnecessary (nmcli lists infrastructure APs, not our own AP)". nmcli does
+/// list our own AP: the picker offered `hub-a2f5` at 0%, in among the real
+/// networks, on a live hub (2026-07-16). Picking it aims the uplink join at the
+/// radio next to it — the hub would be its own internet.
 pub async fn scan() -> Vec<Net> {
+    // Read per scan, not cached: the AP profile is MAC-derived and stable while
+    // running, but one nmcli call is cheaper than a wrong answer after the AP
+    // is ever re-created under a different suffix.
+    let own = ap_ssid().await;
     let out = tokio::process::Command::new("nmcli")
         .args(["-t", "-f", "SSID,SIGNAL,SECURITY", "device", "wifi", "list", "--rescan", "yes"])
         .output()
@@ -91,6 +101,12 @@ pub async fn scan() -> Vec<Net> {
     for line in String::from_utf8_lossy(&out.stdout).lines() {
         let f = split_nmcli(line);
         if f.len() < 3 || f[0].is_empty() || !seen.insert(f[0].clone()) {
+            continue;
+        }
+        // `own` is empty if the AP profile is absent (a dev box, a hub whose AP
+        // never came up). An empty SSID is already skipped above, so this can't
+        // swallow the whole list.
+        if !own.is_empty() && f[0] == own {
             continue;
         }
         nets.push(Net {

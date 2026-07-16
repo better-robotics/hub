@@ -64,7 +64,8 @@ systemctl restart mosquitto.service   # pick up the conf.d drop-in
 # ---- IDE bundle (optional — needs internet at install time) ----
 # hubd serves better-robotics/ide's built dist at /ide/ when present
 # (HUB_IDE_DIR, default /usr/share/hub/ide). The release asset is the full
-# static site INCLUDING vendored Monaco/mqtt.js (ide's vendor/ is gitignored —
+# static site INCLUDING its vendored deps — Blockly, Monaco, mqtt.js,
+# MicroPython-WASM (ide's vendor/ is gitignored —
 # a plain source tarball would be missing them; see ide's release.yml).
 # Best-effort: a classroom Pi being (re)installed offline keeps its existing
 # bundle, or runs without one.

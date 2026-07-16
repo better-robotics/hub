@@ -31,7 +31,8 @@ const DASHBOARD_HTML: &str = include_str!("../../../dashboard.html");
 const ICON_SVG: &str = include_str!("../../public/icon.svg");
 
 /// The ide bundle (better-robotics/ide's built dist — source + vendored
-/// Monaco/mqtt.js), served at `/ide/`. On-disk rather than embedded: it's a
+/// Blockly/Monaco/mqtt.js/MicroPython-WASM), served at `/ide/`. On-disk
+/// rather than embedded: it's a
 /// large tree with binary/vendored assets, ships on its own release cadence,
 /// and the image/installer drop it in place — hubd needs no rebuild when the
 /// IDE updates. Serving it from the hub is what makes the IDE reachable over

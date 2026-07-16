@@ -83,9 +83,11 @@ cd pi && sudo ./deploy/install.sh    # hubd + Mosquitto (+ the hub AP on a wlan0
 ```
 
 Both paths also install the [`ide`](https://github.com/better-robotics/ide)
-bundle, served at `http://hub.local/ide/` — code robots from any device
-on the hub's network, phones included (plain-http origin: no mixed-content
-wall between the page, the broker, and the rovers).
+bundle, served at `http://hub.local/ide/` — snap blocks together or write
+Python, and it runs in the browser and drives a rover over this repo's own
+contract. Reachable from any device on the hub's network, phones included
+(plain-http origin: no mixed-content wall between the page, the broker, and
+the rovers).
 
 **ESP32 hub:** flash the robot firmware
 ([browser flasher](https://better-robotics.github.io/)), flip the board's role
@@ -101,6 +103,6 @@ before a real class (`mosquitto_passwd`).
 [`robot`](https://github.com/better-robotics/robot) — the unified rover +
 ESP32-hub firmware · [`better-robotics.github.io`](https://github.com/better-robotics/better-robotics.github.io)
 — the browser flasher · [`ide`](https://github.com/better-robotics/ide) — the
-Monaco code editor served at `/ide/` · `hub-zenoh` — archived (the Zenoh
+blocks-and-Python editor served at `/ide/` · `hub-zenoh` — archived (the Zenoh
 evaluation baseline MQTT won against) · `workbench` — a browser dev
 environment, drifting from the classroom model.

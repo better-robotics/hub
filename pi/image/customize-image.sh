@@ -123,7 +123,8 @@ rm -f "$ROOTFS/tmp/01-run-chroot.sh"
 
 # ---- ide bundle — hubd serves it at /ide/ (see hubd.rs) ----
 # Fetched on the CI host (the chroot has DNS but this needs no chroot). The
-# release asset is the full built site INCLUDING vendored Monaco/mqtt.js —
+# release asset is the full built site INCLUDING its vendored deps (Blockly,
+# Monaco, mqtt.js, MicroPython-WASM) —
 # better-robotics/ide's vendor/ is gitignored (fetched by vendor.sh, not
 # committed), so a plain source tarball would ship a broken page.
 curl -fsSL https://github.com/better-robotics/ide/releases/latest/download/ide-dist.tar.gz \

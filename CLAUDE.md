@@ -90,8 +90,8 @@ from `#chip-pop` for months, which is exactly how they all got `gap: 0`).
 `hub-zenoh` (Zenoh evaluation baseline — **archived 2026-07-09**, MQTT won the
 bake-off; kept read-only as the baseline record), `robot` (the rover + ESP32-hub-role
 firmware), `workbench` (browser dev env, drifting from the classroom model),
-`ide` (the Monaco editor `pi/` fetches and serves at `/ide/` — a client of
-this repo's contract, not an implementation of it). Different projects.
+`ide` (the blocks-and-Python editor `pi/` fetches and serves at `/ide/` — a
+client of this repo's contract, not an implementation of it). Different projects.
 
 ## CI
 `.github/workflows/` are rehomed for the monorepo (`working-directory: pi`,

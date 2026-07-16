@@ -1530,6 +1530,15 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     // two surfaces. A rover-XXXX SSID means an island (a lone rover's own AP),
     // which has no hub name to show.
     let hostLabel = "";
+    // The broker address the hub ITSELF hands out (/fleet's `locator`), not a
+    // string this page assembles. hubd builds it from the port mosquitto is
+    // actually bound to (`mqtt://{host}:{mqtt_port}`, hubd.rs) and prints the
+    // same value as the one to point rovers at — so a hub moved off :1883
+    // stays truthful here, where a hardcoded ":1883" would quietly teach a
+    // port nothing listens on. Empty until /fleet answers (and forever on a
+    // standalone copy, which has no hubd to ask) — Settings falls back to the
+    // contract default there.
+    let brokerLocator = "";
     function setHostChip(ssid, host) {
       const cls = host === "pi" ? "Pi" : host === "esp32" ? "ESP32" : "";
       hostLabel =
@@ -1577,6 +1586,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // the same signal setHostChip already trusts. body.solo hides the
       // professor door (CSS above): one board, no fleet, no role to unlock.
       document.body.classList.toggle("solo", !!(data.ssid && data.ssid.startsWith("rover-")));
+      brokerLocator = data.locator || "";
       setHostChip(data.ssid, data.host);
       if (renderUplinkChip) renderUplinkChip(data.uplink);
       const uplinkEl = document.getElementById("uplink");
@@ -2627,15 +2637,17 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         ["Signed in as", prof ? "professor" : "anyone (no sign-in)"],
       ]));
 
-      // src: pi/deploy/mosquitto.conf (`listener 1883` / `protocol mqtt`);
-      // CONTRACT.md § Discovery & isolation — "the same broker to it — same
-      // :1883, same topics, same auth". The rover is a raw-TCP client, so it
-      // meets this page on the same topics through a different listener; that
-      // one broker, two doors picture is the thing students get wrong.
+      // The rover is a raw-TCP client, so it meets this page on the same topics
+      // through a different listener; that "one broker, two doors" picture is
+      // the thing students get wrong. The endpoint is the hub's OWN answer
+      // (/fleet's locator — the very string hubd tells rovers to point at), so
+      // this row is a read, not a guess. src for the fallback, used only when
+      // no hubd is behind the page: pi/deploy/mosquitto.conf (`listener 1883` /
+      // `protocol mqtt`) + CONTRACT.md § Discovery & isolation.
       wrap.append(head("How a rover connects"),
         hint("The firmware is a raw-TCP MQTT client — a different door into the same broker, and the same topics once inside."),
         list([
-          ["Endpoint", `mqtt://${brokerHost}:1883`],
+          ["Endpoint", brokerLocator || `mqtt://${brokerHost}:1883`],
           ["Protocol", "MQTT over TCP"],
           ["Credentials", "none"],
         ]));

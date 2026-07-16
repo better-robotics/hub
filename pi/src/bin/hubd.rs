@@ -382,14 +382,33 @@ fn vouched_boards() -> serde_json::Map<String, serde_json::Value> {
             if octets.len() != 6 {
                 continue;
             }
+            // Only real hardware MACs. Every phone and laptop on this AP
+            // randomises its address, and a randomised MAC has the
+            // locally-administered bit set; a rover never does, because its id
+            // comes from esp_read_mac's Espressif-assigned global address. The
+            // first cut skipped this and cheerfully reported a MacBook as
+            // "rover-6f73" and a phone as "rover-5367" — every DHCP client got a
+            // rover name, because only two bytes decide one.
+            let Ok(first) = u8::from_str_radix(octets[0], 16) else { continue };
+            if first & 0x02 != 0 {
+                continue;
+            }
             // Lowercase to match the firmware's own %02x formatting exactly —
             // dnsmasq writes lowercase today, and a case mismatch here would
             // fail open (no vouched address → no Update button) rather than
             // loudly, which is the kind of bug that gets found in a classroom.
             let id = format!("rover-{}{}", octets[4].to_lowercase(), octets[5].to_lowercase());
-            out.insert(id, serde_json::Value::String(ip.to_string()));
+            // Two devices claiming one id is the exact substitution this map
+            // exists to stop, so an ambiguous id vouches for NOBODY. Last-write
+            // -wins would let an attacker who spoofs a rover's low two bytes
+            // simply out-lease it; a collision fails closed instead, and the
+            // Update button disappears rather than pointing somewhere chosen.
+            if out.insert(id.clone(), serde_json::Value::String(ip.to_string())).is_some() {
+                out.insert(id, serde_json::Value::Null);
+            }
         }
     }
+    out.retain(|_, v| !v.is_null());
     out
 }
 

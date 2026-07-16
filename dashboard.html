@@ -2613,7 +2613,11 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       for (const rec of boards.values())
         if (rec.seenAt >= fresh && rec.robot === "unassigned") n++;
       const el = document.getElementById("nav-unnamed");
-      el.hidden = !n || panel === "fleet";
+      // Always show the count when boards need a name — even on Fleet. It was
+      // hidden here on the theory "the cards are right there", but a persistent
+      // badge is a status light: it should read the same from every panel, and
+      // vanishing exactly when you look at Fleet is the confusing case.
+      el.hidden = !n;
       el.textContent = String(n);
     }
 

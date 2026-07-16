@@ -124,6 +124,15 @@
       padding: 0.25rem 0.7rem; background: var(--inset); color: var(--ink);
     }
     .tchip.show { display: inline-flex; }
+    /* The e-stop's fence. It tracks the CHIP's own visibility (.show is toggled
+       by renderEstop for a signed-in professor) — a divider with nothing beside
+       it is a rule floating in a gap. Hence :has(), not a second JS toggle:
+       one source of truth for "is Stop all here right now". */
+    .estop-slot { display: none; flex: none; }
+    .estop-slot:has(> .tchip.show) {
+      display: inline-flex; margin-right: 0.25rem; padding-right: 0.75rem;
+      border-right: 0.5px solid var(--border-default);
+    }
     /* Island-served page (a lone rover's own AP — /fleet reports a rover-XXXX
        SSID): there is no fleet and no professor role, and joining the rover's
        AP already means holding the robot. The professor door would be a false
@@ -148,9 +157,137 @@
        `#id-menu p { margin-bottom }`, which is the same skipped-vocabulary
        shape as the bare popover wrappers. */
 
-    /* Centered reading column; the fleet is a card grid, so width buys
-       cards-per-row while prose blocks cap themselves for readability. */
-    main { max-width: 60rem; margin: 0 auto; padding: 1.75rem 1.25rem 4rem; }
+    /* ── The shell: a source-list rail beside the content column ────────────
+       ONE column for destinations AND data (the HIG source list — Finder's
+       sidebar holds Favorites and an expanding iCloud Drive). An activity-bar +
+       sidebar pair is VS Code's answer to dozens of destinations and huge
+       trees; four destinations and a four-channel wire don't buy the second
+       column, they just stand 430px of mostly-empty chrome next to each other.
+       Desktop is the platform: a 232px rail costs nothing at 1200px and buys a
+       persistent tree plus a persistent wire. */
+    .shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); }
+    .rail {
+      position: sticky; top: 50px; align-self: start; max-height: calc(100dvh - 50px);
+      border-right: 0.5px solid var(--border-default);
+      padding: 0.7rem; display: flex; flex-direction: column; gap: 0.15rem;
+      min-height: calc(100dvh - 50px); overflow: hidden;
+    }
+    .rail-spacer { flex: 1 1 auto; min-height: 0.7rem; }
+    .navitem {
+      /* The base control rule centres both axes (it's built for tiles). A source
+         list is a column of LEFT-aligned rows, so every row here opts out.
+         Fleet's badge has margin-left:auto, which packs that one row's contents
+         left and can make the centring look intentional — check a row WITHOUT a
+         badge before trusting the alignment. */
+      display: flex; align-items: center; justify-content: flex-start; gap: 0.6rem; width: 100%;
+      font: inherit; font-size: var(--fs-body); color: var(--ink-muted);
+      background: none; border: 0; border-radius: var(--radius);
+      padding: 0.55rem 0.65rem; min-height: var(--ctrl-h); cursor: pointer; text-align: left;
+    }
+    .navitem > svg { flex: none; }
+    .navitem:hover { background: var(--inset); color: var(--ink); }
+    .navitem[aria-current="page"] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+    .nav-badge {
+      margin-left: auto; font-size: var(--fs-micro); font-variant-numeric: tabular-nums;
+      background: var(--warn-ink); color: var(--bg); font-weight: 700;
+      border-radius: var(--radius-pill); padding: 0 0.4rem; min-width: 1.15rem; text-align: center;
+    }
+    .navitem[aria-current="page"] .nav-badge { background: var(--accent-ink); color: var(--accent); }
+
+    /* Content column. Was a centered 60rem reading column; the rail now
+       supplies the structure that centering used to fake. */
+    main { padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+    .panel { display: flex; flex-direction: column; gap: 1rem; min-width: 0; flex: 1; }
+    .panel-head { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
+    .panel-head h2 { font-size: var(--fs-title); font-weight: 700; margin: 0; }
+    .panel-head .spacer { flex: 1 1 auto; }
+    /* Notices ride above the shell, full width: an engaged e-stop must not be
+       something you can navigate away from. They keep the page's own gutter. */
+    .notice { margin: 0.75rem 1.25rem 0; }
+
+    /* Topic tree — nested under its own nav item. An indent GUIDE, not deep
+       padding: 232px can't spend 2rem on hierarchy and still fit
+       `cmd/reprovision` beside a direction glyph and a rate. */
+    .tw { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+    .tw-filter { padding: 0.35rem 0.15rem 0.4rem; }
+    .tw-filter input { width: 100%; font-family: var(--mono); font-size: var(--fs-micro); height: 1.9rem; }
+    .tw-tree { overflow-y: auto; flex: 1; margin-left: 0.5rem; padding-left: 0.4rem; border-left: 0.5px solid var(--border-default); }
+    .tw-group {
+      display: flex; align-items: center; justify-content: flex-start; gap: 0.35rem; width: 100%;
+      font: inherit; font-size: var(--fs-small); font-family: var(--mono);
+      color: var(--ink); background: none; border: 0; border-radius: var(--radius-inner);
+      padding: 0.3rem 0.35rem; cursor: pointer; text-align: left;
+    }
+    .tw-group:hover { background: var(--inset); }
+    /* A rover name is student-supplied and unbounded; the rail is 232px. Clip
+       the NAME, never the chevron or the alias — the same rule the card's
+       identity chip already follows. */
+    .tw-group > .tw-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .tw-group > .tw-alias { flex: none; }
+    .chev { flex: none; color: var(--ink-faint); transition: transform 0.12s; }
+    [aria-expanded="false"] > .chev { transform: rotate(-90deg); }
+    .tw-alias { color: var(--ink-faint); }
+    .tw-row {
+      display: flex; align-items: center; justify-content: flex-start; gap: 0.4rem; width: 100%;
+      font: inherit; font-size: var(--fs-micro); font-family: var(--mono);
+      color: var(--ink-muted); background: none; border: 0; border-radius: var(--radius-inner);
+      padding: 0.25rem 0.35rem 0.25rem 1.1rem; cursor: pointer; text-align: left;
+    }
+    .tw-row:hover { background: var(--inset); }
+    .tw-row[aria-current="true"] { background: var(--accent-soft); color: var(--ink); box-shadow: inset 2px 0 0 var(--accent-text); }
+    /* The tree's arrows ARE the log's arrows — same point of view (this page's),
+       so the two surfaces teach one vocabulary instead of two. */
+    .dir-in { color: var(--success-dim); flex: none; }
+    .dir-out { color: var(--accent-text); flex: none; }
+    .tw-count { margin-left: auto; font-size: var(--fs-micro); color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+    .tw-empty { font-size: var(--fs-micro); color: var(--ink-faint); padding: 0.4rem 0.35rem; }
+
+    /* Topic detail: full width, so the envelope and the live value sit side by
+       side instead of stacking in a gutter. */
+    .td-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: 1rem; align-items: start; }
+    .td-card { background: var(--surface); border: 0.5px solid var(--border-default); border-radius: var(--radius-lg); padding: 0.9rem; display: flex; flex-direction: column; gap: 0.7rem; min-width: 0; box-shadow: var(--shadow-card); }
+    .td-topic { font-family: var(--mono); font-size: var(--fs-title); font-weight: 600; letter-spacing: -0.02em; overflow-wrap: anywhere; }
+    .dir-pill { font-size: var(--fs-micro); border-radius: var(--radius-pill); padding: 0.15rem 0.5rem; border: 0.5px solid; white-space: nowrap; }
+    .dir-pill.in { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, transparent); background: color-mix(in srgb, var(--success) 10%, transparent); }
+    .dir-pill.out { color: var(--link); border-color: color-mix(in srgb, var(--accent-text) 40%, transparent); background: var(--accent-soft); }
+    .td-pre { background: var(--inset); border: 0.5px solid var(--border-default); border-radius: var(--radius); padding: 0.55rem 0.7rem; font-family: var(--mono); font-size: var(--fs-small); overflow-x: auto; color: var(--ink-muted); white-space: pre; margin: 0; }
+    .td-note { font-size: var(--fs-small); color: var(--warn-ink); background: color-mix(in srgb, var(--warn) 8%, transparent); border: 0.5px solid color-mix(in srgb, var(--warn) 30%, transparent); border-radius: var(--radius); padding: 0.5rem 0.65rem; }
+
+    /* Code: the ide bundle, same origin, in the shell. */
+    #ide-host { flex: 1; display: flex; min-height: 32rem; }
+    #ide-host iframe { flex: 1; border: 0.5px solid var(--border-default); border-radius: var(--radius-lg); background: var(--inset); min-height: 32rem; }
+
+    /* Log drawer — global chrome under every panel. */
+    .log-toggle {
+      display: flex; align-items: center; justify-content: flex-start; gap: 0.5rem; width: 100%;
+      background: none; border: 0; border-radius: 0; height: 2.6rem; padding: 0 0.7rem;
+      cursor: pointer; color: var(--ink); font: inherit;
+    }
+    .log-toggle:hover { background: var(--inset); }
+    .log-toggle .spacer { flex: 1 1 auto; }
+    .log-body { border-top: 0.5px solid var(--border-default); padding: 0.6rem 0.7rem; display: flex; flex-direction: column; gap: 0.5rem; }
+
+    /* Narrow: the rail stacks above the content instead of eating 40% of the
+       width. A source list cannot become a horizontal strip — a tree has
+       nowhere to go in one — so the column stays a column and moves. Desktop is
+       the platform (this is graceful degradation, not the design target); the
+       likely right answer is a slide-over sheet behind a topbar control, which
+       keeps exactly one tree and gives the content all its width back. Unbuilt
+       on purpose — it wants a decision made against a real narrow viewport, not
+       a guess extrapolated from a desktop one. */
+    @media (max-width: 720px) {
+      .shell { grid-template-columns: minmax(0, 1fr); }
+      .rail {
+        position: static; flex-direction: row; flex-wrap: wrap; align-items: center;
+        min-height: 0; max-height: none; overflow: visible;
+        border-right: 0; border-bottom: 0.5px solid var(--border-default);
+      }
+      .navitem { width: auto; }
+      .rail-spacer { display: none; }
+      /* The tree needs the full row once the rail is horizontal. */
+      .tw { flex-basis: 100%; max-height: 40dvh; }
+      .tw-tree { max-height: 32dvh; }
+    }
     a { color: var(--link); text-decoration: none; }
     a:hover { text-decoration: underline; }
     .hint { color: var(--ink-faint); font-size: 0.85rem; }
@@ -618,7 +755,20 @@
 
     /* Per-card action row: Camera / Wi-Fi & role / Drive as tinted tiles. */
     .card-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.85rem; }
-    #student-details { margin-top: 1rem; }   /* gated by [hidden], not display */
+    /* The drawer is one panel with a hairline lid — the same grouped-inset
+       shape as .list-group, at page scale.
+       STICKY to the viewport bottom, not just last in the column: chrome you
+       have to scroll to find is not ambient. Last-in-column is not enough — the
+       rail's full-height min-height plus any notice above the shell push the
+       column past the viewport, which leaves the drawer correct and permanently
+       out of sight. */
+    #student-details { margin-top: auto; position: sticky; bottom: 0; z-index: 10;
+      border: 0.5px solid var(--border-default);
+      border-radius: var(--radius-lg); background: var(--surface); overflow: hidden; flex: none;
+      box-shadow: 0 -8px 24px -12px rgba(0,0,0,0.6); }
+    .log-toggle h2 { font-size: var(--fs-body); font-weight: 600; color: var(--ink); margin: 0; }
+    .log-toggle .wire-legend { margin: 0; }
+    .wire-head { margin: 0; }
     #prof-advanced > summary { cursor: pointer; color: var(--ink-muted);
       font-weight: 600; padding: 0.65rem 0; }
     #prof-advanced { grid-column: 1 / -1; }
@@ -733,12 +883,19 @@
 <body>
   <header class="topbar"><h1><span class="logo-accent">Better</span><span class="logo-base">Robotics</span><span id="host-chip"></span></h1>
     <span class="topbar-right">
-      <button id="net-chip" class="tchip" aria-haspopup="true" aria-controls="chip-pop" aria-expanded="false" data-icon="wifi"><span id="net-chip-label"></span></button>
+      <!-- Stop all sits LEFT of the status chips and behind a divider. It is
+           the only ACTION in a row of popover-openers, and the only control
+           here whose mis-tap has physical consequences — it was flanked by the
+           two chips you tap most. Space encodes relatedness, so the fence is
+           the fix; the reorder is only what makes room for it. -->
+      <span class="estop-slot">
+        <button id="estop-chip" class="tchip danger" aria-label="Emergency stop — halt every rover" data-icon="octagon"><span>Stop all</span></button>
+      </span>
       <!-- Fleet e-stop: one tap engages the retained fleet/estop latch
            (CONTRACT.md § Fleet e-stop). Direct action, not a popover chip;
            visible only to a signed-in professor, and while engaged the
            banner (with its Clear) takes over. -->
-      <button id="estop-chip" class="tchip danger" aria-label="Emergency stop — halt every rover" data-icon="octagon"><span>Stop all</span></button>
+      <button id="net-chip" class="tchip" aria-haspopup="true" aria-controls="chip-pop" aria-expanded="false" data-icon="wifi"><span id="net-chip-label"></span></button>
       <!-- Locked: the professor's door lives in the account corner. It isn't a
            sign-in — one shared code unlocks the professor role; robots need no
            credential at all (Claim on the rover card, Drive for anyone).
@@ -757,7 +914,10 @@
     <p class="hint" id="id-menu-conn" role="status"></p>
     <button id="logout-btn" class="btn-tile">Lock</button>
   </div>
-  <main>
+
+  <!-- Global notices live ABOVE the shell, full width: an engaged e-stop must
+       not be a thing you can navigate away from. Same reason the topbar keeps
+       Stop all — chrome outranks the panel you happen to be looking at. -->
   <div id="hub-host-gate" class="notice" style="gap:0.5rem; align-items:center; flex-wrap:wrap">
     <span id="hub-host-label">Standalone copy — which hub?</span>
     <input id="hub-host-input" type="text" placeholder="10.42.0.1 or hub.local" aria-label="Hub address"
@@ -809,9 +969,150 @@
       </div>
     </div>
   </div>
+
+  <!-- ONE source list (the HIG pattern), not an activity bar + sidebar pair.
+       Destinations and data share the column — Finder's sidebar holds Favorites
+       AND an expanding iCloud Drive. Two nav columns would stand 430px of mostly
+       empty chrome side by side and squeeze the detail. -->
+  <div class="shell">
+    <nav class="rail" aria-label="Sections">
+      <button class="navitem" data-panel="fleet" aria-current="page">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span>Fleet</span><span class="nav-badge" id="nav-unnamed" hidden></span>
+      </button>
+      <button class="navitem" data-panel="code">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        <span>Code</span>
+      </button>
+      <button class="navitem" data-panel="topics">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M7.76 16.24a6 6 0 0 1 0-8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 19.07a10 10 0 0 1 0-14.14"/></svg>
+        <span>Topics</span>
+      </button>
+      <!-- The topic tree nests under its own nav item and discloses only while
+           Topics is the destination — a source list shows the section you are
+           IN, it does not carry every section's contents at once. -->
+      <div class="tw" id="topic-tree" hidden>
+        <div class="tw-filter"><input id="tw-filter" type="search" placeholder="Filter&#8230;" aria-label="Filter topics" autocapitalize="none" autocorrect="off" spellcheck="false"></div>
+        <div class="tw-tree" id="tw-tree" role="tree" aria-label="Topic tree"></div>
+      </div>
+      <span class="rail-spacer"></span>
+      <button class="navitem" data-panel="settings">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>Settings</span>
+      </button>
+    </nav>
+    <main class="content">
+      <section class="panel" id="p-fleet">
   <p id="empty">No rovers yet — power one on near the hub and it appears here within seconds.
     <span class="hint">New board with no firmware? <a href="https://better-robotics.github.io/">Flash it over USB</a>.</span></p>
   <div id="robots"></div>
+      </section>
+
+      <!-- Code: the ide bundle hubd already serves at /ide/ (blocks-first
+           Python; see CLAUDE.md). Same origin, same broker, so it rides in the
+           shell instead of being a tab you leave for. The frame is created on
+           first visit only — a Blockly + MicroPython-WASM boot is not something
+           to pay for on a dashboard that may never open this panel. -->
+      <section class="panel" id="p-code" hidden>
+        <div class="panel-head"><h2>Code</h2>
+          <span class="hint">snap blocks together, watch the Python appear &#8212; it runs in this tab and drives a real rover</span>
+          <span class="spacer"></span>
+          <a id="ide-pop" class="link-btn" href="/ide/" target="_blank" rel="noopener">Open in a tab &#8599;</a>
+        </div>
+        <div id="ide-host"><p class="hint" id="ide-missing" hidden>The editor isn&#8217;t installed on this hub &#8212; <code>HUB_IDE_DIR</code> is empty. The rest of the dashboard works without it.</p></div>
+      </section>
+
+      <!-- Topics: the tree lives in the rail; this pane is the selected topic's
+           detail. Direction glyphs are the LOG's own arrows, same point of view,
+           so the two surfaces teach one vocabulary. -->
+      <section class="panel" id="p-topics" hidden>
+        <div class="panel-head"><h2>Topics</h2>
+          <span class="hint">every address on the wire &#183; <span class="log-in">&#8595;</span> the rover talks &#183; <span class="log-out">&#8593;</span> you talk</span>
+        </div>
+        <div id="topic-detail"></div>
+      </section>
+
+      <section class="panel" id="p-settings" hidden>
+        <div class="panel-head"><h2>Settings</h2><span class="hint">this hub, and which broker this page talks to</span></div>
+        <div id="settings-body"></div>
+      </section>
+
+  <!-- The bus view: everything this session's subscription carries — its own
+       full-width row below the controls, a verbose surface that deserves the
+       whole column. Shown only once signed in as professor ("Advanced
+       diagnostics"). Per-rover reading lives in each card's telemetry sheet;
+       this is the classroom's raw wire, the teaching tap. -->
+  <!-- Professor-only, and no longer a disclosure. It wrapped TWO gated
+       wrappers (details + section#wire) around one thing, and once the
+       redundant fleet-vitals table was deleted the only content left is the
+       wire log — the teaching surface a signed-in professor is here to watch.
+       A click to reveal the one thing you signed in for isn't a fold, it's a
+       toll. (The old summary read "Details & troubleshooting", which never
+       once rendered: the row is display:none until signIn, which retitles it
+       first.) -->
+  <!-- The log is GLOBAL chrome, below every panel — not a Topics sub-view.
+       Trapping it in one destination would mean leaving the editor to watch
+       what the editor just sent, which is the round trip this shell exists to
+       close. Collapsed by default: sys beacons every 2 s per rover, so this is
+       ambient evidence you glance at, not a thing to stare at. -->
+  <section id="student-details">
+    <button class="log-toggle" id="log-toggle" aria-expanded="false" aria-controls="log-body">
+      <svg class="chev" viewBox="0 0 10 10" width="10" height="10" fill="currentColor" aria-hidden="true"><polygon points="1,3 9,3 5,8"/></svg>
+      <h2 id="details-label">Log</h2>
+      <!-- Link health at a glance, beside the title it qualifies. Both of these
+           stay on the closed bar: the point of a collapsed drawer is that it
+           still answers "is the wire alive?" without opening. -->
+      <span id="details-age"></span>
+      <span id="wire-rate" aria-live="off"></span>
+      <span class="spacer"></span>
+      <span class="wire-legend"><span class="log-out">&#8593; sent from this page</span> &#183; <span class="log-in">&#8595; received</span></span>
+    </button>
+    <div class="log-body" id="log-body" hidden>
+    <div class="wire-head">
+      <select id="wire-filter" aria-label="Filter log to one rover"><option value="">all rovers</option></select>
+      <!-- Topic filter. The log prints the topic on every line, so naming the
+           options after the channels makes the filter teach itself in place.
+           Replaced a binary toggle ("Beacons" — the firmware's word for sys,
+           appearing nowhere on screen) that could only express one of these.
+
+           SHOW EVERYTHING by default, filter down — what every log viewer does
+           (DevTools, Wireshark). The old default hid sys, inherited from when
+           this panel was professor-only: a professor watching for events doesn't
+           want 2s chatter. That premise died when students got the panel, because
+           sys is the ONLY thing a rover ever publishes (rover_role.c:567; pwm and
+           cmd/* are things it SUBSCRIBES to). So "all except sys" meant the rover
+           never appeared to answer at all — the "← the rover answers" legend
+           promising something that could never arrive, and an idle student
+           reading an empty log as broken.
+
+           Only channels the wire actually carries: imu and led are in
+           CONTRACT.md but no firmware publishes them, so offering them would be
+           a filter that can never match. Add them when they ship. -->
+      <select id="wire-topic" aria-label="Filter log by topic">
+        <option value="">all topics</option>
+        <option value="-sys">all except sys</option>
+        <option value="sys">sys</option>
+        <option value="pwm">pwm</option>
+        <option value="cmd">cmd</option>
+        <option value="estop">estop</option>
+      </select>
+      <span class="spacer"></span>
+      <button id="wire-pause" aria-pressed="false">Pause</button>
+    </div>
+    <!-- The arrow key is a CAPTION for the log, not a control: it sat inside
+         the control row, which is what made that row read as a jumble. -->
+    <!-- The arrows must be the ones the log actually draws: this said → / ←
+         while logLine drew ↑ / ↓ from the moment the lines became columns — a
+         key that keys nothing.
+         "the rover answers" was wrong twice over: sys is UNPROMPTED (every 2s,
+         answering nothing), and inbound also carries fleet/estop, which comes
+         from a professor, not a rover. Direction is the honest claim — what
+         this page sent vs what it received. -->
+    <div id="wire-log" role="log" tabindex="0" aria-label="Live command and telemetry log"></div>
+    </div>
+  </section>
+    </main>
+  </div>
 
   <div id="controls">
   <section id="signin">
@@ -941,69 +1242,6 @@
     <p id="codes-status" role="status" aria-live="polite"></p>
   </section>
   </div>
-
-  <!-- The bus view: everything this session's subscription carries — its own
-       full-width row below the controls, a verbose surface that deserves the
-       whole column. Shown only once signed in as professor ("Advanced
-       diagnostics"). Per-rover reading lives in each card's telemetry sheet;
-       this is the classroom's raw wire, the teaching tap. -->
-  <!-- Professor-only, and no longer a disclosure. It wrapped TWO gated
-       wrappers (details + section#wire) around one thing, and once the
-       redundant fleet-vitals table was deleted the only content left is the
-       wire log — the teaching surface a signed-in professor is here to watch.
-       A click to reveal the one thing you signed in for isn't a fold, it's a
-       toll. (The old summary read "Details & troubleshooting", which never
-       once rendered: the row is display:none until signIn, which retitles it
-       first.) -->
-  <section id="student-details">
-    <div class="wire-head">
-      <h2 id="details-label">Advanced diagnostics</h2>
-      <!-- Link health at a glance, beside the title it qualifies. -->
-      <span id="details-age"></span>
-      <span class="spacer"></span>
-      <span id="wire-rate" aria-live="off"></span>
-      <select id="wire-filter" aria-label="Filter log to one rover"><option value="">all rovers</option></select>
-      <!-- Topic filter. The log prints the topic on every line, so naming the
-           options after the channels makes the filter teach itself in place.
-           Replaced a binary toggle ("Beacons" — the firmware's word for sys,
-           appearing nowhere on screen) that could only express one of these.
-
-           SHOW EVERYTHING by default, filter down — what every log viewer does
-           (DevTools, Wireshark). The old default hid sys, inherited from when
-           this panel was professor-only: a professor watching for events doesn't
-           want 2s chatter. That premise died when students got the panel, because
-           sys is the ONLY thing a rover ever publishes (rover_role.c:567; pwm and
-           cmd/* are things it SUBSCRIBES to). So "all except sys" meant the rover
-           never appeared to answer at all — the "← the rover answers" legend
-           promising something that could never arrive, and an idle student
-           reading an empty log as broken.
-
-           Only channels the wire actually carries: imu and led are in
-           CONTRACT.md but no firmware publishes them, so offering them would be
-           a filter that can never match. Add them when they ship. -->
-      <select id="wire-topic" aria-label="Filter log by topic">
-        <option value="">all topics</option>
-        <option value="-sys">all except sys</option>
-        <option value="sys">sys</option>
-        <option value="pwm">pwm</option>
-        <option value="cmd">cmd</option>
-        <option value="estop">estop</option>
-      </select>
-      <button id="wire-pause" aria-pressed="false">Pause</button>
-    </div>
-    <!-- The arrow key is a CAPTION for the log, not a control: it sat inside
-         the control row, which is what made that row read as a jumble. -->
-    <!-- The arrows must be the ones the log actually draws: this said → / ←
-         while logLine drew ↑ / ↓ from the moment the lines became columns — a
-         key that keys nothing.
-         "the rover answers" was wrong twice over: sys is UNPROMPTED (every 2s,
-         answering nothing), and inbound also carries fleet/estop, which comes
-         from a professor, not a rover. Direction is the honest claim — what
-         this page sent vs what it received. -->
-    <p class="wire-legend"><span class="log-out">↑ sent from this page</span> · <span class="log-in">↓ received</span></p>
-    <div id="wire-log" role="log" tabindex="0" aria-label="Live command and telemetry log"></div>
-  </section>
-  </main>
 
   <!-- Per-board modal: opens the live camera stream or the board's embedded /wifi
        panel. Lives OUTSIDE #robots so the 2s card re-render never tears it down. -->
@@ -1618,6 +1856,12 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // The e-stop confirmation count is derived from sys beacons, so it moves
       // on this clock, not on the retained latch that only arrives once.
       renderEstop();
+      renderNavBadge();
+      // Same reason the grid repaints here: rovers arrive and age out. Only the
+      // visible panel pays — and never under a hand that's typing in the filter.
+      if (panel === "topics" && document.activeElement?.id !== "tw-filter") {
+        renderTopicTree(); renderTopicDetail();
+      }
     }, 2000);
 
     // Anonymous mqtt.js connection — Mosquitto's ACL grants every connection,
@@ -1800,8 +2044,21 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       for (const l of document.querySelectorAll("#wire-log .log-line"))
         l.style.display = lineHidden(l) ? "none" : "";
     }
+    // What the wire actually carries, keyed by topic. Every message the page
+    // sends or hears already funnels through logLine, so the Topics tree learns
+    // from it instead of opening a second subscription or keeping a parallel
+    // set of books that could disagree with the log.
+    const topicSeen = new Map();   // topic -> { payload, at, n, dir }
     function logLine(dir, text) {
       wireMsgs++;   // before the pause/filter returns — see wireMsgs
+      // Split ONCE on the first space: a topic never contains one, and the
+      // payload always may (JSON). Hoisted above the pause return because the
+      // tree reads it: Pause freezes the VIEW, not the wire.
+      const sp = text.indexOf(" ");
+      const topic = sp < 0 ? text : text.slice(0, sp);
+      const payload = sp < 0 ? "" : text.slice(sp + 1);
+      const prevSeen = topicSeen.get(topic);
+      topicSeen.set(topic, { payload, at: Date.now(), n: (prevSeen?.n || 0) + 1, dir });
       if (wirePaused) return; // paused = freeze what's on screen for reading
       const log = document.getElementById("wire-log");
       // Respect a reader who scrolled up: only auto-follow from the bottom.
@@ -1810,12 +2067,8 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       line.className = `log-line log-${dir}`;
       const robot = text.startsWith("robots/") ? text.split("/")[1] : "";
       line.dataset.robot = robot;
-      // Split ONCE on the first space: a topic never contains one, and the
-      // payload always may (JSON). textContent per cell, never innerHTML —
-      // both topic and payload are attacker-reachable over the open ACL.
-      const sp = text.indexOf(" ");
-      const topic = sp < 0 ? text : text.slice(0, sp);
-      const payload = sp < 0 ? "" : text.slice(sp + 1);
+      // textContent per cell, never innerHTML — both topic and payload are
+      // attacker-reachable over the open ACL.
       // The channel is the topic's meaning: robots/<id>/<chan>[/...] -> chan,
       // and fleet/estop -> estop. Stamped once here so the filter compares a
       // field instead of re-parsing the text on every pass.
@@ -1949,6 +2202,295 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       for (const r of robots.values()) last = Math.max(last, r.seenAt);
       el.textContent = last ? `· last message ${fmtUptime(Date.now() - last)} ago` : "";
     }
+
+    // ---- The shell: source-list routing, the topic tree, settings ----------
+    // The wire's whole topic space, mirrored from CONTRACT.md + envelopes/.
+    // `dir` is from THIS PAGE's point of view, so the tree's arrows are the
+    // log's arrows and neither surface has to teach a second vocabulary.
+    // The asymmetry here IS the lesson: a rover publishes exactly one topic.
+    const CHANNELS = [
+      { seg: "sys", dir: "in", title: "Telemetry beacon",
+        why: "The only topic a rover publishes — every 2 s, unprompted, answering nothing.",
+        fields: [["hw", "board model"], ["ip", "address on the hub's network"],
+                 ["rssi_dbm", "signal strength"], ["uptime_ms", "since boot"],
+                 ["free_heap", "bytes free"], ["cam", "camera present"],
+                 ["board", "MAC-derived board id"], ["name", "assigned robot name"],
+                 ["estop", "true while the fleet latch is engaged"]] },
+      { seg: "pwm", dir: "out", title: "Drive",
+        why: "Wheel duty. The rover subscribes to this — it never publishes it.",
+        fields: [["l", "int −255…255, left"], ["r", "int −255…255, right"],
+                 ["duration_ms", "int, optional, 400 default"]],
+        note: "Every drive self-expires. The firmware stops the motors duration_ms after the last message, defaults to 400 ms when absent, and clamps at 4000 ms. Sustained motion is a refreshing stream — the safety floor, enforced below every client." },
+      { seg: "led", dir: "out", title: "Set LED",
+        why: "Request/reply; the reply lands on <topic>/reply. No firmware publishes it yet.",
+        fields: [["on", "bool"], ["red", "0–255"], ["green", "0–255"], ["blue", "0–255"]] },
+      { seg: "cmd/config", dir: "out", title: "Assign a name",
+        why: "Names a board post-join. A name is an address, not a credential — there is no password field.",
+        fields: [["name", "the robot name to wear"], ["hub", "optional SSID pin; \"\" clears"],
+                 ["target", "optional board id, when boards share a name"]] },
+      { seg: "cmd/identify", dir: "out", title: "Blink the LED",
+        why: "Blinks ~6 s so you can find which board on the table this is.",
+        fields: [["target", "optional board id"]] },
+      { seg: "cmd/reprovision", dir: "out", title: "Reboot",
+        why: "The BOOT button's remote twin.",
+        fields: [["target", "optional board id"]] },
+    ];
+    const FLEET_TOPIC = {
+      topic: "fleet/estop", seg: "estop", dir: "out", title: "Fleet e-stop", retained: true,
+      why: "The room-wide latch, published retained so a rover that reconnects mid-emergency receives it on subscribe. Read for everyone, write for the professor.",
+      fields: [["engaged", "bool — the only field the firmware reads"],
+               ["by", "who engaged it (for humans)"], ["reason", "free text (for humans)"]],
+      note: "Any unparseable payload here reads as ENGAGED — parse failure fails toward stopped. An empty retained publish reads as clear.",
+    };
+
+    // Groups start OPEN and remember what you closed. A tree that opens fully
+    // collapsed hides the one thing it exists to show — that a rover publishes
+    // exactly one topic and subscribes to the rest. Closed-by-default is right
+    // when a tree is a filesystem you're navigating; this one is a diagram.
+    let panel = "fleet", topicSel = null, twFilter = "", twClosed = new Set();
+    const railTree = () => document.getElementById("topic-tree");
+
+    function setPanel(name) {
+      panel = name;
+      for (const b of document.querySelectorAll(".navitem")) {
+        if (b.dataset.panel === name) b.setAttribute("aria-current", "page");
+        else b.removeAttribute("aria-current");
+      }
+      for (const id of ["fleet", "code", "topics", "settings"])
+        document.getElementById(`p-${id}`).hidden = id !== name;
+      // The tree discloses only with its own section: a source list shows the
+      // section you are IN, not every section's contents at once.
+      railTree().hidden = name !== "topics";
+      if (name === "code") mountIde();
+      if (name === "topics") { renderTopicTree(); renderTopicDetail(); }
+      if (name === "settings") renderSettings();
+      try { localStorage.setItem("hubPanel", name); } catch {}
+    }
+
+    // The ide bundle boots Blockly + MicroPython-WASM. Nobody pays for that on
+    // a dashboard that may never open this panel, so the frame is created on
+    // first visit and then left alone.
+    let ideMounted = false;
+    async function mountIde() {
+      if (ideMounted) return;
+      ideMounted = true;
+      // ASK before framing. An iframe fires no "error" for an HTTP 404 — it just
+      // renders the 404 body — so a hub with no HUB_IDE_DIR would show a broken
+      // frame and no reason. Same origin, so a HEAD is free and honest.
+      let ok = false;
+      try { ok = (await fetch("/ide/", { method: "HEAD" })).ok; } catch { ok = false; }
+      if (!ok) { document.getElementById("ide-missing").hidden = false; return; }
+      const f = document.createElement("iframe");
+      f.src = "/ide/";
+      f.title = "Code editor";
+      document.getElementById("ide-host").appendChild(f);
+    }
+
+    // Rovers first, `fleet` last. Top level is the ROVER, not `robots/`: a node
+    // whose child set never varies is an indent, not a tree level.
+    // Keyed by the id that appears IN the topic, because that is what the tree
+    // addresses. Several boards genuinely share `robots/unassigned/*` until they
+    // are named — one topic, so one node; the alias says how many boards answer
+    // to it rather than naming whichever board beaconed last.
+    function liveRovers() {
+      const fresh = Date.now() - 10000;
+      const nboards = new Map(), alias = new Map();
+      for (const [board, rec] of boards) {
+        if (rec.seenAt < fresh) continue;
+        nboards.set(rec.robot, (nboards.get(rec.robot) || 0) + 1);
+        alias.set(rec.robot, board);
+      }
+      const out = new Map();
+      for (const [id, n] of nboards) out.set(id, n > 1 ? `${n} boards` : alias.get(id));
+      // Legacy/sim beacons carry no board id — they get a name-keyed node, same
+      // as the fleet grid gives them a name-keyed card.
+      for (const [t, rec] of robots)
+        if (!rec.sys.board && t !== "unassigned" && rec.seenAt >= fresh && !out.has(t)) out.set(t, "");
+      return out;
+    }
+    function renderTopicTree() {
+      const tree = document.getElementById("tw-tree");
+      const rovers = [...liveRovers().entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+      const match = (t) => !twFilter || t.toLowerCase().includes(twFilter);
+      const frag = document.createDocumentFragment();
+      const mkRow = (topic, label, dir) => {
+        const b = document.createElement("button");
+        b.className = "tw-row"; b.dataset.topic = topic; b.title = topic;
+        if (topicSel === topic) b.setAttribute("aria-current", "true");
+        const a = document.createElement("span");
+        a.className = dir === "in" ? "dir-in" : "dir-out";
+        a.textContent = dir === "in" ? "↓" : "↑";
+        const n = document.createElement("span"); n.textContent = label;
+        const c = document.createElement("span"); c.className = "tw-count";
+        const seen = topicSeen.get(topic);
+        c.textContent = seen ? String(seen.n) : "—";
+        b.append(a, n, c);
+        return b;
+      };
+      const group = (key, label, alias, rows) => {
+        const open = !twClosed.has(key) || !!twFilter;
+        const g = document.createElement("button");
+        g.className = "tw-group"; g.dataset.group = key;
+        g.setAttribute("aria-expanded", String(open));
+        g.innerHTML = `<svg class="chev" viewBox="0 0 10 10" width="10" height="10" fill="currentColor" aria-hidden="true"><polygon points="1,3 9,3 5,8"/></svg>`;
+        g.title = label;   // the full name, for whatever the 232px rail clips
+        const nm = document.createElement("span"); nm.className = "tw-name"; nm.textContent = label;
+        g.append(nm);
+        if (alias) { const s = document.createElement("span"); s.className = "tw-alias"; s.textContent = ` · ${alias}`; g.append(s); }
+        frag.append(g);
+        if (open) for (const r of rows) frag.append(r);
+      };
+      for (const [id, alias] of rovers) {
+        const rows = CHANNELS.filter(c => match(`robots/${id}/${c.seg}`))
+          .map(c => mkRow(`robots/${id}/${c.seg}`, c.seg, c.dir));
+        if (rows.length) group(id, id, alias && alias !== id ? alias : "", rows);
+      }
+      if (match(FLEET_TOPIC.topic))
+        group("fleet", "fleet", "", [mkRow(FLEET_TOPIC.topic, FLEET_TOPIC.seg, FLEET_TOPIC.dir)]);
+      tree.replaceChildren(frag);
+      if (!frag.childNodes.length && !tree.childNodes.length) {
+        const e = document.createElement("div"); e.className = "tw-empty";
+        e.textContent = twFilter ? "No matches" : "No rovers yet";
+        tree.append(e);
+      }
+    }
+    function chanFor(topic) {
+      if (topic === FLEET_TOPIC.topic) return FLEET_TOPIC;
+      const seg = topic.split("/").slice(2).join("/");
+      return CHANNELS.find(c => c.seg === seg) || null;
+    }
+    function renderTopicDetail() {
+      const host = document.getElementById("topic-detail");
+      if (!topicSel) {
+        host.replaceChildren(Object.assign(document.createElement("p"),
+          { className: "hint", textContent: "Pick a topic to see what it carries." }));
+        return;
+      }
+      const c = chanFor(topicSel), seen = topicSeen.get(topicSel);
+      const grid = document.createElement("div"); grid.className = "td-grid";
+      const card = () => { const d = document.createElement("div"); d.className = "td-card"; return d; };
+      const h = (t) => Object.assign(document.createElement("div"), { className: "panel-head", innerHTML: `<h2>${esc(t)}</h2>` });
+
+      const left = card();
+      const head = document.createElement("div"); head.className = "panel-head";
+      const tt = document.createElement("span"); tt.className = "td-topic"; tt.textContent = topicSel;
+      const pill = document.createElement("span");
+      pill.className = `dir-pill ${c && c.dir === "in" ? "in" : "out"}`;
+      pill.textContent = c && c.dir === "in" ? "↓ rover → you" : "↑ you → rover";
+      head.append(tt, pill);
+      left.append(head);
+      if (c) {
+        left.append(Object.assign(document.createElement("p"), { className: "hint", textContent: c.why }));
+        // A bare <dl> IS the grouped-inset list (see the `dl` rule: grid,
+        // auto/1fr, hairline separators). Adding .list-group would OVERRIDE
+        // that grid with its own flex column and stack every dt above its dd
+        // — the class is for element lists that aren't already this shape.
+        const dl = document.createElement("dl");
+        for (const [k, v] of c.fields) {
+          dl.append(Object.assign(document.createElement("dt"), { textContent: k }),
+                    Object.assign(document.createElement("dd"), { textContent: v }));
+        }
+        left.append(dl);
+        if (c.note) left.append(Object.assign(document.createElement("p"), { className: "td-note", textContent: c.note }));
+      } else {
+        left.append(Object.assign(document.createElement("p"), { className: "hint",
+          textContent: "No envelope for this topic — the firmware is the schema." }));
+      }
+
+      const right = card();
+      right.append(h("Last message"));
+      const pre = document.createElement("pre"); pre.className = "td-pre";
+      // Pretty-print when it parses; show the raw bytes when it doesn't —
+      // an unparseable payload is exactly the thing you opened this to see.
+      let body = seen ? seen.payload : "";
+      if (body) { try { body = JSON.stringify(JSON.parse(body), null, 2); } catch {} }
+      pre.textContent = body || "nothing on this topic yet";
+      right.append(pre);
+      const meta = document.createElement("p"); meta.className = "hint";
+      meta.textContent = seen
+        ? `${seen.n} message${seen.n === 1 ? "" : "s"} · last ${fmtUptime(Date.now() - seen.at)} ago`
+        : (c && c.dir === "out" ? "You haven't sent one this session." : "The rover hasn't published yet.");
+      right.append(meta);
+      if (c && c.retained) right.append(Object.assign(document.createElement("p"),
+        { className: "hint", textContent: "Retained — the broker replays this to every client on subscribe." }));
+
+      grid.append(left, right);
+      host.replaceChildren(grid);
+    }
+
+    function renderSettings() {
+      const host = document.getElementById("settings-body");
+      const rows = [];
+      const brokerHost = hubHost || location.hostname || "—";
+      rows.push(["Hub", document.getElementById("host-chip").textContent || "—"]);
+      rows.push(["Broker", `${brokerHost}:9001`]);
+      rows.push(["This page", standalone ? "standalone copy" : "served by the hub"]);
+      const dl = document.createElement("dl");   // already the grouped-inset grid
+      for (const [k, v] of rows)
+        dl.append(Object.assign(document.createElement("dt"), { textContent: k }),
+                  Object.assign(document.createElement("dd"), { textContent: v }));
+      const wrap = document.createDocumentFragment();
+      wrap.append(dl);
+      // Which hub this page talks to. The gate above already owns the input and
+      // the reload — this is the same control, findable when the gate isn't
+      // showing, rather than a second way to set the same value.
+      const p = document.createElement("p"); p.className = "hint";
+      p.textContent = standalone
+        ? "This copy isn't served by a hub, so it has to be told which one to talk to."
+        : "Served by the hub, so it talks to the hub that served it. Override only to point a local copy elsewhere.";
+      const row = document.createElement("div"); row.className = "gate-row";
+      const inp = document.createElement("input");
+      inp.type = "text"; inp.value = hubHost; inp.placeholder = "10.42.0.1 or hub.local";
+      inp.setAttribute("aria-label", "Hub address");
+      inp.autocapitalize = "none"; inp.autocorrect = "off"; inp.spellcheck = false; inp.inputMode = "url";
+      const go = document.createElement("button"); go.className = "btn-primary"; go.textContent = "Connect";
+      go.addEventListener("click", () => {
+        const v = inp.value.trim(); if (!v) return;
+        localStorage.setItem(standalone ? "hubHost" : "hubHostOverride", v);
+        location.reload();
+      });
+      row.append(inp, go);
+      wrap.append(Object.assign(document.createElement("div"), { className: "panel-head", innerHTML: "<h2>Which hub</h2>" }), p, row);
+      host.replaceChildren(wrap);
+    }
+
+    // The Fleet badge: a count earns its place where the detail ISN'T visible.
+    // From Code or Topics it says something you can't otherwise see; above the
+    // cards it would just count them.
+    function renderNavBadge() {
+      const fresh = Date.now() - 10000;
+      let n = 0;
+      for (const rec of boards.values())
+        if (rec.seenAt >= fresh && rec.robot === "unassigned") n++;
+      const el = document.getElementById("nav-unnamed");
+      el.hidden = !n || panel === "fleet";
+      el.textContent = String(n);
+    }
+
+    for (const b of document.querySelectorAll(".navitem"))
+      b.addEventListener("click", () => setPanel(b.dataset.panel));
+    document.getElementById("tw-tree").addEventListener("click", (e) => {
+      const row = e.target.closest(".tw-row"), grp = e.target.closest(".tw-group");
+      if (row) { topicSel = row.dataset.topic; renderTopicTree(); renderTopicDetail(); }
+      else if (grp) {
+        const k = grp.dataset.group;
+        twClosed.has(k) ? twClosed.delete(k) : twClosed.add(k);
+        renderTopicTree();
+      }
+    });
+    document.getElementById("tw-filter").addEventListener("input", (e) => {
+      twFilter = e.target.value.trim().toLowerCase();
+      renderTopicTree();
+    });
+    const logToggle = document.getElementById("log-toggle");
+    logToggle.addEventListener("click", () => {
+      const open = logToggle.getAttribute("aria-expanded") === "true";
+      logToggle.setAttribute("aria-expanded", String(!open));
+      document.getElementById("log-body").hidden = open;
+      try { localStorage.setItem("hubLogOpen", String(!open)); } catch {}
+    });
+    if (localStorage.getItem("hubLogOpen") === "true") logToggle.click();
+    setPanel(localStorage.getItem("hubPanel") || "fleet");
     // Drive input mode — the segmented control switches between the analog
     // joystick and the discrete D-pad. Only reveal an input once a target is
     // chosen (professor "all" scope hasn't picked a robot before then).

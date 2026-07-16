@@ -660,6 +660,11 @@
       background: var(--accent); color: var(--accent-ink);
       box-shadow: 0 1px 2px rgba(0,0,0,0.35);
     }
+    /* The drive toggle centers over the joystick it steers (the pad below is
+       margin-auto centered too); block-level + fit-content is what lets the
+       auto margins bite on an otherwise inline-flex pill. Mobile keeps its
+       full-width tap targets (below). */
+    #drive-mode { display: flex; width: fit-content; margin-inline: auto; }
 
     /* One input at a time (joystick OR d-pad), so the grid is just a centering
        wrapper now that live-status no longer rides beside it. */
@@ -986,6 +991,7 @@
          where it becomes a 176px HEIGHT — the giant-empty-input bug. */
       .gate-row input { flex-basis: auto; }
       .segmented { display: flex; width: 100%; }
+      #drive-mode { width: 100%; }
       .segmented button { flex: 1; }
       #modal-close { width: var(--tap); height: var(--tap); }
       .dpad { grid-template-columns: repeat(3, 4rem); grid-template-rows: repeat(3, 4rem); }
@@ -1169,7 +1175,7 @@
       </section>
 
       <section class="panel" id="p-settings" hidden>
-        <div class="panel-head"><h2>Settings</h2><span class="hint">this hub, and which broker this page talks to</span></div>
+        <div class="panel-head"><h2>Settings</h2><span class="hint">the wire under this page — endpoints, protocols, and what you're allowed to publish</span></div>
         <div id="settings-body"></div>
       </section>
 
@@ -1850,8 +1856,20 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       /* tabler outline/steering-wheel */
       drive: '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/><path d="M10 12a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M12 14l0 7"/><path d="M10 12l-6.75 -2"/><path d="M14 12l6.75 -2"/>',
     };
-    const icon = (n, s = 13) =>
-      `<svg viewBox="0 0 24 24" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[n]}</svg>`;
+    // Optical sizing. Every glyph renders in the same px box, but tabler draws
+    // them to different fractions of the 24-grid: the steering-wheel is a
+    // full-bleed ring (edge to edge) while the bulb's body is a small centred
+    // shape, so at an identical box the wheel reads large and the bulb small —
+    // three action buttons, three apparent sizes. A per-glyph viewBox (default
+    // 24, entries only for the outliers) pads the heavy ones and tightens the
+    // light ones until their drawn mass matches; the origin offset keeps the
+    // 24-designed path centred, and stroke-width scales WITH the viewBox so the
+    // rendered ~1.08px stroke is identical across every icon regardless of vb.
+    const ICON_VB = { drive: 26, bulb: 22 };
+    const icon = (n, s = 13) => {
+      const vb = ICON_VB[n] || 24, o = (24 - vb) / 2;
+      return `<svg viewBox="${o} ${o} ${vb} ${vb}" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="${2 * vb / 24}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[n]}</svg>`;
+    };
     // Static chips declare which glyph they want and get it from the SAME pack.
     // They used to hardcode an <svg> in the markup, which is how the topbar kept
     // drawing feather's person while the cards drew tabler's — one glyph, two
@@ -2309,20 +2327,24 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       const sub = document.getElementById("drive-status-sub");
       const rec = driveRec();
       if (!rec) {
+        el.hidden = false;
         el.classList.add("offline");
         line.textContent = "Waiting for your rover…";
         sub.textContent = "Power it on near the hub and this page finds it.";
         return;
       }
       const stale = Date.now() - rec.seenAt > 10000;
+      // The block earns its space only when it carries news the modal title
+      // can't: waiting (above) or stopped-answering. A healthy link is the
+      // default the title already states ("<robot> — drive"), and "connected ·
+      // <board> · <hw>" just restated the header plus two sys fields the
+      // Details sheet owns — the same noise the Camera/Live-status merge cut.
+      el.hidden = !stale;
       el.classList.toggle("offline", stale);
-      line.textContent = stale ? "Your rover stopped answering" : "Your rover is connected";
-      sub.textContent = stale
-        ? `Last heard ${fmtUptime(Date.now() - rec.seenAt)} ago — check its power.`
-        // "jonas2 · rover-a044 · esp32cam" — deduped so a legacy rover
-        // (board id == robot id) doesn't read its name twice.
-        : [target, rec.sys?.board, rec.sys?.hw].filter(Boolean)
-            .filter((v, i, a) => a.indexOf(v) === i).join(" · ");
+      if (stale) {
+        line.textContent = "Your rover stopped answering";
+        sub.textContent = `Last heard ${fmtUptime(Date.now() - rec.seenAt)} ago — check its power.`;
+      }
     }
     // The collapsed row's pulse: link health without opening it — the
     // freshest beacon fleet-wide.
@@ -2570,17 +2592,75 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
 
     function renderSettings() {
       const host = document.getElementById("settings-body");
-      const rows = [];
       const brokerHost = hubHost || location.hostname || "—";
-      rows.push(["Hub", hostLabel || "—"]);
-      rows.push(["Broker", `${brokerHost}:9001`]);
-      rows.push(["This page", standalone ? "standalone copy" : "served by the hub"]);
-      const dl = document.createElement("dl");   // already the grouped-inset grid
-      for (const [k, v] of rows)
-        dl.append(Object.assign(document.createElement("dt"), { textContent: k }),
-                  Object.assign(document.createElement("dd"), { textContent: v }));
+      const prof = myScope && myScope.scope === "all";
+      // A bare <dl> IS the grouped-inset list (the `dl` rule: grid, hairlines,
+      // inset fill) — same builder the telemetry sheet uses, so these panels
+      // can't drift apart.
+      const list = (rows) => {
+        const dl = document.createElement("dl");
+        for (const [k, v] of rows)
+          dl.append(Object.assign(document.createElement("dt"), { textContent: k }),
+                    Object.assign(document.createElement("dd"), { textContent: v }));
+        return dl;
+      };
+      const head = (t) => Object.assign(document.createElement("div"),
+        { className: "panel-head", innerHTML: `<h2>${t}</h2>` });
+      const hint = (t) => Object.assign(document.createElement("p"), { className: "hint", textContent: t });
       const wrap = document.createDocumentFragment();
-      wrap.append(dl);
+
+      // Settings is a teaching surface, not just a host field: the transport is
+      // the half of the contract the Topics panel can't show. Topics answers
+      // "what messages exist"; this answers "over what, as whom, allowed to do
+      // what" — the questions a student debugging a dead rover actually asks.
+      // The split below is deliberate and load-bearing: THIS section is what
+      // the page OBSERVES about its own link, the two after it are the wire
+      // contract mirrored (with the src: citations that keep them honest).
+      wrap.append(head("This page"), list([
+        ["Hub", hostLabel || "—"],
+        ["Served from", standalone ? "a standalone copy" : "the hub itself"],
+        // wsPort, not a literal "9001" — the connect call and this row must
+        // read the same const or Settings will one day teach a stale port.
+        ["Endpoint", `ws://${brokerHost}:${wsPort}`],
+        ["Protocol", "MQTT over WebSocket"],
+        // Live: re-rendered on the 2 s tick, so signing in updates it in place.
+        ["Signed in as", prof ? "professor" : "anyone (no sign-in)"],
+      ]));
+
+      // src: pi/deploy/mosquitto.conf (`listener 1883` / `protocol mqtt`);
+      // CONTRACT.md § Discovery & isolation — "the same broker to it — same
+      // :1883, same topics, same auth". The rover is a raw-TCP client, so it
+      // meets this page on the same topics through a different listener; that
+      // one broker, two doors picture is the thing students get wrong.
+      wrap.append(head("How a rover connects"),
+        hint("The firmware is a raw-TCP MQTT client — a different door into the same broker, and the same topics once inside."),
+        list([
+          ["Endpoint", `mqtt://${brokerHost}:1883`],
+          ["Protocol", "MQTT over TCP"],
+          ["Credentials", "none"],
+        ]));
+
+      // src: pi/mosquitto-acl.example.conf + CONTRACT.md § Discovery &
+      // isolation (the identity/scope table). Shown as YOUR grants, not a
+      // two-column matrix of every identity: the page knows who you are, and
+      // "what am I allowed to do right now" is the question — the professor
+      // delta is one line of prose below instead of a column students must
+      // read themselves out of.
+      wrap.append(head("What you may publish"),
+        list([
+          ["robots/#", "read + write"],
+          ["pair/#", "read + write"],
+          ["fleet/estop", prof ? "read + write" : "read only"],
+        ]),
+        hint(prof
+          ? "Professor: yours is the only credential the broker checks, and only to write fleet/estop — engaging or clearing the room-wide stop."
+          : "Driving, claiming a board and reading the fleet need no sign-in. Only fleet/estop — the room-wide stop — is write-gated, to the professor."),
+        // The honesty line. Everything above this point except "This page" is
+        // the hub's SHIPPED config, not a live read of whatever broker the
+        // field below points at — and pointing it at a public broker is a
+        // thing we invite. Say which is which rather than let a student trust
+        // an ACL table that stopped applying two sections ago.
+        hint("The hub's Wi-Fi is the real boundary, not a login. These are the rules a Better Robotics hub ships with — another broker enforces its own, which this page can't read."));
       // Which hub this page talks to. The gate above already owns the input and
       // the reload — this is the same control, findable when the gate isn't
       // showing, rather than a second way to set the same value.
@@ -3376,8 +3456,11 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         const sys = (board ? boards.get(board) : robots.get(robot))?.sys;
         cfgRow.textContent = "";
         if (!(sys?.ip && myScope?.scope === "all")) return;
+        // Neutral tile, not .link-btn: this is the ONLY action in the Details
+        // sheet, so it has no louder sibling to be the quiet link beside —
+        // standing alone, link styling just reads as a stray hyperlink. A sole
+        // action earns the tile. (A classless button IS the neutral tile.)
         const b = document.createElement("button");
-        b.className = "link-btn";
         b.textContent = "Wi-Fi & role settings…";
         b.addEventListener("click", () => openConfig(robot, sys.ip, board));
         cfgRow.append(b);

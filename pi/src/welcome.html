@@ -1,9 +1,10 @@
 <!doctype html>
 <!-- The captive sheet's landing page (probe 302s point here — hubd.rs).
-     One job: release the OS sheet and hand the user to a real browser.
-     The dashboard deliberately does NOT load here: Apple's CNA sandboxes
-     localStorage away from Safari, so anything a student signs into inside
-     the sheet silently vanishes when it closes. -->
+     One job: greet the user and hand them to the dashboard. The "Open the
+     dashboard" link opens the real browser (target=_blank) when the hub has a
+     live uplink, and same-tab in-sheet when it doesn't — the OS sheet only
+     completes a _blank hand-off with internet, and offline the hub's own
+     dashboard drives fine loaded in the sheet. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -47,6 +48,10 @@
   }
   .card h2 { font-size: 20px; font-weight: 700; letter-spacing: -.015em; margin: 0 0 6px; }
   .s { color: var(--ink-muted); font-size: 13px; }
+  /* An address to read off the screen and retype into Safari: tabular mono so
+     1/l and 0/O can't be confused, user-select:all so a long-press copies it. */
+  .addr { display: inline-block; color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums; -webkit-user-select: all; user-select: all; word-break: break-all; }
   /* Base control = the neutral tile; tiers layer on. */
   button, .btn {
     /* inline-flex + gap: centres label (and any icon) on both axes. Block
@@ -77,9 +82,8 @@
   </div>
   <div class="card" id="after" role="status" hidden>
     <h2>You&rsquo;re set</h2>
-    <p class="s">Open the dashboard in your regular browser, not this
-       pop-up &#8212; this pop-up forgets sign-ins when it closes.</p>
-    <a class="btn btn-primary" href="http://10.42.0.1/" target="_blank" rel="noopener">Open the dashboard</a>
+    <a class="btn btn-primary" id="dashgo" href="http://10.42.0.1/" rel="noopener">Open the dashboard</a>
+    <p class="s">Opens <b class="addr">10.42.0.1</b><span id="dashsuf"> in your browser.</span></p>
   </div>
 </main>
 <script>
@@ -94,6 +98,14 @@
   if (location.search.indexOf('done=1') >= 0) {
     document.getElementById('before').hidden = true;
     document.getElementById('after').hidden = false;
+    // _blank hands off to the real browser only when the phone has internet
+    // through this hub (uplink 'full'); offline it's inert, so open same-tab
+    // in-sheet — the hub's own dashboard drives fine with no uplink.
+    fetch('/fleet').then(r => r.json()).then(j => {
+      var on = j.uplink === 'full';
+      document.getElementById('dashgo').target = on ? '_blank' : '';
+      document.getElementById('dashsuf').textContent = on ? ' in your browser.' : ' here to drive.';
+    }).catch(function () {});
   }
 </script>
 </body>

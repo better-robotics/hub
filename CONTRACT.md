@@ -44,6 +44,24 @@ on the rover side) is an open thread in the hub state tracker (#4).
 Language bindings (which mirror these envelopes): Rust in `pi/src/lib.rs`; the
 ESP32 firmware hardcodes the same topics in C.
 
+### Addressing one board when several share an identity
+
+Identity lives in the topic — but several boards can legitimately answer to one
+id, and every fresh board answers to `unassigned` until it is named. They all
+receive `robots/unassigned/*`, so any device → robot payload may carry an
+optional **`"target": "<board-id>"`** (the `sys` payload's MAC-derived `board`
+field, e.g. `rover-b79c`). A board ignores a payload whose `target` names a
+different board; a payload with no `target` is accepted by every subscriber.
+
+This applies to **`pwm` as well as `cmd/*`** — `pwm` is the one that bites. On
+day one of a class every board on the desk is `unassigned` and subscribed to
+`robots/unassigned/pwm`, so an untargeted drive command moves all of them at
+once. `dashboard.html` sends `target`; a client that omits it is not addressing
+a robot, it is addressing a pool.
+
+Named boards make this moot, which is why it went unnoticed: the failure only
+exists in the window before anyone has assigned a name — i.e. exactly the demo.
+
 ## The BLE transport (workbench)
 
 [`workbench`](https://github.com/better-robotics/workbench) speaks the same
@@ -166,9 +184,9 @@ that exact SSID, so a student raising their own `hub-*` can't absorb it;
 `"hub":""` clears; an SSID pin deters mischief, not a deliberate spoof of the
 exact name — that escalation is WPA2 on the hub AP), `cmd/identify` blinks the board's LED (~6 s) so
 a physical board can be matched to its on-screen id, `cmd/reprovision` reboots
-it (the BOOT button's remote twin). Boards sharing one identity all see these
-topics, so each payload takes an optional `"target": "<board-id>"` (the sys
-payload's MAC-derived `board` field) to address exactly one.
+it (the BOOT button's remote twin). Each payload takes an optional `"target"` —
+see § Addressing one board when several share an identity, which covers `pwm`
+too.
 
 Directional per-channel rules (imu robot→device, pwm device→robot) are dropped:
 they guard a robot spoofing *its own* telemetry — not a classroom threat.

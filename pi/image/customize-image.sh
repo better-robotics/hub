@@ -131,11 +131,22 @@ rm -f "$ROOTFS/tmp/01-run-chroot.sh" "$ROOTFS/tmp/hub-payload.tsv"
 # Monaco, mqtt.js, MicroPython-WASM) —
 # better-robotics/ide's vendor/ is gitignored (fetched by vendor.sh, not
 # committed), so a plain source tarball would ship a broken page.
-curl -fsSL https://github.com/better-robotics/ide/releases/latest/download/ide-dist.tar.gz \
+#
+# PINNED by tag and digest (IDE_RELEASE / IDE_SHA256, build-image.yml), like the
+# base image. This fetched `releases/latest` with neither: the image was a
+# function of the commit AND the day it was built, so rebuilding pi-image-v3 --
+# cut when latest was ide-v7 -- would bake ide-v9 today and call it the same tag.
+: "${IDE_RELEASE:?IDE_RELEASE not set — pin it in build-image.yml}"
+: "${IDE_SHA256:?IDE_SHA256 not set — pin it in build-image.yml}"
+curl -fsSL "https://github.com/better-robotics/ide/releases/download/${IDE_RELEASE}/ide-dist.tar.gz" \
   -o /tmp/ide-dist.tar.gz
+echo "${IDE_SHA256}  /tmp/ide-dist.tar.gz" | sha256sum -c -
 install -d "$ROOTFS/usr/share/hub/ide"
 tar -xzf /tmp/ide-dist.tar.gz -C "$ROOTFS/usr/share/hub/ide"
 rm -f /tmp/ide-dist.tar.gz
+# The BOM prints this bundle's size but could not name its version — the largest
+# thing on the card, unanswerable from the "what's on this image" table.
+echo "$IDE_RELEASE" > "$ROOTFS/usr/share/hub/ide/VERSION"
 
 # Offline appliance: the apt lists our `apt-get update` fetched are dead
 # weight in the shipped image (the Pi can't apt install anyway).

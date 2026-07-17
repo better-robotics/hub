@@ -1,10 +1,11 @@
 <!doctype html>
 <!-- The captive sheet's landing page (probe 302s point here — hubd.rs).
-     One job: greet the user and hand them to the dashboard. The "Open the
-     dashboard" link opens the real browser (target=_blank) when the hub has a
-     live uplink, and same-tab in-sheet when it doesn't — the OS sheet only
-     completes a _blank hand-off with internet, and offline the hub's own
-     dashboard drives fine loaded in the sheet. -->
+     One job: greet the user and hand them to the dashboard. Tapping Accept acks
+     the captive (hubd answers the probe with genuine success regardless of
+     uplink), so the OS trusts this Wi-Fi and dismisses the sheet — which is what
+     lets the "Open the dashboard" link (target=_blank) open the phone's REAL
+     browser, even with no internet, while it stays connected to the hub. The
+     known cost: the phone believes the network has internet until it leaves. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -82,8 +83,8 @@
   </div>
   <div class="card" id="after" role="status" hidden>
     <h2>You&rsquo;re set</h2>
-    <a class="btn btn-primary" id="dashgo" href="http://10.42.0.1/" rel="noopener">Open the dashboard</a>
-    <p class="s">Opens <b class="addr">10.42.0.1</b><span id="dashsuf"> in your browser.</span></p>
+    <a class="btn btn-primary" href="http://10.42.0.1/" target="_blank" rel="noopener">Open the dashboard</a>
+    <p class="s">Opens <b class="addr">10.42.0.1</b> in your browser.</p>
   </div>
 </main>
 <script>
@@ -98,14 +99,6 @@
   if (location.search.indexOf('done=1') >= 0) {
     document.getElementById('before').hidden = true;
     document.getElementById('after').hidden = false;
-    // _blank hands off to the real browser only when the phone has internet
-    // through this hub (uplink 'full'); offline it's inert, so open same-tab
-    // in-sheet — the hub's own dashboard drives fine with no uplink.
-    fetch('/fleet').then(r => r.json()).then(j => {
-      var on = j.uplink === 'full';
-      document.getElementById('dashgo').target = on ? '_blank' : '';
-      document.getElementById('dashsuf').textContent = on ? ' in your browser.' : ' here to drive.';
-    }).catch(function () {});
   }
 </script>
 </body>

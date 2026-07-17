@@ -4,7 +4,22 @@
 # enables them.
 
 # Wi-Fi regulatory domain — radio stays disabled until this is set.
-raspi-config nonint do_wifi_country US || true
+#
+# NOT `|| true`. The line above states the stakes and the `|| true` ignored them:
+# if raspi-config misbehaves in the chroot (no systemd, no radio — a plausible
+# place for it to), the build stayed green and the flashed Pi never raised
+# hub-XXXX. A hub is a hub because students can find its Wi-Fi, so that is not a
+# degraded image, it is a brick with a green checkmark. The script runs under
+# `bash -e`, so dropping the swallow is the whole fix: a failure here now stops
+# the build instead of shipping.
+#
+# Not also asserted in build-image's verify step, deliberately: that check must
+# grep the file the base actually writes, and which one that is (/etc/default/crda
+# vs wpa_supplicant.conf) differs by release — it wants confirming against a real
+# built image, not writing from memory. An assertion aimed at the wrong path is
+# the absence-check trap this repo already knows about: it would read green while
+# checking nothing.
+raspi-config nonint do_wifi_country US
 
 # Mosquitto broker: seed the one PLACEHOLDER credential (change before a real
 # class: mosquitto_passwd -b /etc/mosquitto/hub-passwd instructor <newpass>).

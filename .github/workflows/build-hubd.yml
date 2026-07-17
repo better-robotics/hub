@@ -10,6 +10,15 @@ name: build-hubd
 # fleet HTTP, and the device-served Wi-Fi setup (/wifi/*, via nmcli at
 # runtime) — no native/dbus deps to link.
 on:
+  # This repo had NO push-triggered gate on hubd at all: every workflow here was
+  # dispatch- or tag-gated, so nothing ran on a change to pi/src/**, Cargo.toml,
+  # dashboard.html, or pi/deploy/**. A commit breaking hubd's compile — or
+  # dashboard.html's include_str! — sat green on main until someone cut an image
+  # tag, which is to say until the morning of a class. The gate already existed
+  # (cargo test --bin hubd, below); nothing called it.
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:      # standalone: the fast-redeploy artifact
   workflow_call:          # as job 1 of build-image
 
@@ -32,8 +41,12 @@ jobs:
       # passed. Default (gnu) target, not the musl one below — musl-tools isn't
       # installed until the build step, and the suite is pure parsers (`iw`/`ip`
       # output shapes) that no libc choice or real radio changes.
+      # --locked: Cargo.lock is tracked, which is the hard part, but nothing made
+      # CI honour it — cargo would happily re-resolve and rewrite it mid-build,
+      # so the committed lock described the binary only by luck. --locked turns
+      # "the lock is the pin" from a hope into a build failure.
       - name: Test hubd
-        run: cargo test --bin hubd
+        run: cargo test --locked --bin hubd
       - name: Build hubd (static aarch64)
         run: |
           # ports.ubuntu.com (arm64's apt mirror — arm64 isn't a primary arch,
@@ -54,7 +67,7 @@ jobs:
             exit 1
           fi
           rustup target add aarch64-unknown-linux-musl
-          cargo build --release --target aarch64-unknown-linux-musl --bin hubd
+          cargo build --locked --release --target aarch64-unknown-linux-musl --bin hubd
       - uses: actions/upload-artifact@v4
         with:
           name: hubd-arm64

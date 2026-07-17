@@ -46,6 +46,17 @@ jobs:
       BASE_IMG: 2026-06-18-raspios-bookworm-arm64-lite
       BASE_URL: https://downloads.raspberrypi.com/raspios_oldstable_lite_arm64/images/raspios_oldstable_lite_arm64-2026-06-19
       BASE_SHA256: df4c6fb0b625204a09ce587f35f01b4d6375cb3ee0f05df71a0eca6c7aeb8f8f
+      # The ide bundle, pinned exactly like the base image above and for exactly
+      # the same reason — it just wasn't, until now. customize-image.sh fetched
+      # `releases/latest` with no version and no checksum, so the image was a
+      # function of the commit AND the wall clock: pi-image-v3 was cut when
+      # latest was ide-v7, and rebuilding that same tag today would bake ide-v9.
+      # It is the largest single thing on the card and the only unpinned one, 70
+      # lines from a base image pinned by name, URL and digest.
+      # Bump deliberately: new tag + its digest from
+      #   gh release view -R better-robotics/ide --json assets
+      IDE_RELEASE: ide-v9
+      IDE_SHA256: 0ffc6003bc5fdfcc80d00e4c74c4175d527f784291c1285b796781b01f7934aa
       # key-only login — pubkey baked, no password set
       HUB_SSH_PUBKEY: >-
         ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMalS/trWZcu/jbBu42I1rC8MUe5qR8A5Vnk9lloSQfW jonasneves@Jonass-MacBook-Pro.local
@@ -86,7 +97,7 @@ jobs:
       - name: Customize image
         run: |
           sudo apt-get update && sudo apt-get install -y zerofree
-          sudo --preserve-env=HUB_SSH_PUBKEY image/customize-image.sh "$RUNNER_TEMP/hub.img"
+          sudo --preserve-env=HUB_SSH_PUBKEY,IDE_RELEASE,IDE_SHA256 image/customize-image.sh "$RUNNER_TEMP/hub.img"
 
       - name: Verify customizations are in the image
         run: |

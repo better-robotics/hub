@@ -53,6 +53,24 @@ table ip hub-captive {
 NFTEOF
 echo "hub-captive NAT applied (AP-client DNS+HTTP -> 10.42.0.1)"
 
+# Clamp TCP MSS on forwarded (NAT'd) SYNs to the path MTU. A no-op on a normal
+# 1500-MTU uplink; on a venue uplink with a smaller MTU (PPPoE, some VPNs) it is
+# the difference between "some sites hang forever" — a PMTU black-hole, where the
+# client advertises a 1460 MSS the uplink can't carry and the ICMP-too-big that
+# would fix it is filtered — and everything loading. A separate table from
+# hub-captive on purpose: this is a forward-chain mangle, that one a prerouting
+# dnat, and NM's `ipv4.method=shared` owns the masquerade in its own table.
+nft delete table ip hub-mss 2>/dev/null || true
+nft -f - <<'NFTEOF'
+table ip hub-mss {
+  chain forward {
+    type filter hook forward priority mangle; policy accept;
+    tcp flags syn tcp option maxseg size set rt mtu
+  }
+}
+NFTEOF
+echo "hub-mss MSS clamp applied (forwarded SYNs -> path MTU)"
+
 # The built-in radio, by driver identity. brcmfmac registers asynchronously
 # at boot; don't race it.
 ap_dev() {

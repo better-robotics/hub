@@ -153,6 +153,33 @@ async fn gzip_body(key: Option<String>, body: Vec<u8>) -> (Vec<u8>, bool) {
     }
 }
 
+/// A process-stable ETag for the two embedded constants (dashboard, icon.svg).
+/// They cannot change while hubd runs and change across builds exactly when their
+/// bytes do, so hashing each ONCE is a correct validator — and lets a repeat load
+/// 304 (~90 B) instead of re-sending the 204 KB gzipped dashboard, the same
+/// no-cache+validator shape /ide/ uses. The `-gz` suffix names the encoding
+/// variant (with `Vary: Accept-Encoding` this URL has two representations; one
+/// ETag naming both is how a cache hands gzip bytes to a client that never asked
+/// for them). Weak by HTTP's letter, exact here. NOT `immutable`, for the reason
+/// ide_serve gives: a rebuild must be able to bust it.
+fn const_etag(key: &str, body: &[u8], gz: bool) -> String {
+    static CACHE: std::sync::OnceLock<Mutex<std::collections::HashMap<String, String>>> =
+        std::sync::OnceLock::new();
+    let base = CACHE
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap()
+        .entry(key.to_string())
+        .or_insert_with(|| {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            body.hash(&mut h);
+            format!("{:x}", h.finish())
+        })
+        .clone();
+    format!("\"{base}{}\"", if gz { "-gz" } else { "" })
+}
+
 /// `Vary` tracks whether a resource IS negotiable, not what this response
 /// happened to be: a compressible asset served identity (because the client
 /// offered no gzip) still has a gzip twin, and a cache that stored it without
@@ -1034,14 +1061,38 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                     _ => None,
                 };
                 let want_gz = body.len() >= GZIP_MIN && compressible(ctype) && accepts_gzip(&req);
+                // Validator for the embedded constants only. Per-request bodies
+                // (gz_key None: /fleet's uplink, /wifi/scan's networks) get none —
+                // keying those by path is how a cache serves last week's Wi-Fi list.
+                let etag = gz_key.as_ref().map(|k| const_etag(k, body.as_bytes(), want_gz));
+                let if_none = header_value(&req, "if-none-match").map(|s| s.to_string());
                 drop(req);
+                if let (Some(tag), Some(want)) = (&etag, &if_none) {
+                    if want.split(',').any(|c| c.trim() == tag.as_str()) {
+                        let r = format!(
+                            "HTTP/1.1 304 Not Modified\r\nETag: {tag}\r\nCache-Control: no-cache\r\n\
+                             {}{cors}{}\r\n",
+                            vary(ctype),
+                            conn_hdr(keep),
+                        )
+                        .into_bytes();
+                        if sock.write_all(&r).await.is_err() || !keep {
+                            return;
+                        }
+                        continue;
+                    }
+                }
                 let (body, gzipped) =
                     if want_gz { gzip_body(gz_key, body.into_bytes()).await } else { (body.into_bytes(), false) };
                 let enc = if gzipped { "Content-Encoding: gzip\r\n" } else { "" };
+                let etag_hdr = etag
+                    .as_ref()
+                    .map(|t| format!("ETag: {t}\r\nCache-Control: no-cache\r\n"))
+                    .unwrap_or_default();
                 let vary = vary(ctype);
                 let mut resp = format!(
                     "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nContent-Length: {}\r\n\
-                     {location}{cors}{frame}{vary}{enc}{}\r\n",
+                     {location}{cors}{frame}{vary}{enc}{etag_hdr}{}\r\n",
                     body.len(),
                     conn_hdr(keep),
                 )

@@ -2,5 +2,6 @@
   "timestamp": 1738171200.125,
   "left_motor": 180,
   "right_motor": 180,
-  "duration_ms": 250
+  "duration_ms": 250,
+  "target": "rover-b79c"
 }

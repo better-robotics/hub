@@ -21,7 +21,16 @@ CON=hub-ap
 
 # Captive-capture NAT: steer AP clients' DNS (53) and plain HTTP (80) to the
 # hub itself, so the OS captive-portal popup lands on the dashboard no matter
-# how the client resolves names. The dnsmasq hostname overrides
+# how the client resolves names.
+#
+# MIRRORED DESIGN — this nft table and the ESP32's src/captive_nat.c are one
+# captive policy in two languages (better-robotics/robot; its banner points
+# back here). Keep them in step: the capture set (DNS 53 + HTTP 80, never 443),
+# the `acked` bypass, and the 90 s presence-reaper grace (hubd.rs reap_acks /
+# robot's captive_reap_absent) are mirrored VALUES. Change one, change the
+# other, or they drift apart on the two hub kinds a classroom might run.
+#
+# The dnsmasq hostname overrides
 # (30-ap-captive-probes.conf) are the polite fast path, but they only work for
 # clients that use the network's DNS — measured 2026-07-13: a Mac with Wi-Fi
 # DNS pinned to 8.8.8.8 bypassed them entirely, resolved captive.apple.com to

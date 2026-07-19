@@ -199,3 +199,81 @@ needs it: esp-mqtt authenticates with **username/password** natively, the
 capability `zenoh-pico` lacked (`robot/CLAUDE.md` usrpwd scar) — without it,
 even the single `instructor` credential would have been unenforceable at the
 ESP32 hub.
+
+## Captive onboarding — the greeting flow (both hubs)
+
+**This section is the single spec both hubs reconcile to.** It is implemented
+twice — the Pi in `pi/src/bin/hubd.rs` + `pi/deploy/hub-ap-setup.sh` (nftables),
+the ESP32 hub role in `robot/src/{wifi_portal,dns_server,captive_nat}.c`.
+The two share no code (a Linux HTTP server + packet filter vs an ESP-IDF httpd
+on a microcontroller), so this table is what keeps them from drifting: a change
+lands here first, then in both. It is *values*, not a library — reconcile by
+review against this list, not by copying a binary.
+
+When any device joins a hub's own `hub-XXXX` Wi-Fi, its OS immediately fetches a
+fixed connectivity-probe URL. The hub answers that probe to drive the OS's own
+captive sheet: **not yet greeted → 302 to `/welcome`** (which opens the sheet on
+the greeting page, never the dashboard); **greeted (tapped Accept) → each OS's
+exact genuine-success signature**, the only thing that makes the OS dismiss its
+sheet. Greeting is **per device and uplink-independent** — a hub with a live
+internet uplink still greets a joining device, because the sheet is how a phone
+without the dashboard bookmark first reaches it. The design floor:
+
+- **Never intercept 443/TLS.** Only plain-HTTP port 80 + DNS (port 53) are
+  steered to the hub. A probe over HTTPS is left alone — MITM of a
+  publicly-trusted name is neither possible nor wanted; the OSes that force the
+  API-over-HTTPS path (below) just fall back to their legacy plain-HTTP probe.
+- **Answer all DNS with a short TTL** (5 s) so a released device re-resolves
+  promptly instead of caching the hijack.
+- **Absent-grace = 90 s.** A greeted device that leaves the AP for longer than
+  this loses its greeted state, so its next join is greeted fresh (a reused seat
+  in the next class is a new student). Both hubs pin the same 90 s.
+- **Uplink self-probe:** `GET http://connectivitycheck.gstatic.com/generate_204`
+  — `204` → clean uplink, any other answer → a venue portal is walling it, no
+  answer → no uplink. IPv4-only (a broken venue IPv6 would otherwise eat the
+  whole timeout).
+
+**The genuine-success table** — what a *greeted* device's probe must receive,
+byte-for-byte, per OS. A mismatch on any row leaves that OS's sheet stuck open:
+
+| Probe path | OS | Greeted response |
+|---|---|---|
+| `/generate_204` | Android / Chrome | `204 No Content`, empty body |
+| `/hotspot-detect.html` | Apple | `200`, `text/html`, body `<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>` |
+| `/connecttest.txt` | Windows | `200`, `text/plain`, body `Microsoft Connect Test` |
+| `/ncsi.txt` | Windows (NCSI) | `200`, `text/plain`, body `Microsoft NCSI` |
+| `/success.txt` | Firefox (`detectportal`) | `200`, `text/plain`, body `success\n` (lowercase, trailing newline — exact) |
+
+Each of these paths must be an *explicit* handler on both hubs — a path that
+falls through to the catch-all is answered without the greeted check and bounces
+a released device back to `/welcome`. The legacy Apple path
+`/library/test/success.html` (pre-2015 macOS) is best-effort: the Pi serves it,
+the ESP32 leaves it to the catch-all.
+
+A probe path *not* in this table, arriving for a public (non-hub) Host, is still
+somebody's probe: greeted → quiet `204`, not-yet-greeted → `302 /welcome`. A
+request addressed to the hub *by name* (its IP, `hub.local`, a bare label) keeps
+an honest `404` — a typo'd dashboard URL should fail loudly, not bounce home.
+
+**One design, two release layers** (the reason the table is consumed
+differently on each hub, and must not be assumed identical in mechanism):
+
+- **Pi — packet-layer release.** `hub-ap-setup.sh`'s `hub-captive` nftables
+  table DNATs ports 53 + 80 of *not-yet-greeted* AP clients to the hub; hubd's
+  Accept adds the client IP to the `acked` set, which bypasses the DNAT, so a
+  greeted device's probes flow to the *real* net. hubd's own genuine-success
+  arms are the offline-hub fallback for that case.
+- **ESP32 — app-layer release.** `dns_server.c` keeps answering the probe names
+  with the hub's own IP even for greeted clients, so the probe always reaches
+  the hub; `wifi_portal.c` serves the table above (or the 302) based on
+  `captive_accepted()`. `captive_nat.c` only decides packet capture for
+  not-yet-greeted clients.
+
+**Captive Portal API (RFC 8908) over DHCP option 114 (RFC 8910):** both hubs
+advertise a `/captive`-style JSON endpoint. Apple **requires** that endpoint over
+a publicly-trusted HTTPS cert and ignores a plain-HTTP option-114 URI
+(confirmed empirically 2026-07-19), so it is a progressive-enhancement layer for
+Android/Windows on top of the legacy probe table above — never a replacement for
+it. All probe and API responses carry `Cache-Control: no-store`: a cached "still
+captive" would strand a released device, a cached "success" would skip greeting
+a fresh one.

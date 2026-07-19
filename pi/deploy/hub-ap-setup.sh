@@ -24,11 +24,12 @@ CON=hub-ap
 # how the client resolves names.
 #
 # MIRRORED DESIGN — this nft table and the ESP32's src/captive_nat.c are one
-# captive policy in two languages (better-robotics/robot; its banner points
-# back here). Keep them in step: the capture set (DNS 53 + HTTP 80, never 443),
-# the `acked` bypass, and the 90 s presence-reaper grace (hubd.rs reap_acks /
-# robot's captive_reap_absent) are mirrored VALUES. Change one, change the
-# other, or they drift apart on the two hub kinds a classroom might run.
+# captive policy in two languages (better-robotics/robot). The single spec both
+# reconcile to is the monorepo's CONTRACT.md § Captive onboarding: the capture
+# set (DNS 53 + HTTP 80, never 443), the `acked` bypass, the 90 s presence-reaper
+# grace (hubd.rs reap_acks / robot's captive_reap_absent), and the genuine-success
+# table are VALUES defined there. Change the spec first, then both hubs — or they
+# drift apart on the two hub kinds a classroom might run.
 #
 # The dnsmasq hostname overrides
 # (30-ap-captive-probes.conf) are the polite fast path, but they only work for

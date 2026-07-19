@@ -985,7 +985,10 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                     // An acked device's probes get the exact "network is clean"
                     // answer each OS expects — that's what flips the sheet's
                     // Cancel into Done and lets it close. Only ever per-device,
-                    // post-Accept (see ACKED above).
+                    // post-Accept (see ACKED above). The bodies below are the
+                    // genuine-success table in ../../../CONTRACT.md § Captive
+                    // onboarding — the single spec both hubs reconcile to; keep
+                    // every row byte-identical to it and to robot's wifi_portal.c.
                     ("GET", "/hotspot-detect.html") | ("GET", "/library/test/success.html")
                         if acked =>
                     {
@@ -1001,9 +1004,17 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                     ("GET", "/ncsi.txt") if acked => {
                         ("200 OK", "text/plain", "Microsoft NCSI".into())
                     }
+                    // Firefox's detectportal checks for this EXACT body (lowercase,
+                    // trailing newline). Without this arm an acked Firefox on an
+                    // offline hub falls to the foreign-host 204 below, which it
+                    // reads as still-captive. (Reconciled to the ESP 2026-07-19.)
+                    ("GET", "/success.txt") if acked => {
+                        ("200 OK", "text/plain", "success\n".into())
+                    }
                     ("GET", "/hotspot-detect.html") | ("GET", "/library/test/success.html")
                     | ("GET", "/generate_204")
-                    | ("GET", "/connecttest.txt") | ("GET", "/ncsi.txt") => {
+                    | ("GET", "/connecttest.txt") | ("GET", "/ncsi.txt")
+                    | ("GET", "/success.txt") => {
                         ("302 Found", "text/plain", String::new())
                     }
                     // Any other GET that arrives asking for a FOREIGN host can

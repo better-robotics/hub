@@ -1137,6 +1137,35 @@ async fn serve_http(uplink: Uplink, addr: String, locator: String, ssid: String)
 
 #[tokio::main]
 async fn main() {
+    // hubd takes NO CLI arguments — it is configured entirely by env (HUB_HTTP,
+    // HUB_MQTT_ADDR, HUB_IDE_DIR). Handle --version/--help and REJECT anything
+    // else rather than ignoring it: an ignored unknown arg is why a `hubd
+    // --version` probe silently booted a SECOND instance beside systemd's,
+    // squatting :8000 with a stale binary (twice on 2026-07-19). A binary that
+    // starts serving on a typo is a footgun; fail loudly instead.
+    if let Some(arg) = std::env::args().nth(1) {
+        match arg.as_str() {
+            "--version" | "-V" => {
+                println!("hubd {}", env!("HUBD_VERSION"));
+                return;
+            }
+            "--help" | "-h" => {
+                println!(concat!(
+                    "hubd — the classroom hub HTTP chassis (dashboard, /fleet, device-served Wi-Fi setup).\n",
+                    "Takes no arguments; configured by env:\n",
+                    "  HUB_HTTP        listen address (default 0.0.0.0:8000; the appliance unit sets :80)\n",
+                    "  HUB_MQTT_ADDR   broker address to advertise to clients (default 0.0.0.0:1883)\n",
+                    "  HUB_IDE_DIR     IDE bundle directory (default /usr/share/hub/ide)"));
+                return;
+            }
+            other => {
+                eprintln!("hubd: unexpected argument {other:?} — hubd takes no arguments \
+                           (configured by env). Try --help.");
+                std::process::exit(2);
+            }
+        }
+    }
+
     let http = std::env::var("HUB_HTTP").unwrap_or_else(|_| "0.0.0.0:8000".to_string());
     // Not bound by hubd — this is Mosquitto's own listener address (see
     // mosquitto.example.conf), reported here purely so the dashboard and the

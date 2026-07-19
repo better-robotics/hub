@@ -1,0 +1,31 @@
+name: captive contract
+
+# hubd's captive genuine-success arms must stay byte-matched to
+# CONTRACT.md § Captive onboarding — the single spec both hubs reconcile to.
+# Guards the drift that shipped 2026-07-19 (hubd missing the Firefox /success.txt
+# arm the ESP had): invisible to review, every other arm present and correct.
+# The ESP twin is guarded in better-robotics/robot (tools/check-captive-probes.py,
+# which also catches ESP-IDF's dead-unregistered-handler class this hub can't have).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'pi/src/bin/hubd.rs'
+      - 'CONTRACT.md'
+      - 'pi/tools/check-captive-probes.py'
+      - '.github/workflows/captive-contract.yml'
+  pull_request:
+    paths:
+      - 'pi/src/bin/hubd.rs'
+      - 'CONTRACT.md'
+      - 'pi/tools/check-captive-probes.py'
+      - '.github/workflows/captive-contract.yml'
+  workflow_dispatch:
+
+jobs:
+  captive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: hubd's captive arms match CONTRACT.md § Captive onboarding
+        run: python3 pi/tools/check-captive-probes.py

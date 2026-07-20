@@ -19,7 +19,12 @@ one implementation.
   generates renders live beneath it (Monaco is that read-only preview, not the
   authoring surface), running as WASM in the tab. `ide` is a browser-only
   client of this monorepo's own MQTT/WS contract — no firmware or hubd changes
-  needed when it updates.
+  needed when it updates. The ESP32 hub serves the same editor at its own
+  `/ide/` since 2026-07-20 — not the bundle (619 KB never fit beside A/B OTA)
+  but `ide`'s ~2 KB loader shell, which pulls the app from `ide`'s GitHub
+  Pages at runtime under the board's `http://` origin (where `ws://` stays
+  legal — the mixed-content thread the shell exists to needle); online-only
+  by design, and the Pi stays the offline-complete tier.
 
 The Pi build-embeds the top-level `dashboard.html`
 (`include_str!("../../../dashboard.html")`) and speaks the `envelopes/` contract.

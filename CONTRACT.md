@@ -44,6 +44,13 @@ on the rover side) is an open thread in the hub state tracker (#4).
 Language bindings (which mirror these envelopes): Rust in `pi/src/lib.rs`; the
 ESP32 firmware hardcodes the same topics in C.
 
+**Body frame (pwm):** `left_motor` / `right_motor` are the robot's **own** left
+and right — stand behind the robot, face the way it drives forward (REP 103's
+body frame: x forward, y left). Positive = that wheel rolls forward. Every
+client (joystick, tilt, LLM bridge, student code) and every firmware pin map
+speaks this frame; a rover that mirrors its turns is wired against it (see the
+robot repo's wiring convention), not a reason to flip signs in a client.
+
 ### Addressing one board when several share an identity
 
 Identity lives in the topic — but several boards can legitimately answer to one

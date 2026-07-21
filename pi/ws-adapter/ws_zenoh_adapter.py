@@ -20,14 +20,22 @@ Config via env:
   WS_PORT         9001
   INSTRUCTOR_PASS the one gated identity (default "change-me")
 """
-import asyncio, json, os
+import asyncio, json, os, sys
 import zenoh
 import websockets
 
 WS_PORT = int(os.environ.get("WS_PORT", "9001"))
 ZENOH_CONNECT = os.environ.get("ZENOH_CONNECT", "")
 ZENOH_LISTEN = os.environ.get("ZENOH_LISTEN", "")
-INSTRUCTOR_PASS = os.environ.get("INSTRUCTOR_PASS", "change-me")
+# The one gated identity — its only power is engaging/clearing fleet/estop
+# (pi/CLAUDE.md § Permissions: everything under robots/** is open by design, the
+# Wi-Fi perimeter is the boundary). A silent default would make that gate
+# meaningless, so an unset password is a loud startup warning, never a quiet
+# fallback — a deploy that skips it fails visibly, not open. (Mirrors the ESP
+# hub's compile-time default + the Pi's install.sh hub-passwd placeholder: a
+# placeholder to rotate, announced as one.)
+_INSTRUCTOR_PASS_ENV = os.environ.get("INSTRUCTOR_PASS", "")
+INSTRUCTOR_PASS = _INSTRUCTOR_PASS_ENV or "change-me"
 
 clients = []             # each: {"ws","subs":set,"authed":bool,"queue":asyncio.Queue}
 estop_latched = False
@@ -135,6 +143,11 @@ async def ws_handler(ws):
 
 async def main():
     global loop, session
+    if not _INSTRUCTOR_PASS_ENV:
+        print("[ws-adapter] WARNING: INSTRUCTOR_PASS is unset — using the well-known "
+              "default 'change-me'. The e-stop instructor gate is meaningless with a "
+              "public default; set INSTRUCTOR_PASS to your classroom code before any "
+              "real deployment.", file=sys.stderr, flush=True)
     loop = asyncio.get_running_loop()
     session = zenoh.open(build_config())
     session.declare_subscriber("**", on_sample)

@@ -34,6 +34,20 @@ its own listen endpoint. The dashboard connects to `ws://<host>:9001` — the sa
 `wsPort` convention the MQTT WS bridge used, so `dashboard.html` reaches this
 unchanged.
 
+## Authorization (deliberate: the Wi-Fi perimeter is the boundary)
+
+The adapter reproduces the hub's Mosquitto ACL exactly (`pi/CLAUDE.md` §
+Permissions; `../../CONTRACT.md` § Discovery & isolation): **everything under
+`robots/**` and `pair/**` is open** to any client, authenticated or not — a
+robot's name is a topic address, not a credential, so a per-topic gate would
+protect nothing the hub's own Wi-Fi doesn't already. The **one** gated action is
+engaging/clearing `fleet/estop`, which requires `{op:auth}` with the instructor
+code — deliberate friction so a stray tap can't halt or release the room. This is
+the same posture as the ESP hub (`ws_zenoh_bridge.c`) and the broker it replaces;
+gating `cmd/*` here would diverge from the contract, not harden it. `INSTRUCTOR_PASS`
+is a placeholder to rotate at deploy — an unset value warns loudly on startup
+rather than silently admitting the public default.
+
 ## Validated (2026-07-21)
 
 Browser-tested end-to-end against a real `dashboard.html` (the `zenohTransport`

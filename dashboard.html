@@ -2777,9 +2777,71 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     // it back. The ESP32 hub bridges at most a handful of WS-MQTT sessions —
     // a page that holds two would fill it alone (bench 2026-07-13: instructor
     // sign-in stalled with "No answer from the hub" on a fresh laptop).
+    // ── Zenoh transport (WS-JSON adapter) — a drop-in for mqtt.js ─────────────
+    // The browser can't speak native Zenoh, so it speaks the hub's small WS-JSON
+    // op protocol over one WebSocket and gets back an mqtt.js-shaped client:
+    // .on / .subscribe / .publish / .end / .connected, message payloads as JSON
+    // strings. UI and envelopes are unchanged — only the transport swaps.
+    //   Topic wildcards map to key-exprs: mqtt + -> zenoh * , mqtt # -> zenoh ** .
+    //   The retained fleet/estop latch (delivered on subscribe under MQTT) is a
+    //   get-on-subscribe here — the hub owns the latch and answers the query.
+    //   mqtt.connect(url,{username,password}) -> WS open then {op:auth}; "connect"
+    //   fires on {op:auth,ok:true}, "error" on ok:false (an anonymous client
+    //   connects on WS-open with no auth).
+    function mqttToZenoh(t) {
+      return t.split("/").map(s => s === "+" ? "*" : s === "#" ? "**" : s).join("/");
+    }
+    function zenohConnect(url, opts) {
+      const handlers = {}, pendingGets = {};
+      let ws, gseq = 0;
+      const needAuth = !!(opts && opts.username);
+      const client = {
+        connected: false,
+        on(ev, cb) { (handlers[ev] = handlers[ev] || []).push(cb); return client; },
+        _emit(ev, ...a) { (handlers[ev] || []).forEach(cb => { try { cb(...a); } catch (e) { console.error(e); } }); },
+        _send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); },
+        subscribe(topic) {
+          const key = mqttToZenoh(topic);
+          client._send({ op: "sub", key });
+          if (key === "fleet/estop") {            // retained-latch emulation: fetch current state
+            const id = "g" + (gseq++); pendingGets[id] = key;
+            client._send({ op: "get", id, key });
+          }
+        },
+        publish(topic, payload) {
+          let val; try { val = JSON.parse(payload); } catch { val = payload; }
+          client._send({ op: "pub", key: mqttToZenoh(topic), val });
+        },
+        end() { try { ws && ws.close(); } catch {} },
+      };
+      try { ws = new WebSocket(url); }
+      catch (e) { setTimeout(() => client._emit("error", e), 0); return client; }
+      ws.onopen = () => {
+        if (needAuth) client._send({ op: "auth", role: opts.username, password: opts.password });
+        else { client.connected = true; client._emit("connect"); }
+      };
+      ws.onmessage = (e) => {
+        let d; try { d = JSON.parse(e.data); } catch { return; }
+        if (d.op === "auth") {
+          if (d.ok) { client.connected = true; client._emit("connect"); }
+          else client._emit("error", new Error("auth rejected"));
+        } else if (d.op === "reply") {
+          const key = pendingGets[d.id]; delete pendingGets[d.id];
+          if (key !== undefined) client._emit("message", key, JSON.stringify(d.val));
+        } else if (d.op === "error") {
+          /* adapter-side refusal (e.g. estop without auth) — non-fatal, log-only */
+        } else if (d.key !== undefined) {
+          client._emit("message", d.key, JSON.stringify(d.val));
+        }
+      };
+      ws.onerror = () => client._emit("error", new Error("ws error"));
+      ws.onclose = () => { client.connected = false; client._emit("close"); };
+      return client;
+    }
+
     function startPublicClient() {
       if (publicClient || !hubHost) return;
-      publicClient = mqtt.connect(`ws://${hubHost}:${wsPort}`);
+      publicClient = zenohConnect(`ws://${hubHost}:${wsPort}`);
       publicClient.on("connect", () => {
         hostGate.style.display = "none"; // real confirmation: this host actually works
         publicClient.subscribe("robots/+/sys");
@@ -4142,7 +4204,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // briefly costs two — a full-but-working classroom would refuse the
       // instructor. Every failure path below restores the anonymous feed.
       stopPublicClient();
-      const client = mqtt.connect(`ws://${hubHost}:${wsPort}`, { username, password });
+      const client = zenohConnect(`ws://${hubHost}:${wsPort}`, { username, password });
       driveClient = client;
       // mqtt.js retries an unreachable host forever without ever emitting
       // "error" — surface that case ourselves instead of spinning silently.

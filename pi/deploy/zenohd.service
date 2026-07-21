@@ -1,0 +1,32 @@
+# zenohd — the Zenoh router for the classroom hub (MQTT->Zenoh migration, see
+# ../../zenoh-migration.md and better-robotics/hub#9). Runs beside Mosquitto
+# during the migration; NOT yet installed by deploy/install.sh (staged for the
+# cutover). hubd/Mosquitto keep serving until the transport actually flips.
+#
+# Deploy (validated on a real Pi 4, Debian Bookworm, 2026-07-21):
+#   1. Fetch the GLIBC build — NOT musl; Raspberry Pi OS is glibc, and the musl
+#      standalone is dynamically linked against a musl loader the Pi lacks:
+#        zenoh-<ver>-aarch64-unknown-linux-gnu-standalone.zip
+#        (github.com/eclipse-zenoh/zenoh/releases)
+#   2. Install to /opt/hub/zenoh/:  zenohd, libzenoh_plugin_storage_manager.so,
+#      and the router config (see ../zenoh-router.example.json5, deployed with an
+#      explicit plugins_loading.search_dirs = ["/opt/hub/zenoh"]).
+#   3. install this unit to /etc/systemd/system/, then:
+#        sudo systemctl daemon-reload && sudo systemctl enable --now zenohd
+#   4. verify:  ss -ltn | grep 7447  (listener up), and a Zenoh get on
+#      fleet/estop returns the current latch (the storage answers late joiners).
+[Unit]
+Description=zenohd — Zenoh router for the classroom hub (broker side of the MQTT->Zenoh migration)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/hub/zenoh
+ExecStart=/opt/hub/zenoh/zenohd -c /opt/hub/zenoh/zenoh-router.json5
+Restart=always
+RestartSec=2
+User=root
+
+[Install]
+WantedBy=multi-user.target

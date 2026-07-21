@@ -1,0 +1,33 @@
+// Zenoh router config for the Pi hub — the MQTT->Zenoh migration's backbone.
+// See zenoh-migration.md and better-robotics/hub#9. Staged for the cutover, not
+// yet baked into the image (deploy/install.sh installs Mosquitto until then).
+//
+// Run:  zenohd -c zenoh-router.example.json5
+// The storage_manager plugin ships in the official zenoh standalone release
+// (the aarch64-unknown-linux-musl asset matches the Pi's static-musl target).
+{
+  mode: "router",
+
+  // Rovers, the dashboard's WS-JSON adapter, and the MCP bridge all connect
+  // here. 0.0.0.0 so every client on the hub AP reaches it via the DHCP gateway
+  // (CONTRACT.md discovery: tcp/<gateway>:7447). 7447 is Zenoh's default port.
+  listen: { endpoints: ["tcp/0.0.0.0:7447"] },
+
+  plugins: {
+    storage_manager: {
+      storages: {
+        // The fleet/estop latch. A memory (volatile) storage keeps the last
+        // value and answers a rebooting rover's join-time query — the
+        // retained-message equivalent, with no broker. Volatile = in-memory, so
+        // a router restart forgets the latch (= the intended room reset,
+        // CONTRACT.md § Fleet e-stop). The rover declares its fleet/estop
+        // subscriber, then get()s current state on join; this storage answers.
+        estop: { key_expr: "fleet/estop", volume: "memory" },
+      },
+    },
+  },
+
+  // The storage_manager plugin (libzenoh_plugin_storage_manager) must be on the
+  // plugin search path — installed beside zenohd, or add:
+  //   plugins_loading: { enabled: true, search_dirs: ["/usr/lib/zenoh"] },
+}

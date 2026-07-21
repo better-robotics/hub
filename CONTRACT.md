@@ -18,31 +18,41 @@ file when a device first publishes it):
   on-ramp (`cmd_vel`/`odom` are its native boundary). `pwm` stays: it is the
   mission-one manual-drive channel, not a deprecation target.
 
-Classroom *scoping*
-is not a protocol channel but the broker's ACL identity model
-(`pi/mosquitto-acl.example.conf`). The Zenoh
-column below is the evaluation baseline (`better-robotics/hub-zenoh`), kept for
-comparison.
+Classroom *scoping* is not a protocol channel but the isolation model
+(§ Discovery & isolation): the Wi-Fi perimeter is the boundary, the **operator**
+is the one gated identity (application-layer, § Fleet e-stop), and a student may
+*claim* a robot for opt-in exclusivity.
 
-Identity lives in the topic (`robots/<id>/<channel>`), never the body. The
-`rpc_set_led.json` envelope carries no `topic` field on the request side —
-the MQTT5 request/response properties (response-topic + correlation-data)
-carry that instead, keeping identity-in-the-key. Topic scheme settled
-2026-07-08 (see `mosquitto-acl.example.conf`): request on `robots/<id>/led`,
-response on the fixed `robots/<id>/led/reply` — a stable pattern rather than a
-fully dynamic response-topic, so the broker ACL can scope it. Wiring the
-MQTT5 properties themselves (esp-mqtt's `esp_mqtt5_publish_property_config`
-on the robot side) is an open thread in the hub state tracker (#4).
+Identity lives in the key (`robots/<id>/<channel>`), never the body. The
+`rpc_set_led.json` envelope carries no `topic` field on the request side: the
+robot declares a **Zenoh queryable** on `robots/<id>/led`, a client `get`s that
+key carrying the request payload, and the reply rides back as the query's reply
+sample (`rpc_set_led.response_ok` / `response_err`). Query/reply pairs the
+request to its answer as a first-class primitive — no reply key, no
+correlation-data — and the address stays in the key. This is the pattern the
+whole contract reuses for request/response; `fleet/estop`'s current-state read
+rides the same primitive.
 
-| Message | File | Direction | MQTT (both hubs) | Zenoh (baseline) | BLE (workbench) |
-|---------|------|-----------|--------------------------|------------------|-----------------|
-| IMU sample | `envelopes/imu.json` | robot → device | pub/sub `robots/<id>/imu` | pub/sub `robots/<id>/imu` | — (no IMU in those kits) |
-| PWM drive | `envelopes/pwm.json` | device → robot | pub/sub `robots/<id>/pwm` | pub/sub `robots/<id>/pwm` | MOTOR char write |
-| set_led (req/resp) | `envelopes/rpc_set_led.json` | device ↔ robot | `robots/<id>/led` req, `robots/<id>/led/reply` resp (MQTT5 correlation-data) | queryable `robots/<id>/led` | LED char (on/off) + RGB char (r,g,b); no reply |
-| Fleet e-stop | `envelopes/estop.json` | device → robot (fleet-wide) | pub/sub `fleet/estop`, **retained** | — | — |
+| Message | File | Direction | Zenoh key expression (carrier) | BLE (workbench) |
+|---------|------|-----------|--------------------------------|-----------------|
+| IMU sample | `envelopes/imu.json` | robot → device | pub/sub `robots/<id>/imu` | — (no IMU in those kits) |
+| PWM drive | `envelopes/pwm.json` | device → robot | pub/sub `robots/<id>/pwm` | MOTOR char write |
+| set_led (req/resp) | `envelopes/rpc_set_led.json` | device ↔ robot | **queryable** `robots/<id>/led` (`get` request → reply sample) | LED char (on/off) + RGB char (r,g,b); no reply |
+| Fleet e-stop | `envelopes/estop.json` | device → robot (fleet-wide) | **queryable latch** `fleet/estop` + live pub/sub | — |
+
+Key expressions are `/`-separated hierarchical keys; wildcards are Zenoh's —
+`*` matches one level, `**` matches many (`pair/**`, `robots/<id>/cmd/**`).
 
 Language bindings (which mirror these envelopes): Rust in `pi/src/lib.rs`; the
-ESP32 firmware hardcodes the same topics in C.
+ESP32 firmware hardcodes the same keys in C.
+
+**The browser edge is bridged.** A browser can't speak native Zenoh, so
+`dashboard.html` talks a small **WS-JSON adapter protocol** (`sub`/`pub`/`get`/
+`auth` ops) over one WebSocket to the hub, which maps it onto its local Zenoh
+session — the Pi's `pi/ws-adapter/` process beside `zenohd`, the ESP hub's
+`ws_zenoh_bridge.c`. Same protocol both tiers, so one dashboard serves both. The
+keys and envelopes above are unchanged across the bridge — a key is still an
+address and a message is still an envelope.
 
 **Body frame (pwm):** `left_motor` / `right_motor` are the robot's **own** left
 and right — stand behind the robot, face the way it drives forward (REP 103's
@@ -114,73 +124,115 @@ planner gets one capped pulse per decision; a dropped session coasts to a
 stop. (The openpilot-panda layering: safety under the intelligent layer,
 never inside it. Enforcement: `robot/src/robot_role.c` `motor_apply`.)
 
-### Fleet e-stop — the retained latch above the per-command floor
+### Fleet e-stop — the hub-owned latch above the per-command floor
 
 The self-expiry above makes every *individual* command safe; `fleet/estop`
 is the room-wide latch on top of it, for the moment the operator needs
 everything stopped and **staying** stopped:
 
-- **Topic `fleet/estop`, published retained** (`envelopes/estop.json`;
-  `engaged` is the only field the firmware reads — `by`/`reason` are for
-  humans on dashboards). Retained is the load-bearing property: a robot that
-  reconnects mid-emergency receives the latch on subscribe, so a reboot or
-  Wi-Fi blip cannot walk a robot out of an engaged stop.
+- **The hub owns the latch** (`envelopes/estop.json`; `engaged` is the only
+  field the firmware reads — `by`/`reason` are for humans on dashboards). The
+  hub **publishes** transitions on `fleet/estop` for live subscribers and
+  **answers a query** on `fleet/estop` with the current state. A robot on
+  boot/reconnect **declares its subscriber first, then `get`s** the current
+  latch before it accepts any drive, then follows live updates — closing the
+  race window, so a reboot or Wi-Fi blip cannot walk a robot out of an engaged
+  stop.
 - **Latch semantics** (firmware, `robot_role.c` `estop_apply`): engaged →
   motors stop now and every non-zero `pwm` is refused until a clear arrives.
   Zero drive (stop) is always honored, engaged or not. The robot reports the
   latch as `"estop":true` in its `sys` beacon while engaged (absent = clear),
   so a fleet view can verify each robot actually heard it.
-- **Clear** = retained `{"engaged": false}`. An *empty* retained publish (the
-  MQTT idiom for deleting retained state) also reads as clear; any other
-  unparseable payload on this topic reads as **engaged** — parse failure
-  fails toward stopped.
-- The latch is broker-state, not robot-state: a broker restart forgets an
-  engaged e-stop (retained store is in-memory on the ESP32 hub). That is the
-  intended shape — a hub power-cycle is a room reset, and every drive is
-  still individually bounded by the self-expiry floor either way.
+- **Clear** = a `{"engaged": false}` latch; any other unparseable payload on
+  this key reads as **engaged** — parse failure fails toward stopped.
+- The latch is hub-state, not robot-state, held one abstraction two ways: a
+  `zenohd` **storage** (`zenoh-plugin-storage-manager`) on the Pi, an
+  **application-level queryable** on the ESP hub (the same primitive `set_led`
+  uses — no unstable advanced-publication feature). A hub restart forgets an
+  engaged e-stop. That is the intended shape — a hub power-cycle is a room
+  reset, and every drive is still individually bounded by the self-expiry floor
+  either way.
 
 Scoping: **read for everyone, write for the operator.** Anonymous included —
-the read-only fleet view must show the engaged banner. On the Pi this is ACL
-(`pi/mosquitto-acl.example.conf`); the ESP32 hub has no per-topic ACL, so
-there write-restraint is convention, like the rest of its scoping.
+the read-only fleet view must show the engaged banner. Engage/clear is gated on
+the operator at the **application layer** — the Pi's WS adapter and the ESP hub's
+`ws_zenoh_bridge.c` accept an `fleet/estop` state-change only after an operator
+`{op:auth}`, since zenoh-pico has no session auth to lean on (§ Discovery &
+isolation).
 
 ## Discovery & isolation — how a client reaches *either* hub
 
-The robot (`better-robotics/robot`) is a raw-TCP MQTT client, so the two hosts
-(the Pi hub, and the ESP32 hub role) are **the same broker to it** — same `:1883`, same topics,
-same auth. One firmware runs against both. The only host-specific concern is
-*finding* the broker, and it resolves to two host-agnostic rules:
+The robot (`better-robotics/robot`) connects to the hub's Zenoh endpoint, so the
+two hosts (the Pi hub, and the ESP32 hub role) are **the same hub to it** — same
+`:7447`, same keys, same session. One firmware runs against both. The only
+host-specific concern is *finding* the hub, and it resolves to two host-agnostic
+rules:
 
 - **Discovery = the DHCP gateway.** On any hub AP the gateway *is* the hub, which
-  runs the broker → connect to **`<gateway>:1883`**. `hub.local` (mDNS, both hubs
-  set hostname `hub`) is the named fallback. **Never a hardcoded IP** — the Pi AP
-  defaults to `10.42.0.1` (NetworkManager `shared`), the ESP32 SoftAP to
-  `192.168.4.1` (ESP-IDF default); both are overridable, but gateway-discovery
-  makes the value irrelevant, so we don't pin it (and `10.0.0.x` specifically
-  would risk colliding with the STA uplink's subnet).
+  runs the Zenoh endpoint → connect to **`tcp/<gateway>:7447`** (Zenoh's default
+  port). `hub.local` (mDNS, both hubs set hostname `hub`) is the named fallback.
+  **Never a hardcoded IP** — the Pi AP defaults to `10.42.0.1` (NetworkManager
+  `shared`), the ESP32 SoftAP to `192.168.4.1` (ESP-IDF default); both are
+  overridable, but gateway-discovery makes the value irrelevant, so we don't pin
+  it (and `10.0.0.x` specifically would risk colliding with the STA uplink's
+  subnet).
 - **SSID = `hub-<suffix>`** (suffix from the AP MAC, e.g. `hub-a3f2`). The robot
   scan-joins the strongest open `hub-*`. Single-hub rooms need zero Wi-Fi
   provisioning; multi-hub rooms bind a robot's suffix via BLE Improv.
 
+The topology is a **star**: robots and the dashboard all talk to/through the hub,
+no robot↔robot traffic — the Pi runs full `zenohd` (a listen endpoint), the ESP
+hub runs `zenoh-pico` with a TCP listen endpoint. The hub is the origin for
+downlink (`pwm`, `estop`, `cmd/*`) and the sink for uplink (`imu`, `sys`), so
+zenoh-pico's non-forwarding peer mode is never a limit here.
+
 **No isolation unit — the Wi-Fi perimeter is the isolation** (confirmed
-2026-07-13). A robot's name (`robots/<id>/…`) is a topic address, not a
-credential: the hub's own Wi-Fi is the classroom's real boundary, so the
-whole ACL (`pi/mosquitto-acl.example.conf`) is three top-level rules plus one
-user block:
+2026-07-13). A robot's name (`robots/<id>/…`) is a key address, not a
+credential: the hub's own Wi-Fi is the classroom's real boundary, so the floor
+is open read+write for everyone:
 
 | identity | scope | why |
 |----------|-------|-----|
-| anonymous — any robot or browser, authenticated or not | `robots/#` rw, `pair/#` rw, `fleet/estop` read | nothing durable is protected by gating drive/read access once the Wi-Fi perimeter is the real boundary — the per-identity password/rotate/pairing machinery this replaced never stopped a determined student from reading a credential off a card, it just made every fresh board a manual provisioning step |
-| `operator` | + `fleet/estop` rw | the one thing the open ACL can't hand out for free: engaging/clearing the room-wide e-stop needs a real credential so a stray keypress can't halt or release the room (§ Fleet e-stop) |
+| everyone — any robot or browser, authenticated or not | `robots/**` rw, `pair/**` rw, `fleet/estop` read | nothing durable is protected by gating drive/read access once the Wi-Fi perimeter is the real boundary — the per-identity password/rotate/pairing machinery this replaced never stopped a determined student from reading a credential off a card, it just made every fresh board a manual provisioning step |
+| `operator` | + `fleet/estop` write (engage/clear) | the one thing the open floor can't hand out for free: halting or releasing the room needs a real credential so a stray keypress can't do it (§ Fleet e-stop) |
 
-**`pair/#` gets the same open rw as `robots/#`** — a rendezvous namespace for
+Zenoh has no broker ACL and zenoh-pico has no session auth, so the operator gate
+is enforced at the **application layer**: the Pi's WS adapter
+(`pi/ws-adapter/ws_zenoh_adapter.py`) and the ESP hub's `ws_zenoh_bridge.c` each
+accept an `fleet/estop` state-change only after an `{op:auth}` with the operator
+code. That gates the one action, not the connection — *stronger* than a
+whole-session accept.
+
+**Per-owner claiming (hub#10) — opt-in exclusivity on top of the open floor.** A
+student can *claim* a robot so nobody else drives it; an unclaimed robot stays
+open to everyone. The claim is gated on **physical presence**, not a secret: a
+BOOT tap on the robot opens a ~12 s window (it announces `robots/<id>/claimable`),
+during which the adapter accepts one claim, keyed to an opaque browser id (a
+random UUID in `localStorage`, so a refresh keeps the robot). The `{op:"pub"}`
+gate then **drops non-zero drive to a claimed robot from anyone but the owner or
+the operator** — but a **stop (zero-drive) always passes**, so isolation can never
+strand a robot in motion, and the **operator always overrides** and can release
+any robot. Ownership lives only in the adapter (never on the Zenoh wire) and the
+Pi and ESP hub implement it identically, so one dashboard drives both tiers. See
+`pi/ws-adapter/README.md` for the exact model.
+
+**Pi only — `zenohd` routes, so the adapter is made the sole drive path.** On the
+ESP hub, zenoh-pico's non-routing already makes the adapter the only way onto a
+robot; on the Pi, a raw Zenoh client on the AP could otherwise reach a robot
+around it. A `zenohd` ACL (`pi/zenoh-router.example.json5`) closes that: it denies
+writes to the command channels (`robots/*/pwm`, `robots/*/cmd/**`, `fleet/estop`)
+from AP-radio clients, so only the on-Pi adapter (over loopback) may inject them —
+after it has applied the per-owner + operator logic. The **MCP bridge** rides this
+same edge (WS-JSON to the adapter as an operator, not raw Zenoh), so all drive
+flows through one place on both tiers.
+
+**`pair/**` gets the same open rw as `robots/**`** — a rendezvous namespace for
 WebRTC signaling: workbench's phone↔desktop pairing exchanges offer/answer/ICE
 over `pair/<room>/…`, then media flows LAN-direct. The signaling transport is
 untrusted by design regardless — peers authenticate end-to-end via the ECDSA
-P-256 pair ceremony, and rooms are unguessable UUIDs carried by the pairing
-QR. The ESP32 hub role grants this for free too (its `connect_cb` admits every
-client; only username `operator` needs a password, and only for
-`fleet/estop`).
+P-256 pair ceremony, and rooms are unguessable UUIDs carried by the pairing QR.
+Both hubs grant this for free — it rides the open floor; only the operator e-stop
+gate sits above it.
 
 **Control channels** (`robots/<id>/cmd/*`, device → robot, ad-hoc JSON — no
 envelope files; the firmware is the schema): `cmd/config` assigns a board's
@@ -196,16 +248,10 @@ see § Addressing one board when several share an identity, which covers `pwm`
 too.
 
 Directional per-channel rules (imu robot→device, pwm device→robot) are dropped:
-they guard a robot spoofing *its own* telemetry — not a classroom threat.
-Enforcement is now nearly the same shape on both hosts: the **Pi**'s ACL is
-three top-level rules plus one user block; the **ESP32** hub role's
-`connect_cb` (`robot/src/hub_role.c`) mirrors it at connect time — admit every
-client, check a password only for username `operator`. MQTT still beats
-Zenoh for the same reason as before, narrowed to the one identity that still
-needs it: esp-mqtt authenticates with **username/password** natively, the
-capability `zenoh-pico` lacked (`robot/CLAUDE.md` usrpwd scar) — without it,
-even the single `operator` credential would have been unenforceable at the
-ESP32 hub.
+they guard a robot spoofing *its own* telemetry — not a classroom threat. And the
+operator credential the open floor can't skip is exactly the capability
+zenoh-pico lacks natively (`robot/CLAUDE.md` usrpwd scar) — which is why it lives
+at the application layer above, not in the transport.
 
 ## Captive onboarding — the greeting flow (both hubs)
 

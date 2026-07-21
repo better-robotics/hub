@@ -13,6 +13,51 @@
   // (CONTRACT.md discovery: tcp/<gateway>:7447). 7447 is Zenoh's default port.
   listen: { endpoints: ["tcp/0.0.0.0:7447"] },
 
+  // ── Per-owner isolation, router tier (hub#10 step 5) ──────────────────────
+  // The ESP hub enforces per-owner claiming because zenoh-pico doesn't route:
+  // its WS adapter is the ONLY path a drive command can take. A full router
+  // DOES route, so a student's raw Zenoh client on the AP could inject drive
+  // straight past the adapter's ownership gate. This ACL restores the ESP tier's
+  // property — the adapter is the sole drive path — at the router.
+  //
+  // A static ACL can't express per-owner rules (ownership is runtime state); it
+  // only has to guarantee the adapter is unbypassable. So: DENY writes to the
+  // command channels (drive + cmd/* + the e-stop latch) from any AP-radio
+  // client. The on-Pi WS adapter connects over LOOPBACK (127.0.0.1) — not an AP
+  // radio — so it alone may write them, and it applies per-owner + operator
+  // logic before it does. Rovers (on the AP) only SUBSCRIBE to these channels
+  // and PUBLISH telemetry (sys/imu/claimable/led-reply), none of which this
+  // denies — so nothing a rover actually does is blocked.
+  //
+  // Interface list is BOTH radios by design: pi/CLAUDE.md § Hub-AP mode — wlan0
+  // vs wlan1 is a per-boot driver coin flip, so pinning one would leave the AP
+  // un-gated on the boots it lands on the other. Loopback (adapter) and usb0
+  // (the bench dev link) are trusted on-Pi/instructor paths, intentionally
+  // absent. Zenoh ACL is deny-precedence, which forces this shape — you can only
+  // deny the AP subjects, never "allow-only loopback".
+  access_control: {
+    enabled: true,
+    default_permission: "allow",           // open posture — the Wi-Fi perimeter is the boundary
+    rules: [
+      {
+        id: "ap-clients-cannot-write-commands",
+        messages: ["put"],
+        flows: ["ingress"],
+        permission: "deny",
+        key_exprs: ["robots/*/pwm", "robots/*/cmd/**", "fleet/estop"],
+      },
+    ],
+    subjects: [
+      // Both AP radios — the AP is always one of the two (coin flip); the STA
+      // uplink is the other and carries no local Zenoh clients, so denying it is
+      // harmless. Loopback + usb0 omitted = allowed (the adapter, the bench).
+      { id: "ap-radios", interfaces: ["wlan0", "wlan1"] },
+    ],
+    policies: [
+      { rules: ["ap-clients-cannot-write-commands"], subjects: ["ap-radios"] },
+    ],
+  },
+
   plugins: {
     storage_manager: {
       storages: {

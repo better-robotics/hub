@@ -3,26 +3,38 @@
 
 Runs alongside the MQTT `hub_mcp.py` during the migration — the live bench tool
 stays on MQTT until the cutover; this is the Zenoh prototype that validates the
-`zenoh-migration.md` wire spec on real `eclipse-zenoh`. Same FastMCP tools, same
-envelopes, same `robots/<id>/<channel>` keys — only the transport changes:
+`zenoh-migration.md` wire spec.
 
-    MQTT                              Zenoh
-    ----------------------------      ------------------------------------------
-    subscribe robots/+/imu            declare_subscriber robots/*/imu   (+ -> *)
-    publish  robots/<id>/pwm          session.put robots/<id>/pwm
-    set_led req/reply (MQTT5)         session.get robots/<id>/led  (rover queryable)
-    fleet/estop retained              session.put fleet/estop  (latch persistence is
-                                        hub-side: Pi storage / ESP app-queryable)
+**Transport: the WS-JSON adapter, as an operator — NOT raw Zenoh (hub#10 step 5).**
+The bridge is a drive path, and on the Pi `zenohd` routes, so a raw client could
+inject drive without passing the hub's per-owner gate. Rather than carve the
+bridge out of the router ACL (static + deny-precedence makes "everyone on the AP
+except this one client" unexpressible cleanly, and the bench runs this remotely
+from a laptop, not on the Pi), the bridge speaks the same WS-JSON op protocol the
+browser dashboard does and authenticates as the operator. So **all drive flows
+through the one adapter edge on both tiers**: the router ACL just denies raw
+non-loopback drive, and per-owner isolation + the operator override live in
+exactly one place (the adapter). Same FastMCP tools, same envelopes, same
+`robots/<id>/<channel>` keys — only the wire under `_put`/subscribe changes:
 
-Discovery: HUB_HOST set -> client mode connecting to `tcp/<host>:7447`; unset ->
-peer mode with multicast scouting (local bench + the validation harness).
+    op           frame                              was (raw Zenoh)
+    ----------   --------------------------------   ------------------------------
+    pub          {op:pub,  key, val}                session.put
+    sub / unsub  {op:sub,  key} / {op:unsub, key}   declare_subscriber
+    get          {op:get,  id, key, val} -> reply   session.get  (rover queryable)
+    auth         {op:auth, password}     -> {ok}    (n/a — raw had no hub auth)
+    hello        {op:hello, clientId}               (n/a)
+
+Discovery: HUB_HOST names the adapter host (the hub's DHCP gateway, or a bench
+IP); the adapter's WS port is the fixed 9001 the dashboard uses.
 
 Run:
-    pip install "mcp[cli]" eclipse-zenoh
-    HUB_HOST=hub.local python hub_mcp_zenoh.py
+    pip install "mcp[cli]" websockets
+    HUB_HOST=hub.local HUB_PASS=<operator code> python hub_mcp_zenoh.py
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
@@ -30,62 +42,125 @@ import threading
 import time
 import uuid
 
-import zenoh
+import websockets
 from mcp.server.fastmcp import FastMCP
 
 # ---- config (env-driven) ----------------------------------------------------
-HUB_HOST = os.environ.get("HUB_HOST", "")                     # unset = peer/multicast (local)
-HUB_PORT = int(os.environ.get("HUB_PORT", "7447"))            # Zenoh default TCP port
-HUB_USER = os.environ.get("HUB_USER", "instructor")           # e-stop authority label (app-layer)
+HUB_HOST = os.environ.get("HUB_HOST", "127.0.0.1")           # the WS adapter host
+WS_PORT = int(os.environ.get("HUB_WS_PORT", "9001"))         # fixed dashboard convention
+HUB_USER = os.environ.get("HUB_USER", "operator")            # e-stop / override authority
 HUB_PASS = os.environ.get("HUB_PASS", "")
+CLIENT_ID = "mcp-" + uuid.uuid4().hex[:8]                    # opaque owner id (this bridge)
 MOTOR_MAX = 255
 
-# ---- live fabric state, kept fresh by background subscriptions --------------
+# ---- live fabric state, kept fresh by the background WS receive loop ---------
 _imu: dict[str, dict] = {}
 _sys: dict[str, dict] = {}
 _watchers: list[dict] = []
 
-_session: zenoh.Session | None = None
-_subs: list = []                 # keep declared subscribers alive
+_loop: asyncio.AbstractEventLoop | None = None   # the background WS event loop
+_ws = None                                       # current connection (owned by _loop)
+_ready = threading.Event()                       # set while connected + subscribed
+_authed = {"ok": False}
+_replies: dict[str, dict] = {}                   # get-id -> {"val":…, "event":Event}
+# Background feeds re-sent on every (re)connect — the always-on telemetry taps.
+_FEEDS = ("robots/*/imu", "robots/*/sys")
 
 
 def _keyexpr_from_mqtt(pattern: str) -> str:
     """MQTT wildcards -> Zenoh: `#` (rest) -> `**`, `+` (one level) -> `*`."""
-    parts = ["**" if p == "#" else "*" if p == "+" else p for p in pattern.split("/")]
-    return "/".join(parts)
+    return "/".join("**" if p == "#" else "*" if p == "+" else p for p in pattern.split("/"))
 
 
 def _key_matches(pattern_ke: str, key: str) -> bool:
-    return zenoh.KeyExpr(pattern_ke).intersects(zenoh.KeyExpr(key))
+    """Zenoh key-expr glob (`*`=one chunk, `**`=zero+ chunks). Local so the bridge
+    carries no Zenoh dependency now that the wire is WS-JSON."""
+    def seg(P, K):
+        if not P:
+            return not K
+        if P[0] == "**":
+            if len(P) == 1:
+                return True
+            return any(seg(P[1:], K[i:]) for i in range(len(K) + 1))
+        if not K:
+            return False
+        return (P[0] == "*" or P[0] == K[0]) and seg(P[1:], K[1:])
+    return seg(pattern_ke.split("/"), key.split("/"))
 
 
-def _on_sample(sample: "zenoh.Sample") -> None:
-    key = str(sample.key_expr)
-    try:
-        body = json.loads(sample.payload.to_bytes())
-    except (ValueError, UnicodeDecodeError):
-        body = sample.payload.to_bytes().decode(errors="replace")
+# ---- WS receive handling (runs on the background loop) ----------------------
+def _handle(d: dict) -> None:
+    op = d.get("op")
+    if op == "auth":
+        _authed["ok"] = bool(d.get("ok"))
+    elif op == "reply":
+        r = _replies.get(d.get("id"))
+        if r:
+            r["val"] = d.get("val")
+            r["event"].set()
+    elif op in ("owner", "owners", "error"):
+        pass          # the bridge is the operator — ownership never gates it; errors are log-only
+    elif d.get("key") is not None:
+        _on_message(d["key"], d.get("val"))
 
-    # Feed active watch() taps (they see every subscribed key).
+
+def _on_message(key: str, body) -> None:
     for w in _watchers:
         if len(w["msgs"]) < w["cap"] and _key_matches(w["pattern"], key):
             w["msgs"].append({"topic": key, "payload": body, "t": round(time.time(), 3)})
-
     if not isinstance(body, dict):
         return
-    parts = key.split("/")                   # robots/<id>/<channel>
+    parts = key.split("/")                       # robots/<id>/<channel>
     if len(parts) < 3:
         return
     robot_id, channel = parts[1], parts[2]
-    body["_rx"] = time.time()
+    rec = dict(body)
+    rec["_rx"] = time.time()
     if channel == "imu":
-        _imu[robot_id] = body
+        _imu[robot_id] = rec
     elif channel == "sys":
         # Key by BOARD, not topic id: every pool board publishes on
         # robots/unassigned/sys, so keying by topic collapses them into one
         # flapping entry. The topic id rides along as the board's assigned name.
-        body["_name"] = robot_id
-        _sys[body.get("board") or robot_id] = body
+        rec["_name"] = robot_id
+        _sys[rec.get("board") or robot_id] = rec
+
+
+async def _ws_loop() -> None:
+    """Persistent WS connection with reconnect: hello + operator auth, resubscribe
+    the telemetry feeds, then pump inbound frames. Owns the socket for the life of
+    the process; the sync MCP tools post sends to it via run_coroutine_threadsafe."""
+    global _ws
+    url = f"ws://{HUB_HOST}:{WS_PORT}/"
+    while True:
+        try:
+            async with websockets.connect(url) as ws:
+                _ws = ws
+                await ws.send(json.dumps({"op": "hello", "clientId": CLIENT_ID}))
+                if HUB_PASS:
+                    await ws.send(json.dumps({"op": "auth", "role": HUB_USER, "password": HUB_PASS}))
+                for ke in _FEEDS:
+                    await ws.send(json.dumps({"op": "sub", "key": ke}))
+                _ready.set()
+                async for raw in ws:
+                    try:
+                        _handle(json.loads(raw))
+                    except (ValueError, TypeError):
+                        pass
+        except Exception:                        # noqa: BLE001 — any drop -> reconnect
+            pass
+        _ready.clear()
+        _ws = None
+        _authed["ok"] = False
+        await asyncio.sleep(1.0)
+
+
+def _send(frame: dict) -> None:
+    if _loop is None or _ws is None:
+        raise RuntimeError(
+            f"not connected to the hub adapter — is it running, and are you on its "
+            f"Wi-Fi? (ws://{HUB_HOST}:{WS_PORT})")
+    asyncio.run_coroutine_threadsafe(_ws.send(json.dumps(frame)), _loop).result(timeout=3)
 
 
 def _clamp(v: int) -> int:
@@ -101,11 +176,7 @@ def _clean(d: dict) -> dict:
 
 
 def _put(key: str, body: dict) -> None:
-    if _session is None:
-        raise RuntimeError(
-            f"not connected to the hub — are you on its Wi-Fi? "
-            f"(HUB_HOST={HUB_HOST or '(peer/multicast)'})")
-    _session.put(key, json.dumps(body).encode())
+    _send({"op": "pub", "key": key, "val": body})
 
 
 # ---- MCP tools --------------------------------------------------------------
@@ -142,7 +213,8 @@ def estop(engaged: bool = True, reason: str = "") -> str:
     halts every rover and makes them refuse drive until estop(engaged=False).
     Published on fleet/estop; the hub holds the latch (Pi storage / ESP queryable)
     and answers a rebooting rover's join-time get, so the stop survives reconnects.
-    The e-stop authority is the instructor, enforced at the hub (app-layer)."""
+    The e-stop authority is the operator, enforced at the hub — this bridge must
+    have authed (HUB_PASS) or the adapter refuses the write."""
     body: dict = {"timestamp": time.time(), "engaged": engaged, "by": HUB_USER}
     if reason:
         body["reason"] = reason
@@ -184,30 +256,23 @@ def fleet() -> dict:
 @mcp.tool()
 def set_led(robot_id: str, on: bool, red: int = 0, green: int = 0, blue: int = 0,
             timeout_s: float = 1.5) -> dict:
-    """Set a rover's RGB LED and wait for its ack. Native Zenoh RPC: a get() on the
-    rover's queryable at robots/<id>/led carries the request and returns the reply
-    ({status:ok} / {status:error,message}) — no reply topic, no correlation-data."""
+    """Set a rover's RGB LED and wait for its ack. A get() on the rover's queryable
+    at robots/<id>/led carries the request over the adapter and returns the reply
+    ({status:ok} / {status:error,message})."""
     req = {"method": "set_led", "on": bool(on),
            "red": _clamp8(red), "green": _clamp8(green), "blue": _clamp8(blue)}
-    if _session is None:
-        return {"status": "error", "acked": False, "message": "not connected"}
-
-    reply_box: dict = {}
-    done = threading.Event()
-
-    def _on_reply(reply):
-        try:
-            if reply.ok is not None:
-                reply_box.update(json.loads(reply.ok.payload.to_bytes()))
-        except Exception as e:                       # noqa: BLE001 — surface, don't crash the get
-            reply_box.setdefault("_err", str(e))
-        finally:
-            done.set()
-
-    _session.get(f"robots/{robot_id}/led", handler=_on_reply,
-                 payload=json.dumps(req).encode(), timeout=timeout_s)
-    if done.wait(timeout=timeout_s + 0.5) and reply_box and "_err" not in reply_box:
-        return {"acked": True, **reply_box}
+    gid = uuid.uuid4().hex[:8]
+    ev = threading.Event()
+    _replies[gid] = {"val": None, "event": ev}
+    try:
+        _send({"op": "get", "id": gid, "key": f"robots/{robot_id}/led", "val": req})
+    except RuntimeError as e:
+        _replies.pop(gid, None)
+        return {"status": "error", "acked": False, "message": str(e)}
+    got = ev.wait(timeout=timeout_s + 0.5)
+    val = _replies.pop(gid, {}).get("val")
+    if got and isinstance(val, dict):
+        return {"acked": True, **val}
     return {"status": "sent", "acked": False,
             "note": "no reply within timeout — is the rover declaring a robots/<id>/led queryable?"}
 
@@ -230,14 +295,18 @@ def watch(topic_pattern: str = "robots/#", duration_s: float = 5.0, max_messages
     duration_s = min(max(duration_s, 0.1), 30.0)
     ke = _keyexpr_from_mqtt(topic_pattern)
     tap = {"pattern": ke, "msgs": [], "cap": max(1, min(int(max_messages), 200))}
-    sub = _session.declare_subscriber(ke, _on_sample) if _session else None
     _watchers.append(tap)
-    deadline = time.time() + duration_s
-    while time.time() < deadline and len(tap["msgs"]) < tap["cap"]:
-        time.sleep(0.05)
-    _watchers.remove(tap)
-    if sub is not None:
-        sub.undeclare()
+    _send({"op": "sub", "key": ke})
+    try:
+        deadline = time.time() + duration_s
+        while time.time() < deadline and len(tap["msgs"]) < tap["cap"]:
+            time.sleep(0.05)
+    finally:
+        _watchers.remove(tap)
+        try:
+            _send({"op": "unsub", "key": ke})
+        except RuntimeError:
+            pass
     out = {"messages": tap["msgs"], "count": len(tap["msgs"])}
     if not tap["msgs"]:
         out["note"] = "nothing seen — no publisher on that pattern right now"
@@ -292,36 +361,27 @@ def flip(board: str, direction: str) -> dict:
 
 # ---- session lifecycle ------------------------------------------------------
 
-def _build_config() -> "zenoh.Config":
-    conf = zenoh.Config()
-    if HUB_HOST:
-        # Client mode connecting to the hub's Zenoh endpoint (the DHCP gateway).
-        conf.insert_json5("mode", '"client"')
-        conf.insert_json5("connect/endpoints", json.dumps([f"tcp/{HUB_HOST}:{HUB_PORT}"]))
-    # else: default peer mode + multicast scouting (local bench / validation).
-    return conf
+def connect(timeout_s: float = 8.0) -> None:
+    """Start the background WS loop and wait until it is connected + subscribed.
+    Callable from a test harness; main() calls it before serving MCP."""
+    global _loop
+    _loop = asyncio.new_event_loop()
 
+    def _run() -> None:
+        asyncio.set_event_loop(_loop)
+        _loop.run_until_complete(_ws_loop())
 
-def connect() -> None:
-    """Open the Zenoh session and declare the background subscriptions. Callable
-    from a test harness; main() calls it before serving MCP."""
-    global _session
-    _session = zenoh.open(_build_config())
-    for ke in ("robots/*/imu", "robots/*/sys"):
-        _subs.append(_session.declare_subscriber(ke, _on_sample))
+    threading.Thread(target=_run, name="hub-ws", daemon=True).start()
+    _ready.wait(timeout=timeout_s)   # best-effort; tools raise a clear error if still down
 
 
 def main() -> None:
     if not HUB_PASS:
-        print("[hub_mcp_zenoh] no HUB_PASS — e-stop authority is unauthenticated "
-              "(fine for local/bench; the hub enforces instructor at the app layer)",
+        print("[hub_mcp_zenoh] no HUB_PASS — operator actions (e-stop, and driving a "
+              "CLAIMED robot) will be refused by the hub; unclaimed robots still drive.",
               file=sys.stderr)
     connect()
-    try:
-        mcp.run()
-    finally:
-        if _session is not None:
-            _session.close()
+    mcp.run()
 
 
 if __name__ == "__main__":

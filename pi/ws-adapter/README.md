@@ -81,12 +81,17 @@ can't be spoofed. Ownership lives only in the adapter, mirroring the ESP hub's
 `ws_zenoh_bridge.c` byte-for-byte, so **one dashboard drives both tiers
 identically**.
 
-> **Pi tier caveat (hub#10 step 5, not yet landed):** on the Pi, `zenohd`
-> *routes*, so a raw zenoh client on the AP could reach a rover without passing
-> through this adapter — unlike the ESP hub, where the adapter is the sole
-> command path. Until a `zenohd` ACL (or an AP firewall pinning `:7447` to the
-> adapter + rovers) lands, this ownership gate is enforced only for clients that
-> come *through* the adapter. The ESP tier is fully enforced today.
+> **Pi tier — the adapter is made the sole drive path (hub#10 step 5).** On the
+> Pi, `zenohd` *routes*, so a raw Zenoh client on the AP could reach a rover
+> without passing through this adapter — unlike the ESP hub, where zenoh-pico's
+> non-routing already makes the adapter the only path. The router ACL in
+> `../zenoh-router.example.json5` restores that property: it denies writes to the
+> command channels (`robots/*/pwm`, `robots/*/cmd/**`, `fleet/estop`) from AP-radio
+> clients, so only the on-Pi adapter (over loopback) may inject them — and it
+> applies per-owner + operator logic first. The **MCP bridge** rides this same
+> edge (it speaks WS-JSON to this adapter as an operator, not raw Zenoh), so *all*
+> drive flows through one place on both tiers. The ACL is staged with the router
+> config; it takes effect when the migration cutover deploys `zenohd`.
 
 ## Validated (2026-07-21)
 

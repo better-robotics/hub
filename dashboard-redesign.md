@@ -45,10 +45,10 @@ recording because it *validates a direction the repo already adopted* (#4,
   line-sensor tile during "read the line sensor"), not just a progress bar.
   Strongest when steps are **predicates over observed wire traffic** — "read the
   distance sensor" completes when the hub sees that robot receive `range` — so
-  progress is evidence, not a self-reported checkbox, and the instructor's view
+  progress is evidence, not a self-reported checkbox, and the operator's view
   comes free.
-- **Instructor = extra scope on the same UI**, not a separate app. Already how
-  `myScope` gates the dashboard; the redesign just names the instructor surface
+- **Operator = extra scope on the same UI**, not a separate app. Already how
+  `myScope` gates the dashboard; the redesign just names the operator surface
   ("Fleet" / "Class") and adds the mission-progress summary tile.
 
 ## The one constraint every exploration broke: topic vocabulary
@@ -121,7 +121,7 @@ Safe and consistent to do before then (framing, not framework):
    every client)? A drive that isn't repeated stops on its own — an API that
    looks like a durable setpoint will make the first thing students build
    (drive-and-walk-away) behave mysteriously. Gates the Code tab.
-2. **Missions: instructor-authored or a fixed shipped set?** Gates the Missions
+2. **Missions: operator-authored or a fixed shipped set?** Gates the Missions
    tab and the authoring surface.
 
 ## Safety floor — carry it into every layout

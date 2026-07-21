@@ -369,7 +369,7 @@ async fn poll_uplink(uplink: Uplink) {
 /// to every client with no credential (`mosquitto-acl.example.conf`), on an open
 /// AP. So `sys.ip` is chosen by whoever published the beacon — fine for showing
 /// a fact on a card, disqualifying for anything the dashboard sends a secret to:
-/// a fake robot pointing at a laptop would collect the instructor password from
+/// a fake robot pointing at a laptop would collect the operator password from
 /// the next person who pressed Update.
 ///
 /// dnsmasq's lease file is the counter-fact. It is written by the DHCP server
@@ -1057,7 +1057,7 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                     .unwrap_or_default();
                 // Clickjacking: the meta CSP in dashboard.html CANNOT express
                 // frame-ancestors (it's header-only), and this server sent no
-                // X-Frame-Options — so the instructor's dashboard was framable by
+                // X-Frame-Options — so the operator's dashboard was framable by
                 // any page. SAMEORIGIN, not DENY: the dashboard frames its own
                 // /ide/ bundle, and DENY would break that too.
                 let frame = "X-Frame-Options: SAMEORIGIN\r\n";

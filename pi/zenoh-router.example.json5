@@ -32,7 +32,7 @@
   // Interface list is BOTH radios by design: pi/CLAUDE.md § Hub-AP mode — wlan0
   // vs wlan1 is a per-boot driver coin flip, so pinning one would leave the AP
   // un-gated on the boots it lands on the other. Loopback (adapter) and usb0
-  // (the bench dev link) are trusted on-Pi/instructor paths, intentionally
+  // (the bench dev link) are trusted on-Pi/operator paths, intentionally
   // absent. Zenoh ACL is deny-precedence, which forces this shape — you can only
   // deny the AP subjects, never "allow-only loopback".
   access_control: {

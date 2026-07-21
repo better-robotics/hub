@@ -3,13 +3,13 @@
 # Wi-Fi-perimeter model (confirmed 2026-07-13, CONTRACT.md § Discovery &
 # isolation): every client, robot or browser, authenticated or not, gets
 # full read+write on robots/# and pair/#. The one gated identity is
-# instructor, and it protects exactly one thing: fleet/estop.
+# operator, and it protects exactly one thing: fleet/estop.
 #
 #   Phase 1  open access: an anonymous client can publish AND read any
 #            robot's subtree, no credential at all
 #   Phase 2  fleet/estop: anonymous can read the latch but not write it;
-#            instructor can write it
-#   Phase 3  wrong instructor password → connection refused (loud)
+#            operator can write it
+#   Phase 3  wrong operator password → connection refused (loud)
 #
 # Run from the repo root. Needs mosquitto + mosquitto_pub/sub/passwd on PATH
 # (brew install mosquitto). macOS ships no `timeout`(1), so every read uses
@@ -27,7 +27,7 @@ PORT=18830  # non-default: don't collide with a real broker on this machine
 # so this must be a fresh file each run. Throwaway demo secret, gitignored,
 # matching install.sh's placeholder seed.
 rm -f mosquitto-passwd.example
-mosquitto_passwd -b -c mosquitto-passwd.example instructor change-me
+mosquitto_passwd -b -c mosquitto-passwd.example operator change-me
 chmod 0700 mosquitto-passwd.example mosquitto-acl.example.conf
 echo "== mosquitto-passwd.example (gitignored, salted) =="; cat mosquitto-passwd.example; echo
 
@@ -61,11 +61,11 @@ CROSS=$(sub '' '' 'robots/scout/pwm')
                                 || fail "expected the pwm publish to be readable, got: '$CROSS'"
 
 echo
-echo "===== PHASE 2 — fleet/estop stays instructor-gated ====="
-# Baseline write needs the instructor credential — anonymous has read-only on
+echo "===== PHASE 2 — fleet/estop stays operator-gated ====="
+# Baseline write needs the operator credential — anonymous has read-only on
 # fleet/estop, so an anonymous publish here would be silently dropped and
 # never establish the retained value the rest of this phase depends on.
-pub instructor change-me "fleet/estop" '{"engaged":false}' -r
+pub operator change-me "fleet/estop" '{"engaged":false}' -r
 STATE=$(sub '' '' 'fleet/estop')
 [[ "$STATE" == *engaged* ]] && pass "anonymous reads the estop latch" || fail "anonymous estop read got: '$STATE'"
 pub '' '' "fleet/estop" '{"engaged":true,"reason":"student"}' -r 2>/dev/null
@@ -74,21 +74,21 @@ pub '' '' "fleet/estop" '{"engaged":true,"reason":"student"}' -r 2>/dev/null
 AFTER_ANON=$(sub '' '' 'fleet/estop')
 [[ "$AFTER_ANON" == *'"engaged":false'* ]] && pass "anonymous write to fleet/estop was denied (latch unchanged)" \
                                             || fail "LEAK — anonymous engaged the room-wide estop: $AFTER_ANON"
-if pub instructor change-me "fleet/estop" '{"engaged":true,"reason":"instructor"}' -r; then
-  pass "instructor → fleet/estop accepted"
+if pub operator change-me "fleet/estop" '{"engaged":true,"reason":"operator"}' -r; then
+  pass "operator → fleet/estop accepted"
 else
-  fail "instructor estop publish was rejected"
+  fail "operator estop publish was rejected"
 fi
 AFTER_PROF=$(sub '' '' 'fleet/estop')
-[[ "$AFTER_PROF" == *'"engaged":true'* ]] && pass "the latch reflects the instructor's write" \
-                                           || fail "instructor's write didn't land: $AFTER_PROF"
+[[ "$AFTER_PROF" == *'"engaged":true'* ]] && pass "the latch reflects the operator's write" \
+                                           || fail "operator's write didn't land: $AFTER_PROF"
 
 echo
-echo "===== PHASE 3 — wrong instructor password rejected ====="
-if sub instructor WRONG 'fleet/estop' 2>&1 | grep -qi "not authorised\|refused\|connection error"; then
-  pass "wrong instructor password rejected"
+echo "===== PHASE 3 — wrong operator password rejected ====="
+if sub operator WRONG 'fleet/estop' 2>&1 | grep -qi "not authorised\|refused\|connection error"; then
+  pass "wrong operator password rejected"
 else
-  fail "wrong instructor password was NOT rejected"
+  fail "wrong operator password was NOT rejected"
 fi
 
 kill $BROKER 2>/dev/null; wait 2>/dev/null

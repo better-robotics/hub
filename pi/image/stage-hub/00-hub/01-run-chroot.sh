@@ -22,13 +22,13 @@
 raspi-config nonint do_wifi_country US
 
 # Mosquitto broker: seed the one PLACEHOLDER credential (change before a real
-# class: mosquitto_passwd -b /etc/mosquitto/hub-passwd instructor <newpass>).
+# class: mosquitto_passwd -b /etc/mosquitto/hub-passwd operator <newpass>).
 # Config + ACL were staged by 00-run.sh; generate the passwd here where
 # mosquitto_passwd exists, and lock down the cred/acl files (mosquitto refuses
 # world-readable ones). The hub's own Wi-Fi is the classroom's real boundary
-# (mosquitto-acl.example.conf) — instructor is the only identity that needs a
+# (mosquitto-acl.example.conf) — operator is the only identity that needs a
 # password at all, gating just the fleet-wide emergency stop.
-mosquitto_passwd -b -c /etc/mosquitto/hub-passwd instructor change-me
+mosquitto_passwd -b -c /etc/mosquitto/hub-passwd operator change-me
 chown mosquitto:mosquitto /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 chmod 0600 /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
 

@@ -31,7 +31,7 @@ install -m 0755 "$REPO_DIR/target/release/hubd" "$PREFIX/hubd"
 # Debian's packaged mosquitto ships its own systemd unit and includes
 # /etc/mosquitto/conf.d/*.conf — so we drop our config there rather than write
 # a custom unit (deploy/payload.tsv puts it there). Broker-native ACL enforces
-# classroom scoping (instructor/team); see mosquitto-acl.example.conf.
+# classroom scoping (operator/team); see mosquitto-acl.example.conf.
 # Installed before the payload below so /etc/mosquitto and the `mosquitto` user
 # exist when the config, ACL, and their ownership land.
 echo "[install] installing Mosquitto broker…"
@@ -73,14 +73,14 @@ while read -r src dest mode enable on_host; do
 done < <(grep -Ev '^[[:space:]]*(#|$)' "$REPO_DIR/deploy/payload.tsv")
 
 # Password file — one identity. The hub's own Wi-Fi is the classroom's real
-# boundary (mosquitto-acl.example.conf); instructor is the one credential
+# boundary (mosquitto-acl.example.conf); operator is the one credential
 # that ACL can't give away for free (fleet/estop write). CHANGE THIS before
 # a real class:
-#   sudo mosquitto_passwd -b /etc/mosquitto/hub-passwd instructor <newpass>
+#   sudo mosquitto_passwd -b /etc/mosquitto/hub-passwd operator <newpass>
 # (Only created if absent, so re-running install.sh won't clobber a real one.)
 if [[ ! -f /etc/mosquitto/hub-passwd ]]; then
-  echo "[install] seeding the placeholder instructor password — CHANGE IT before a real class"
-  mosquitto_passwd -b -c /etc/mosquitto/hub-passwd instructor change-me
+  echo "[install] seeding the placeholder operator password — CHANGE IT before a real class"
+  mosquitto_passwd -b -c /etc/mosquitto/hub-passwd operator change-me
 fi
 # mosquitto runs as the `mosquitto` user and refuses world-readable cred/acl files.
 chown mosquitto:mosquitto /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf

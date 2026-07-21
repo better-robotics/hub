@@ -88,7 +88,7 @@ e-stop, including a robot that reboots or reconnects after it was engaged.*
   (`zenoh-plugin-storage-manager`) on the Pi; an **application-level queryable** on
   the ESP hub (reusing the `set_led` queryable pattern — no unstable
   `Z_FEATURE_ADVANCED_PUBLICATION`).
-- Preserved: instructor-only engage/clear (app-layer auth, § below); robot refuses
+- Preserved: operator-only engage/clear (app-layer auth, § below); robot refuses
   non-zero `pwm` while engaged, always honors zero-drive; `"estop":true` in the
   `sys` beacon; parse-failure fails toward stopped; **hub reboot forgets the latch =
   intended room reset** (state is hub-local).
@@ -113,17 +113,17 @@ Finding the hub is the same rule as today, minus the MQTT port:
   full `zenohd` (a listen endpoint); the ESP hub runs `zenoh-pico` with a TCP
   listen endpoint (`_z_tcp_esp32_listen`/`accept` — confirmed present).
 
-## Scoping → application-layer instructor auth
+## Scoping → application-layer operator auth
 
-The MQTT ACL (anonymous `rw` on `robots/**`+`pair/**`, `instructor` adds
+The MQTT ACL (anonymous `rw` on `robots/**`+`pair/**`, `operator` adds
 `fleet/estop` write) becomes:
 
 - **Open read+write for everyone** on `robots/**` / `pair/**` — nothing durable is
   protected once the Wi-Fi perimeter is the boundary; unchanged intent.
-- **`instructor` is the one gated identity**, and its only power is engaging/clearing
+- **`operator` is the one gated identity**, and its only power is engaging/clearing
   `fleet/estop`. zenoh-pico has no usrpwd (the keys are inert), so this is enforced
   at the **application layer**: the hub accepts an e-stop state-change only from an
-  authenticated instructor (validated in the browser adapter / `hub_role`), which is
+  authenticated operator (validated in the browser adapter / `hub_role`), which is
   *stronger* than the MQTT `connect_cb`'s whole-session accept. The Pi may
   additionally use `zenohd`'s native access-control as defense-in-depth.
 
@@ -149,7 +149,7 @@ Adapter surface (JSON over one WebSocket):
 | `{op:"sub", key}` / `{op:"unsub", key}` | declare/undeclare a subscriber on the hub session |
 | `{op:"pub", key, val}` | publish an envelope (`val`) on `key` |
 | `{op:"get", key, val}` → reply | query (set_led, e-stop current-state); reply returns the sample |
-| `{op:"auth", role:"instructor", password}` | authenticate before e-stop engage/clear |
+| `{op:"auth", role:"operator", password}` | authenticate before e-stop engage/clear |
 
 | Hub → client | Meaning |
 |---|---|

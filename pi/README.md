@@ -1,6 +1,6 @@
 # Robotics Hub — Raspberry Pi
 
-*One routed topic-space for the classroom: student devices, instructor tools,
+*One routed topic-space for the classroom: student devices, operator tools,
 and robots over MQTT — the hub's own Wi-Fi is the permission model, not a
 login.*
 
@@ -23,7 +23,7 @@ cargo run --bin hubd                  # dashboard on http://localhost:8000
                      ┌─────────────────────────────────────────┐
                      │ Mosquitto — the broker (own process)    │
                      │ open rw on robots/# and pair/# ·        │
-                     │ usrpwd auth gates only instructor,       │
+                     │ usrpwd auth gates only operator,       │
                      │ only for fleet/estop                    │
                      │ robots/<id>/{sys,pwm,cmd/*,imu,led}     │
                      └─────────────────────────────────────────┘
@@ -36,7 +36,7 @@ uplink/captive-portal probe, and **device-served Wi-Fi setup** —
 `src/wifi.rs`). A phone joins the hub's own `hub-XXXX` AP, opens
 `http://hub.local`, and picks the uplink network from the dashboard's "Set up
 Wi-Fi" panel — no app, no hosted site, no Web Bluetooth, works on iOS.
-Classroom access control — open by default, gated only for the instructor's
+Classroom access control — open by default, gated only for the operator's
 `fleet/estop` write — is enforced by Mosquitto's own ACL, not application
 code — see `mosquitto-acl.example.conf`.
 

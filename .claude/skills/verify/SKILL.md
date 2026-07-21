@@ -25,8 +25,8 @@ login — so there's no `/codes/*` fetch to see 404 anymore.)
 - App functions (`openConfig`, `openCamera`, …) are globals — callable from
   `browser_evaluate` when no live MQTT fleet exists to click through. Clicks
   on the resulting DOM are still real gestures.
-- Instructor-gated sections (the Assign sheet, e-stop Stop-all/Clear) are
-  `display:none` offline until a instructor session is simulated — walk
+- Operator-gated sections (the Assign sheet, e-stop Stop-all/Clear) are
+  `display:none` offline until a operator session is simulated — walk
   ancestors and unhide before clicking. Everything else (drive, claim,
   telemetry, camera) needs no sign-in at all now — verify it works from a
   cold, anonymous load.

@@ -11,10 +11,13 @@ tiers**:
 | Client → adapter | Meaning |
 |---|---|
 | `{op:"sub", key}` / `{op:"unsub", key}` | declare/drop a per-client key filter |
-| `{op:"pub", key, val}` | `session.put` (a `fleet/estop` write is gated on auth) |
+| `{op:"pub", key, val}` | `session.put` (a `fleet/estop` write is gated on auth; a claimed rover's drive is gated on ownership) |
 | `{op:"get", key, val, id}` → `{op:"reply", id, val}` | `session.get` (set_led, e-stop latch) |
 | `{op:"auth", password}` → `{op:"auth", ok}` | the one operator gate |
+| `{op:"hello", clientId}` → `{op:"owners", map}` | bind an opaque browser identity; receive the owner map |
+| `{op:"claim", id}` / `{op:"release", id}` | claim/release a rover (claim needs a live BOOT-tap window) |
 | adapter → client: `{key, val}` | a delivered subscription sample |
+| adapter → client: `{op:"owner", id, owner}` | an ownership change, pushed to every dashboard |
 
 The hub owns the `fleet/estop` latch: an authed estop pub updates it and a
 queryable answers a (re)joining rover's join-time `get` — the retained MQTT
@@ -47,6 +50,37 @@ the same posture as the ESP hub (`ws_zenoh_bridge.c`) and the broker it replaces
 gating `cmd/*` here would diverge from the contract, not harden it. `OPERATOR_PASS`
 is a placeholder to rotate at deploy — an unset value warns loudly on startup
 rather than silently admitting the public default.
+
+## Per-owner claiming (hub#10 — opt-in exclusivity, not a new credential)
+
+On top of that open floor, a student can **claim** a rover so nobody else drives
+it. This is opt-in: an *unclaimed* rover stays open to everyone (the floor
+above), and claiming adds exclusivity, not a password.
+
+The claim is gated on **physical presence**, not a secret: a BOOT tap on the
+rover opens a ~12 s window (it announces `robots/<id>/claimable`), during which
+the adapter accepts **one** `{op:claim}`. So to claim rover X you must be
+standing at X — no remote lockouts, and "stealing" a claimed rover means walking
+over and pressing its button, which is self-policing in a classroom. Ownership
+is keyed by an **opaque browser id** (`{op:hello, clientId}`, from localStorage),
+so a refresh keeps a student's rover; it carries no identity beyond "same
+browser." The gate on `{op:"pub"}` drops non-zero drive to a *claimed* rover from
+anyone but the owner or the operator — and a **stop (zero-drive) always passes**,
+so isolation can never strand a robot in motion (the rover's own safety floor and
+`fleet/estop` are untouched). The **operator (`{op:auth}`) always overrides** and
+can `release` any rover.
+
+Ownership lives only in the adapter — it never rides the zenoh wire — and is
+pushed to dashboards as `{op:"owner"}` frames, with the full map handed to a
+joining client on `{op:hello}`. This mirrors the ESP hub's `ws_zenoh_bridge.c`
+byte-for-byte in behavior, so **one dashboard drives both tiers identically**.
+
+> **Pi tier caveat (hub#10 step 5, not yet landed):** on the Pi, `zenohd`
+> *routes*, so a raw zenoh client on the AP could reach a rover without passing
+> through this adapter — unlike the ESP hub, where the adapter is the sole
+> command path. Until a `zenohd` ACL (or an AP firewall pinning `:7447` to the
+> adapter + rovers) lands, this ownership gate is enforced only for clients that
+> come *through* the adapter. The ESP tier is fully enforced today.
 
 ## Validated (2026-07-21)
 

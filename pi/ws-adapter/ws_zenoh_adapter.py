@@ -37,8 +37,14 @@ ZENOH_LISTEN = os.environ.get("ZENOH_LISTEN", "")
 _OPERATOR_PASS_ENV = os.environ.get("OPERATOR_PASS", "")
 OPERATOR_PASS = _OPERATOR_PASS_ENV or "change-me"
 
-clients = []             # each: {"ws","subs":set,"authed":bool,"queue":asyncio.Queue}
+clients = []             # each: {"ws","subs":set,"authed":bool,"client_id":str,"queue":asyncio.Queue}
 estop_latched = False
+# Per-owner rover isolation (hub#10) — the Python mirror of ws_zenoh_bridge.c.
+# Ownership lives ONLY here (never on the wire), keyed by rover name:
+#   rovers[id] = {"owner": clientId or "", "claimable_until": loop-monotonic seconds}
+# A slot appears only from a rover's own claimable announce, so a claim can only
+# land on a rover that physically opened its BOOT-tap window.
+rovers = {}
 loop = None
 session = None
 
@@ -55,6 +61,58 @@ def build_config():
     return conf
 
 
+# ---- per-owner isolation helpers (hub#10, mirroring ws_zenoh_bridge.c) --------
+def note_claimable(key, valobj):
+    # key = robots/<id>/claimable — a BOOT-tap announce extends the window a few
+    # seconds; no cross-device clock, just "recently announced".
+    parts = key.split("/")
+    if len(parts) < 3:
+        return
+    rid = parts[1]
+    open_ = not (isinstance(valobj, dict) and valobj.get("open") is False)
+    r = rovers.setdefault(rid, {"owner": "", "claimable_until": 0.0})
+    r["claimable_until"] = (loop.time() + 4.0) if open_ else 0.0
+
+
+def is_stop(valobj):
+    # A zero-drive pwm is honored for everyone regardless of ownership.
+    if not isinstance(valobj, dict):
+        return False
+    return (valobj.get("left_motor") or 0) == 0 and (valobj.get("right_motor") or 0) == 0
+
+
+def ownership_ok(c, key, valobj):
+    # Only drive channels (pwm, cmd/*) of a *claimed* rover are gated; the rest —
+    # fleet/pair namespaces, led queries, an unclaimed rover — stay open.
+    if not key.startswith("robots/"):
+        return True
+    parts = key.split("/", 2)
+    if len(parts) < 3:
+        return True
+    rid, chan = parts[1], parts[2]
+    if chan != "pwm" and not chan.startswith("cmd/"):
+        return True
+    r = rovers.get(rid)
+    if not r or not r["owner"]:
+        return True                       # unclaimed → open
+    if c["authed"]:
+        return True                       # operator override
+    if r["owner"] == c["client_id"]:
+        return True                       # the owner
+    return chan == "pwm" and is_stop(valobj)   # a stop is for everyone
+
+
+def broadcast_owner(rid, owner):
+    frame = json.dumps({"op": "owner", "id": rid, "owner": owner})
+    for c in list(clients):
+        c["queue"].put_nowait(frame)
+
+
+def owners_frame():
+    return json.dumps({"op": "owners",
+                       "map": {rid: r["owner"] for rid, r in rovers.items() if r["owner"]}})
+
+
 # ---- zenoh sample -> matching WS clients (runs on a zenoh thread) ------------
 def on_sample(sample):
     key = str(sample.key_expr)
@@ -63,6 +121,8 @@ def on_sample(sample):
         valobj = json.loads(raw)
     except ValueError:
         valobj = raw
+    if key.endswith("/claimable"):
+        loop.call_soon_threadsafe(note_claimable, key, valobj)
     frame = json.dumps({"key": key, "val": valobj})
     for c in list(clients):
         for pat in list(c["subs"]):
@@ -104,6 +164,8 @@ async def handle_op(c, text):
         val = msg.get("val")
         if key == "fleet/estop" and not c["authed"]:
             await c["ws"].send(json.dumps({"op": "error", "reason": "estop requires operator auth"}))
+        elif val is not None and not ownership_ok(c, key, val):
+            await c["ws"].send(json.dumps({"op": "error", "reason": "rover claimed by another student"}))
         elif val is not None:
             if key == "fleet/estop" and isinstance(val, dict):
                 estop_latched = val.get("engaged") is not False   # missing/true => engaged
@@ -127,10 +189,35 @@ async def handle_op(c, text):
     elif op == "auth":
         c["authed"] = msg.get("password") == OPERATOR_PASS
         await c["ws"].send(json.dumps({"op": "auth", "ok": c["authed"]}))
+    elif op == "hello":
+        # The dashboard's opaque persistent identity (localStorage) — the owner
+        # key, bound once per connection so a refresh keeps its claims.
+        cid = msg.get("clientId")
+        if isinstance(cid, str):
+            c["client_id"] = cid
+        await c["ws"].send(owners_frame())
+    elif op == "claim":
+        # Presence-gated: only lands during a live BOOT-tap window, consumed on
+        # the first claim.
+        rid = msg.get("id")
+        r = rovers.get(rid) if isinstance(rid, str) else None
+        if r and loop.time() < r["claimable_until"]:
+            r["owner"] = c["client_id"]
+            r["claimable_until"] = 0.0
+            broadcast_owner(rid, c["client_id"])
+        else:
+            await c["ws"].send(json.dumps({"op": "error", "reason": "press the rover's BOOT button first"}))
+    elif op == "release":
+        # The owner, or the operator (master override), may release.
+        rid = msg.get("id")
+        r = rovers.get(rid) if isinstance(rid, str) else None
+        if r and (c["authed"] or r["owner"] == c["client_id"]):
+            r["owner"] = ""
+            broadcast_owner(rid, "")
 
 
 async def ws_handler(ws):
-    c = {"ws": ws, "subs": set(), "authed": False, "queue": asyncio.Queue()}
+    c = {"ws": ws, "subs": set(), "authed": False, "client_id": "", "queue": asyncio.Queue()}
     clients.append(c)
     sender = asyncio.create_task(client_sender(c))
     try:

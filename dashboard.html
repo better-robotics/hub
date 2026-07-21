@@ -1078,6 +1078,13 @@
     .cchip-robot { color: var(--ink); }
     .cchip-robot.pool, .cchip-claim { color: var(--warn-ink);
       border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+    /* Ownership (hub#10): "Yours" reads as the settled/positive state (the same
+       live green .dir-in uses); "In use" as a muted lock. The glyph is the
+       primary channel — user-check vs padlock — so neither leans on hue alone. */
+    .cchip-own.mine { color: var(--success);
+      border-color: color-mix(in srgb, var(--success) 45%, transparent);
+      background: color-mix(in srgb, var(--success) 12%, var(--inset)); }
+    .cchip-own.held { color: var(--ink-faint); }
     /* Assign/repair form: its own hairline-divided block, labeled fields on
        the pins-grid pattern (an anonymous placeholder box loses its name on
        the first keystroke), equal widths via flex-grow. */
@@ -2479,6 +2486,10 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
           + '<path d="M9.7 17l4.6 0"/>',
       /* tabler outline/user-plus */
       claim: '<path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/><path d="M16 19h6"/><path d="M19 16v6"/><path d="M6 21v-2a4 4 0 0 1 4 -4h4"/>',
+      /* tabler outline/lock — a rover held by another student */
+      lock: '<path d="M5 13a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v6a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2z"/><path d="M11 16a1 1 0 1 0 2 0a1 1 0 0 0 -2 0"/><path d="M8 11v-4a4 4 0 1 1 8 0v4"/>',
+      /* tabler outline/user-check — a rover that is yours */
+      mine: '<path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0"/><path d="M6 21v-2a4 4 0 0 1 4 -4h4"/><path d="M15 19l2 2l4 -4"/>',
       /* tabler outline/alert-triangle */
       warn: '<path d="M12 9v4"/><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0"/><path d="M12 16h.01"/>',
       /* tabler outline/octagon — the e-stop chip's stop-sign silhouette */
@@ -2508,6 +2519,52 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
     for (const el of document.querySelectorAll("[data-icon]"))
       el.insertAdjacentHTML("afterbegin", icon(el.dataset.icon, 13));
     const PERSON_SVG = icon("person", 11);
+
+    // ── Per-owner rover ownership (hub#10) ───────────────────────────────────
+    // A persistent, opaque browser id — the owner key the adapter binds on
+    // {op:hello}. It is a BEARER token: presenting it is what proves ownership at
+    // the hub's gate, so it only ever leaves here in that one direction. The hub
+    // never tells us anyone else's token — only whether each rover is "mine",
+    // "held" (by another), or free — so nothing here can impersonate an owner.
+    const CLIENT_ID = (() => {
+      let v = localStorage.getItem("hubClientId");
+      if (!v) { v = crypto.randomUUID ? crypto.randomUUID() : "c-" + Math.random().toString(36).slice(2);
+                localStorage.setItem("hubClientId", v); }
+      return v;
+    })();
+    const roverOwn = new Map();        // rover id -> "mine" | "held"  (absent = free)
+    const claimableUntil = new Map();  // rover id -> ms deadline while its BOOT-tap window is live
+    const isClaimable = (robot) => { const u = claimableUntil.get(robot); return !!u && Date.now() < u; };
+    // {op:owners, mine:[], held:[]} on join; {op:owner, id, state} on change.
+    function applyOwners(d) {
+      roverOwn.clear();
+      for (const id of d.mine || []) roverOwn.set(id, "mine");
+      for (const id of d.held || []) roverOwn.set(id, "held");
+    }
+    function applyOwner(d) {
+      if (d.state === "free") roverOwn.delete(d.id); else roverOwn.set(d.id, d.state);
+    }
+    // The rover's claimable announce (robots/<id>/claimable) rides the normal sub
+    // fan-out; each one extends the local window, matching the hub's grace.
+    function ingestClaimable(topic, payload) {
+      const robot = topic.split("/")[1];
+      let open = true;
+      try { open = JSON.parse(payload.toString()).open !== false; } catch {}
+      claimableUntil.set(robot, open ? Date.now() + 4000 : 0);
+    }
+    // Ownership commands go through whichever client is live (operator's drive
+    // client when signed in, else the anonymous public client).
+    const activeClient = () =>
+      (myScope && driveClient && driveClient.connected) ? driveClient : publicClient;
+    // Both clients get the same ownership wiring (hello is sent in zenohConnect).
+    function wireOwnership(client) {
+      // Owner frames are rare (only on a claim/release), so repaint at once — a
+      // remote student taking a rover should lock this card without the 2 s wait.
+      client.on("owners", (d) => { applyOwners(d); renderRobots(); });
+      client.on("owner", (d) => { applyOwner(d); renderRobots(); });
+      return client;
+    }
+
     function deviceCard(board, rec, robotCounts) {
       const { sys, robot, seenAt } = rec;
       const ageMs = Date.now() - seenAt;
@@ -2519,6 +2576,20 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // is signed in, who gets the fuller Assign sheet (pins, hub lock)
       // instead — one entry point per viewer, not two on the same card.
       const claimable = isPool && !myCred;
+      // ── Per-owner state (hub#10): a NAMED rover can be claimed exclusively.
+      // "own" is the hub's per-recipient verdict — never a token — so this card
+      // knows only mine / held / free. A held rover locks a student out of
+      // driving (the hub enforces it too, this is just the honest UI); the
+      // operator always overrides. "Take" appears only while the rover announces
+      // its BOOT-tap window — ownership is tied to physically pressing it.
+      const own = !isPool ? roverOwn.get(robot) : undefined;   // "mine" | "held" | undefined
+      const lockedOut = own === "held" && !prof;
+      const canTake = !isPool && !offline && own !== "mine" && isClaimable(robot);
+      const ownChip = own === "mine"
+          ? `<span class="cchip cchip-own mine">${icon("mine", 11)}<span>Yours</span></span>`
+          : own === "held"
+            ? `<span class="cchip cchip-own held">${icon("lock", 11)}<span>In use</span></span>`
+            : "";
       // The corner is the rover's own topbar — network + identity, the same
       // grammar the page chrome taught. A claimed board wears its name in
       // plain ink (settled); an unclaimed board wears its "Unassigned" state,
@@ -2541,7 +2612,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
               ? `<button class="cchip cchip-robot pool" data-assign="${esc(board)}" data-brobot="${esc(robot)}" title="Assign a name">${PERSON_SVG}<span>Unassigned</span></button>`
               : `<span class="cchip cchip-robot pool">${PERSON_SVG}<span>Unassigned</span></span>`;
       const chips = `<span class="card-chips">
-        ${idChip}
+        ${ownChip}${idChip}
       </span>`;
       // ONE row, ONE order, ONE name per action — buttons appear and disappear
       // with state, they never reorder or rename. All three used to drift: a
@@ -2559,8 +2630,14 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // when the viewer is the operator: the "unassigned" ACL role
       // (CONTRACT.md) exists precisely so a board nobody has claimed yet can
       // still be test-driven from the bench, before it's handed to a robot.
-      if (!offline && (!isPool || prof))
-        actions.push(`<button class="btn-accent" data-drive-open="${esc(robot)}" data-drive-board="${esc(board)}">${icon("drive")} Drive</button>`);
+      if (!offline && (!isPool || prof)) {
+        // A student locked out of a claimed rover sees why, not a missing button
+        // — the disabled tile IS the explanation. The hub enforces it regardless.
+        if (lockedOut)
+          actions.push(`<button class="btn-tile" disabled aria-label="In use by another student — you can't drive it">${icon("lock")} In use</button>`);
+        else
+          actions.push(`<button class="btn-accent" data-drive-open="${esc(robot)}" data-drive-board="${esc(board)}">${icon("drive")} Drive</button>`);
+      }
       // No separate Camera button: the stream lives inside Drive now, above the
       // controls, because you steer by what the camera sees. A camera board
       // opens straight into that view.
@@ -2577,6 +2654,15 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // won't it move" surface, which is exactly a student question.
       if (prof || !isPool)
         actions.push(`<button class="btn-tile" data-tel="${esc(robot)}" data-tel-board="${esc(board)}">${icon("activity")} Details</button>`);
+      // Take: appears only while the rover announces its BOOT-tap window (someone
+      // physically pressed it). Distinct from the pool "Claim" above, which NAMES
+      // an unassigned board; this takes exclusive ownership of a *named* one.
+      if (canTake)
+        actions.push(`<button class="btn-accent" data-take="${esc(robot)}">${icon("claim")} Take</button>`);
+      // Release: the owner hands a rover back; the operator can force-release one
+      // held by a student (the master override).
+      if (own === "mine" || (prof && own === "held"))
+        actions.push(`<button class="btn-tile" data-release="${esc(robot)}">${icon("lock")} Release</button>`);
       // Claim: no sign-in, no approval — type a name and it's published.
       // The amber corner chip is the one entry (no idle-state button — one
       // CTA per card); this row only shows the inline name field once tapped.
@@ -2812,11 +2898,17 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
           let val; try { val = JSON.parse(payload); } catch { val = payload; }
           client._send({ op: "pub", key: mqttToZenoh(topic), val });
         },
+        claim(id) { client._send({ op: "claim", id }); },       // take a rover during its BOOT-tap window
+        release(id) { client._send({ op: "release", id }); },   // hand it back (owner, or operator override)
         end() { try { ws && ws.close(); } catch {} },
       };
       try { ws = new WebSocket(url); }
       catch (e) { setTimeout(() => client._emit("error", e), 0); return client; }
       ws.onopen = () => {
+        // Bind this browser's opaque owner id first (the bearer key the hub
+        // matches for the claim gate), then auth if operator. hello goes on every
+        // connection — anonymous students claim too.
+        client._send({ op: "hello", clientId: CLIENT_ID });
         if (needAuth) client._send({ op: "auth", role: opts.username, password: opts.password });
         else { client.connected = true; client._emit("connect"); }
       };
@@ -2825,11 +2917,16 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         if (d.op === "auth") {
           if (d.ok) { client.connected = true; client._emit("connect"); }
           else client._emit("error", new Error("auth rejected"));
+        } else if (d.op === "owners") {
+          client._emit("owners", d);       // {mine:[], held:[]} — this client's view, never tokens
+        } else if (d.op === "owner") {
+          client._emit("owner", d);        // {id, state:"mine"|"held"|"free"}
         } else if (d.op === "reply") {
           const key = pendingGets[d.id]; delete pendingGets[d.id];
           if (key !== undefined) client._emit("message", key, JSON.stringify(d.val));
         } else if (d.op === "error") {
-          /* adapter-side refusal (e.g. estop without auth) — non-fatal, log-only */
+          /* adapter-side refusal (e.g. estop without auth, or a rover held by
+           * another student) — non-fatal, log-only; the UI already reflects it */
         } else if (d.key !== undefined) {
           client._emit("message", d.key, JSON.stringify(d.val));
         }
@@ -2841,10 +2938,11 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
 
     function startPublicClient() {
       if (publicClient || !hubHost) return;
-      publicClient = zenohConnect(`ws://${hubHost}:${wsPort}`);
+      publicClient = wireOwnership(zenohConnect(`ws://${hubHost}:${wsPort}`));
       publicClient.on("connect", () => {
         hostGate.style.display = "none"; // real confirmation: this host actually works
         publicClient.subscribe("robots/+/sys");
+        publicClient.subscribe("robots/+/claimable");   // a rover's BOOT-tap window (hub#10)
         publicClient.subscribe("fleet/estop");   // retained latch arrives with the subscribe
       });
       if (standalone) {
@@ -2864,7 +2962,9 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         // send" lines and never one "← the rover answers" — the legend would
         // have been a lie the moment students could see the panel.
         logLine("in", `${topic} ${payload.toString()}`);
-        topic === "fleet/estop" ? ingestEstop(payload) : ingestSys(topic, payload);
+        topic === "fleet/estop" ? ingestEstop(payload)
+          : topic.endsWith("/claimable") ? ingestClaimable(topic, payload)
+          : ingestSys(topic, payload);
       });
     }
     function stopPublicClient() {
@@ -4204,7 +4304,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       // briefly costs two — a full-but-working classroom would refuse the
       // operator. Every failure path below restores the anonymous feed.
       stopPublicClient();
-      const client = zenohConnect(`ws://${hubHost}:${wsPort}`, { username, password });
+      const client = wireOwnership(zenohConnect(`ws://${hubHost}:${wsPort}`, { username, password }));
       driveClient = client;
       // mqtt.js retries an unreachable host forever without ever emitting
       // "error" — surface that case ourselves instead of spinning silently.
@@ -4265,6 +4365,7 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       client.on("message", (topic, payload) => {
         if (driveClient !== client) return;
         if (topic === "fleet/estop") ingestEstop(payload);
+        else if (topic.endsWith("/claimable")) ingestClaimable(topic, payload);   // hub#10 BOOT-tap window
         else if (topic.endsWith("/sys")) ingestSys(topic, payload); // publicClient's job, taken over
         logLine("in", `${topic} ${payload.toString()}`);
       });
@@ -4446,6 +4547,8 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
       const drv = e.target.closest("[data-drive-open]");
       const clm = e.target.closest("[data-claim]");
       const cls = e.target.closest("[data-claimsend]");
+      const tk = e.target.closest("[data-take]");
+      const rel = e.target.closest("[data-release]");
       if (drv) openDrive(drv.dataset.driveOpen, drv.dataset.driveBoard);
       else if (tel) openTelemetry(tel.dataset.tel, tel.dataset.telBoard);
       else if (blk) blinkBoard(blk.dataset.blink, blk.dataset.brobot);
@@ -4455,6 +4558,10 @@ var qrcode=function(){function i(t,r){function a(t,r){g=function(t){for(var r=ne
         renderRobots();
         document.querySelector(".claim-name")?.focus();
       } else if (cls) sendClaim(cls.dataset.claimsend);
+      // Take / Release ownership of a NAMED rover (hub#10) — optimistic paint so
+      // the card responds instantly; the hub's {op:owner} confirms/corrects it.
+      else if (tk) { const c = activeClient(); if (c) { c.claim(tk.dataset.take); roverOwn.set(tk.dataset.take, "mine"); renderRobots(); } }
+      else if (rel) { const c = activeClient(); if (c) { c.release(rel.dataset.release); roverOwn.delete(rel.dataset.release); renderRobots(); } }
     });
 
     // ---- Per-board modal: camera lightbox + embedded /wifi config panel ----

@@ -14,10 +14,10 @@ tiers**:
 | `{op:"pub", key, val}` | `session.put` (a `fleet/estop` write is gated on auth; a claimed rover's drive is gated on ownership) |
 | `{op:"get", key, val, id}` → `{op:"reply", id, val}` | `session.get` (set_led, e-stop latch) |
 | `{op:"auth", password}` → `{op:"auth", ok}` | the one operator gate |
-| `{op:"hello", clientId}` → `{op:"owners", map}` | bind an opaque browser identity; receive the owner map |
+| `{op:"hello", clientId}` → `{op:"owners", mine, held}` | bind an opaque browser identity; receive this client's ownership view (id lists, never tokens) |
 | `{op:"claim", id}` / `{op:"release", id}` | claim/release a rover (claim needs a live BOOT-tap window) |
 | adapter → client: `{key, val}` | a delivered subscription sample |
-| adapter → client: `{op:"owner", id, owner}` | an ownership change, pushed to every dashboard |
+| adapter → client: `{op:"owner", id, state}` | an ownership change (`state` = `mine`/`held`/`free`), pushed per-recipient — never the owner's token |
 
 The hub owns the `fleet/estop` latch: an authed estop pub updates it and a
 queryable answers a (re)joining rover's join-time `get` — the retained MQTT
@@ -62,18 +62,24 @@ rover opens a ~12 s window (it announces `robots/<id>/claimable`), during which
 the adapter accepts **one** `{op:claim}`. So to claim rover X you must be
 standing at X — no remote lockouts, and "stealing" a claimed rover means walking
 over and pressing its button, which is self-policing in a classroom. Ownership
-is keyed by an **opaque browser id** (`{op:hello, clientId}`, from localStorage),
-so a refresh keeps a student's rover; it carries no identity beyond "same
-browser." The gate on `{op:"pub"}` drops non-zero drive to a *claimed* rover from
-anyone but the owner or the operator — and a **stop (zero-drive) always passes**,
-so isolation can never strand a robot in motion (the rover's own safety floor and
-`fleet/estop` are untouched). The **operator (`{op:auth}`) always overrides** and
-can `release` any rover.
+is keyed by an **opaque browser id** (`{op:hello, clientId}`, a random UUID from
+localStorage), so a refresh keeps a student's rover; it carries no identity
+beyond "same browser." The gate on `{op:"pub"}` drops non-zero drive to a
+*claimed* rover from anyone but the owner or the operator — and a **stop
+(zero-drive) always passes**, so isolation can never strand a robot in motion
+(the rover's own safety floor and `fleet/estop` are untouched). The **operator
+(`{op:auth}`) always overrides** and can `release` any rover.
 
-Ownership lives only in the adapter — it never rides the zenoh wire — and is
-pushed to dashboards as `{op:"owner"}` frames, with the full map handed to a
-joining client on `{op:hello}`. This mirrors the ESP hub's `ws_zenoh_bridge.c`
-byte-for-byte in behavior, so **one dashboard drives both tiers identically**.
+That `clientId` is a **bearer token** — presenting it at `{op:hello}` is what
+proves ownership at the gate — so it is treated as a secret: it never rides the
+zenoh wire and is **never broadcast**. Each dashboard is told only whether a
+rover is `mine`, `held`, or `free` (`{op:"owner", state}` per-recipient;
+`{op:"owners", mine, held}` on join) — never *who* holds it. Broadcasting the raw
+token would let any dashboard copy it off its own socket and impersonate the
+owner; a per-recipient verdict can't be replayed, so a random UUID no one can see
+can't be spoofed. Ownership lives only in the adapter, mirroring the ESP hub's
+`ws_zenoh_bridge.c` byte-for-byte, so **one dashboard drives both tiers
+identically**.
 
 > **Pi tier caveat (hub#10 step 5, not yet landed):** on the Pi, `zenohd`
 > *routes*, so a raw zenoh client on the AP could reach a rover without passing

@@ -102,15 +102,28 @@ def ownership_ok(c, key, valobj):
     return chan == "pwm" and is_stop(valobj)   # a stop is for everyone
 
 
-def broadcast_owner(rid, owner):
-    frame = json.dumps({"op": "owner", "id": rid, "owner": owner})
+def owner_state_for(r, c):
+    # The owner clientId is a bearer token (presenting it proves ownership at the
+    # gate), so it never leaves the adapter — each client is told only whether a
+    # rover is theirs, held by another, or free, never *who* holds it. A
+    # broadcast token could be copied off a socket and replayed to impersonate.
+    if not r["owner"]:
+        return "free"
+    return "mine" if r["owner"] == c["client_id"] else "held"
+
+
+def broadcast_owner(rid):
+    r = rovers.get(rid)
+    if not r:
+        return
     for c in list(clients):
-        c["queue"].put_nowait(frame)
+        c["queue"].put_nowait(json.dumps({"op": "owner", "id": rid, "state": owner_state_for(r, c)}))
 
 
-def owners_frame():
-    return json.dumps({"op": "owners",
-                       "map": {rid: r["owner"] for rid, r in rovers.items() if r["owner"]}})
+def owners_frame_for(c):
+    mine = [rid for rid, r in rovers.items() if r["owner"] and r["owner"] == c["client_id"]]
+    held = [rid for rid, r in rovers.items() if r["owner"] and r["owner"] != c["client_id"]]
+    return json.dumps({"op": "owners", "mine": mine, "held": held})
 
 
 # ---- zenoh sample -> matching WS clients (runs on a zenoh thread) ------------
@@ -195,7 +208,7 @@ async def handle_op(c, text):
         cid = msg.get("clientId")
         if isinstance(cid, str):
             c["client_id"] = cid
-        await c["ws"].send(owners_frame())
+        await c["ws"].send(owners_frame_for(c))
     elif op == "claim":
         # Presence-gated: only lands during a live BOOT-tap window, consumed on
         # the first claim.
@@ -204,7 +217,7 @@ async def handle_op(c, text):
         if r and loop.time() < r["claimable_until"]:
             r["owner"] = c["client_id"]
             r["claimable_until"] = 0.0
-            broadcast_owner(rid, c["client_id"])
+            broadcast_owner(rid)
         else:
             await c["ws"].send(json.dumps({"op": "error", "reason": "press the rover's BOOT button first"}))
     elif op == "release":
@@ -213,7 +226,7 @@ async def handle_op(c, text):
         r = rovers.get(rid) if isinstance(rid, str) else None
         if r and (c["authed"] or r["owner"] == c["client_id"]):
             r["owner"] = ""
-            broadcast_owner(rid, "")
+            broadcast_owner(rid)
 
 
 async def ws_handler(ws):

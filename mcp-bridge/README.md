@@ -1,14 +1,14 @@
 # hub_mcp — drive the fleet from an LLM
 
 An [MCP](https://modelcontextprotocol.io) tool server that lets an LLM agent
-(Claude Code, or anything that speaks MCP) operate the classroom rovers over the
+(Claude Code, or anything that speaks MCP) operate the classroom robots over the
 same MQTT contract the dashboard and firmware use.
 
-The rovers are ESP32s — they can't host an LLM, so the intelligence runs on the
+The robots are ESP32s — they can't host an LLM, so the intelligence runs on the
 **hub** and reaches the fleet across the fabric:
 
 ```
-  Claude Code ──stdio──► hub_mcp.py ──MQTT :1883──► Mosquitto ──► ESP32 rovers
+  Claude Code ──stdio──► hub_mcp.py ──MQTT :1883──► Mosquitto ──► ESP32 robots
    (on the hub)          (this tool,  as `instructor`)   (broker)   (esp-mqtt)
 ```
 
@@ -30,7 +30,7 @@ Fleet (open to any client on the hub's Wi-Fi — no credential needed):
 | `fleet()` | `robots/+/sys` | every board online (keyed by board id, with its name) + freshness |
 | `drive(robot_id, left_motor, right_motor, duration_ms=400)` | `robots/<id>/pwm` | signed PWM per side (±255, sign = direction); auto-expires after `duration_ms` |
 | `stop(robot_id)` | `robots/<id>/pwm` | zero PWM, immediate halt |
-| `blink(board)` | `robots/<name>/cmd/identify` | flash a board's LED ~6 s — find the physical rover |
+| `blink(board)` | `robots/<name>/cmd/identify` | flash a board's LED ~6 s — find the physical robot |
 | `read_imu(robot_id, timeout_s=2)` | `robots/<id>/imu` | latest accel/gyro sample, freshness-gated (channel lands with next-gen electronics) |
 | `set_led(robot_id, on, red, green, blue)` | `robots/<id>/led` | RGB set via MQTT5 request/reply* |
 
@@ -103,16 +103,16 @@ of git.)
 
 Then, in a Claude Code session:
 
-> *"List the fleet. Drive rover_01 forward at half speed for one second, read its
+> *"List the fleet. Drive robot_01 forward at half speed for one second, read its
 > IMU, and stop it if accel_z drops below 8."*
 
-Claude calls `fleet()` → `drive("rover_01", 128, 128, 1000)` → `read_imu` →
-`stop` — a closed loop over the fabric, with the rover's `duration_ms` expiry as
+Claude calls `fleet()` → `drive("robot_01", 128, 128, 1000)` → `read_imu` →
+`stop` — a closed loop over the fabric, with the robot's `duration_ms` expiry as
 the safety floor if the session drops.
 
 ## Scope
 
 A demo/operator bridge, not a control-loop runtime — MQTT QoS 0, one shared
 `instructor` credential, no rate limiting. Per-device identity and the `set_led`
-reply path are hub#1. For hard-real-time motion, close the loop on the rover;
+reply path are hub#1. For hard-real-time motion, close the loop on the robot;
 this is for supervisory, natural-language operation.

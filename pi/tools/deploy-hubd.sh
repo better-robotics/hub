@@ -13,7 +13,7 @@
 # no credentials) and "the workstation↔Pi network path is usually
 # client-isolated". BOTH ARE NOW FALSE: the repo went public, and on the bench
 # LAN `ssh pi@hub.local` works. On 2026-07-16 find_pi() also matched no console
-# at all — the attached USB serials were rovers — so this path did not run,
+# at all — the attached USB serials were robots — so this path did not run,
 # while the network path it rules out deployed fine. The pre-signed URL still
 # earns its keep for a Pi that genuinely has no route to this workstation (a
 # classroom with client isolation on), which is the case this was built for and

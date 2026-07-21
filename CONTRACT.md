@@ -32,7 +32,7 @@ carry that instead, keeping identity-in-the-key. Topic scheme settled
 response on the fixed `robots/<id>/led/reply` — a stable pattern rather than a
 fully dynamic response-topic, so the broker ACL can scope it. Wiring the
 MQTT5 properties themselves (esp-mqtt's `esp_mqtt5_publish_property_config`
-on the rover side) is an open thread in the hub state tracker (#4).
+on the robot side) is an open thread in the hub state tracker (#4).
 
 | Message | File | Direction | MQTT (both hubs) | Zenoh (baseline) | BLE (workbench) |
 |---------|------|-----------|--------------------------|------------------|-----------------|
@@ -48,7 +48,7 @@ ESP32 firmware hardcodes the same topics in C.
 and right — stand behind the robot, face the way it drives forward (REP 103's
 body frame: x forward, y left). Positive = that wheel rolls forward. Every
 client (joystick, tilt, LLM bridge, student code) and every firmware pin map
-speaks this frame; a rover that mirrors its turns is wired against it (see the
+speaks this frame; a robot that mirrors its turns is wired against it (see the
 robot repo's wiring convention), not a reason to flip signs in a client.
 
 ### Addressing one board when several share an identity
@@ -57,7 +57,7 @@ Identity lives in the topic — but several boards can legitimately answer to on
 id, and every fresh board answers to `unassigned` until it is named. They all
 receive `robots/unassigned/*`, so any device → robot payload may carry an
 optional **`"target": "<board-id>"`** (the `sys` payload's MAC-derived `board`
-field, e.g. `rover-b79c`). A board ignores a payload whose `target` names a
+field, e.g. `robot-b79c`). A board ignores a payload whose `target` names a
 different board; a payload with no `target` is accepted by every subscriber.
 
 This applies to **`pwm` as well as `cmd/*`** — `pwm` is the one that bites. On
@@ -90,13 +90,13 @@ make a blind rename wrong:
   field names already overlap where the hardware does.
 
 **Identity converges by construction**: both projects suffix device names
-with the last two MAC bytes as 4 hex digits — `rover-a3f2` here,
+with the last two MAC bytes as 4 hex digits — `robot-a3f2` here,
 `ESP-A3F2` there — so one physical board is recognizable across both
 dashboards without a registry.
 
 ## Safety floor — every drive self-expires
 
-Enforced in the rover firmware, *below* every client (dashboard joystick,
+Enforced in the robot firmware, *below* every client (dashboard joystick,
 mcp-bridge, user code) — a malformed or malicious payload cannot bypass it:
 
 - A `pwm` command is a bounded pulse: the firmware stops the motors
@@ -112,7 +112,7 @@ Sustained motion is therefore a *refreshing command stream* — the human
 joystick shape (the dashboard republishes while held). A seconds-latency
 planner gets one capped pulse per decision; a dropped session coasts to a
 stop. (The openpilot-panda layering: safety under the intelligent layer,
-never inside it. Enforcement: `robot/src/rover_role.c` `motor_apply`.)
+never inside it. Enforcement: `robot/src/robot_role.c` `motor_apply`.)
 
 ### Fleet e-stop — the retained latch above the per-command floor
 
@@ -122,12 +122,12 @@ everything stopped and **staying** stopped:
 
 - **Topic `fleet/estop`, published retained** (`envelopes/estop.json`;
   `engaged` is the only field the firmware reads — `by`/`reason` are for
-  humans on dashboards). Retained is the load-bearing property: a rover that
+  humans on dashboards). Retained is the load-bearing property: a robot that
   reconnects mid-emergency receives the latch on subscribe, so a reboot or
   Wi-Fi blip cannot walk a robot out of an engaged stop.
-- **Latch semantics** (firmware, `rover_role.c` `estop_apply`): engaged →
+- **Latch semantics** (firmware, `robot_role.c` `estop_apply`): engaged →
   motors stop now and every non-zero `pwm` is refused until a clear arrives.
-  Zero drive (stop) is always honored, engaged or not. The rover reports the
+  Zero drive (stop) is always honored, engaged or not. The robot reports the
   latch as `"estop":true` in its `sys` beacon while engaged (absent = clear),
   so a fleet view can verify each robot actually heard it.
 - **Clear** = retained `{"engaged": false}`. An *empty* retained publish (the
@@ -146,7 +146,7 @@ there write-restraint is convention, like the rest of its scoping.
 
 ## Discovery & isolation — how a client reaches *either* hub
 
-The rover (`better-robotics/robot`) is a raw-TCP MQTT client, so the two hosts
+The robot (`better-robotics/robot`) is a raw-TCP MQTT client, so the two hosts
 (the Pi hub, and the ESP32 hub role) are **the same broker to it** — same `:1883`, same topics,
 same auth. One firmware runs against both. The only host-specific concern is
 *finding* the broker, and it resolves to two host-agnostic rules:
@@ -158,7 +158,7 @@ same auth. One firmware runs against both. The only host-specific concern is
   `192.168.4.1` (ESP-IDF default); both are overridable, but gateway-discovery
   makes the value irrelevant, so we don't pin it (and `10.0.0.x` specifically
   would risk colliding with the STA uplink's subnet).
-- **SSID = `hub-<suffix>`** (suffix from the AP MAC, e.g. `hub-a3f2`). The rover
+- **SSID = `hub-<suffix>`** (suffix from the AP MAC, e.g. `hub-a3f2`). The robot
   scan-joins the strongest open `hub-*`. Single-hub rooms need zero Wi-Fi
   provisioning; multi-hub rooms bind a robot's suffix via BLE Improv.
 

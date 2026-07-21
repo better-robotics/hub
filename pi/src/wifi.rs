@@ -212,7 +212,7 @@ pub async fn connect(ssid: &str, password: &str) -> Result<(), String> {
 
 /// Erase the stored uplink credential(s) — the Pi's side of the same
 /// "Forget this network" contract the ESP32 hub already answers
-/// (rover_config_clear_wifi / POST /wifi/forget). Deletes every non-AP
+/// (robot_config_clear_wifi / POST /wifi/forget). Deletes every non-AP
 /// Wi-Fi connection profile, active or not: realistically there's ever
 /// exactly one (the venue/home network set from this panel), but
 /// enumerating rather than assuming a fixed name reuses the same

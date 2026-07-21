@@ -10,7 +10,7 @@
 #   STA/uplink leg. Selected BY DRIVER, never by interface name: kernel
 #   enumeration order between the SDIO builtin and a USB dongle is a coin
 #   flip per boot (hardware-discovered 2026-07-10 — the dongle won wlan0, the
-#   AP came up on the scarred radio as hub-e959, and the rovers lost their
+#   AP came up on the scarred radio as hub-e959, and the robots lost their
 #   hub-a2f5). The name is not the identity.
 # - OPEN AP, no WPA2: ESP32-C3 fails the 4-way handshake against this AP
 #   (open joins in ~6 s). Classroom auth lives at the MQTT layer (broker ACL).

@@ -1,7 +1,7 @@
 # Robotics Hub — Raspberry Pi
 
 *One routed topic-space for the classroom: student devices, instructor tools,
-and rovers over MQTT — the hub's own Wi-Fi is the permission model, not a
+and robots over MQTT — the hub's own Wi-Fi is the permission model, not a
 login.*
 
 ```sh
@@ -10,7 +10,7 @@ cargo run --bin hubd                  # dashboard on http://localhost:8000
 ```
 
 ```
-      student devices ×N                  hub appliance                 rovers ×M
+      student devices ×N                  hub appliance                 robots ×M
  ┌──────────────────────────┐    ┌─────────────────────────────┐    ┌────────────────┐
  │ browser                  │    │ hubd (Rust)                 │    │ ESP32 firmware │
  │ dashboard.html + mqtt.js │◄──►│ HTTP chassis: page, /fleet, │    │ (esp-mqtt)     │
@@ -70,7 +70,7 @@ pi/
 The wire contract — topic scheme and message shapes — is canonical at the
 monorepo top level: [`CONTRACT.md`](../CONTRACT.md) + [`envelopes/`](../envelopes).
 
-State, roadmap: **[hub#1](../../issues/1)**. The rover firmware the hub
+State, roadmap: **[hub#1](../../issues/1)**. The robot firmware the hub
 serves is [`better-robotics/robot`](https://github.com/better-robotics/robot);
 an ESP32 board can also *be* the hub (a boot role of that same firmware) when
 no Pi is present.

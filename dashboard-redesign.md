@@ -13,7 +13,7 @@ recording because it *validates a direction the repo already adopted* (#4,
 
 - **Devices/fleet as home.** A roster of device cards, each carrying capability
   chips derived from what the board publishes (`sys` today; `range`/`imu` as
-  they land). A sensor station sits next to a rover as a peer — this is what
+  they land). A sensor station sits next to a robot as a peer — this is what
   makes the product "robotics + sensors," not "a remote control."
 - **The channel is the unit of UI.** One channel → one tile on its board's card;
   the card layout mirrors the topic tree. Adopted standard, #4.
@@ -23,7 +23,7 @@ recording because it *validates a direction the repo already adopted* (#4,
   the pub/sub mental model builds itself. This *is* #4's "rendered↔raw view
   toggle," reached independently.
 - **Messages promoted from a debug drawer to a core concept.** The live wire log
-  (`→ you send · ← the rover answers`) is the most educational surface in the
+  (`→ you send · ← the robot answers`) is the most educational surface in the
   product; it should read as a place students explore, not a troubleshooting
   closet. Per-topic message rates (e.g. `5/s`) are computable client-side from
   the stream already received — no broker introspection.
@@ -53,8 +53,8 @@ recording because it *validates a direction the repo already adopted* (#4,
 
 ## The one constraint every exploration broke: topic vocabulary
 
-Each exploration invented a *different* friendly topic scheme (`rover/a044/cmd`,
-`scout/sensors/distance`, `rovers/a044/drive`). All are wrong. In a pub/sub
+Each exploration invented a *different* friendly topic scheme (`robot/a044/cmd`,
+`scout/sensors/distance`, `robots/a044/drive`). All are wrong. In a pub/sub
 teaching tool the topic string **is** the API the student learns — they type it
 into the publish box and into their own code minutes later. A display alias that
 doesn't match the wire teaches a fiction that breaks their code.
@@ -67,7 +67,7 @@ Non-negotiable: UI strings come from `CONTRACT.md` verbatim.
 - Channels: `pwm` (drive), `imu`, `set_led`; planned `range` (**not**
   "distance" — sensor-agnostic by design: HC-SR04 today, VL53L0X next kit),
   `cmd_vel`/`odom` for the encoder kit.
-- Identity is in the topic, never the body. Renaming a rover must never rewrite
+- Identity is in the topic, never the body. Renaming a robot must never rewrite
   its topics.
 
 ## What builds when — the timing gate
@@ -95,7 +95,7 @@ Safe and consistent to do before then (framing, not framework):
   reintroduced as collateral from an auth refactor. A framing that lives in a
   branch can be deleted by someone editing the branch for another reason.)
 - One-line cross-references that point between surfaces ("every stick move
-  publishes to your rover's `pwm` topic — watch it in Messages"). Cheap,
+  publishes to your robot's `pwm` topic — watch it in Messages"). Cheap,
   and it plants pub/sub before the explorer exists. Adds DOM → run the `verify`
   layout sweep (320/390/768/1200) before shipping.
 
@@ -108,7 +108,7 @@ Safe and consistent to do before then (framing, not framework):
 - **`workbench`** — anything with a code editor. The Blocks↔Python view, and
   especially two-way sync ("edit either side"), is workbench's job, not the
   dashboard's. hubd already serves it at `/ide/`; the Code tab is a hand-off
-  carrying rover identity, not an inline editor. The keeper idea for workbench:
+  carrying robot identity, not an inline editor. The keeper idea for workbench:
   a **pub/sub-native block vocabulary** ("when message on topic…") over
   micro:bit-style event blocks.
 - **Firmware** — "runs sandboxed on the hub" is not a system that exists; don't
@@ -116,7 +116,7 @@ Safe and consistent to do before then (framing, not framework):
 
 ## Open product decisions (these gate the tabs; not design calls)
 
-1. **Student rover API shape.** How much does a friendly `drive(...)` hide
+1. **Student robot API shape.** How much does a friendly `drive(...)` hide
    `pwm`'s self-expiring watchdog (400 ms default, 4000 ms cap, enforced below
    every client)? A drive that isn't repeated stops on its own — an API that
    looks like a durable setpoint will make the first thing students build

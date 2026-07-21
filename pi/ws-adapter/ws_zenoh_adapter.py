@@ -12,7 +12,7 @@ adapter maps it onto a zenoh session beside zenohd:
     hub -> client: {key, val}   a delivered subscription sample
 
 The hub owns the fleet/estop latch: an authed estop pub updates it and a
-queryable answers a (re)joining rover's join-time get.
+queryable answers a (re)joining robot's join-time get.
 
 Config via env:
   ZENOH_CONNECT   tcp/<zenohd-host>:7447  (client mode; production = beside zenohd)
@@ -39,12 +39,12 @@ OPERATOR_PASS = _OPERATOR_PASS_ENV or "change-me"
 
 clients = []             # each: {"ws","subs":set,"authed":bool,"client_id":str,"queue":asyncio.Queue}
 estop_latched = False
-# Per-owner rover isolation (hub#10) — the Python mirror of ws_zenoh_bridge.c.
-# Ownership lives ONLY here (never on the wire), keyed by rover name:
-#   rovers[id] = {"owner": clientId or "", "claimable_until": loop-monotonic seconds}
-# A slot appears only from a rover's own claimable announce, so a claim can only
-# land on a rover that physically opened its BOOT-tap window.
-rovers = {}
+# Per-owner robot isolation (hub#10) — the Python mirror of ws_zenoh_bridge.c.
+# Ownership lives ONLY here (never on the wire), keyed by robot name:
+#   robots[id] = {"owner": clientId or "", "claimable_until": loop-monotonic seconds}
+# A slot appears only from a robot's own claimable announce, so a claim can only
+# land on a robot that physically opened its BOOT-tap window.
+robots = {}
 loop = None
 session = None
 
@@ -70,7 +70,7 @@ def note_claimable(key, valobj):
         return
     rid = parts[1]
     open_ = not (isinstance(valobj, dict) and valobj.get("open") is False)
-    r = rovers.setdefault(rid, {"owner": "", "claimable_until": 0.0})
+    r = robots.setdefault(rid, {"owner": "", "claimable_until": 0.0})
     r["claimable_until"] = (loop.time() + 4.0) if open_ else 0.0
 
 
@@ -82,8 +82,8 @@ def is_stop(valobj):
 
 
 def ownership_ok(c, key, valobj):
-    # Only drive channels (pwm, cmd/*) of a *claimed* rover are gated; the rest —
-    # fleet/pair namespaces, led queries, an unclaimed rover — stay open.
+    # Only drive channels (pwm, cmd/*) of a *claimed* robot are gated; the rest —
+    # fleet/pair namespaces, led queries, an unclaimed robot — stay open.
     if not key.startswith("robots/"):
         return True
     parts = key.split("/", 2)
@@ -92,7 +92,7 @@ def ownership_ok(c, key, valobj):
     rid, chan = parts[1], parts[2]
     if chan != "pwm" and not chan.startswith("cmd/"):
         return True
-    r = rovers.get(rid)
+    r = robots.get(rid)
     if not r or not r["owner"]:
         return True                       # unclaimed → open
     if c["authed"]:
@@ -105,7 +105,7 @@ def ownership_ok(c, key, valobj):
 def owner_state_for(r, c):
     # The owner clientId is a bearer token (presenting it proves ownership at the
     # gate), so it never leaves the adapter — each client is told only whether a
-    # rover is theirs, held by another, or free, never *who* holds it. A
+    # robot is theirs, held by another, or free, never *who* holds it. A
     # broadcast token could be copied off a socket and replayed to impersonate.
     if not r["owner"]:
         return "free"
@@ -113,7 +113,7 @@ def owner_state_for(r, c):
 
 
 def broadcast_owner(rid):
-    r = rovers.get(rid)
+    r = robots.get(rid)
     if not r:
         return
     for c in list(clients):
@@ -121,8 +121,8 @@ def broadcast_owner(rid):
 
 
 def owners_frame_for(c):
-    mine = [rid for rid, r in rovers.items() if r["owner"] and r["owner"] == c["client_id"]]
-    held = [rid for rid, r in rovers.items() if r["owner"] and r["owner"] != c["client_id"]]
+    mine = [rid for rid, r in robots.items() if r["owner"] and r["owner"] == c["client_id"]]
+    held = [rid for rid, r in robots.items() if r["owner"] and r["owner"] != c["client_id"]]
     return json.dumps({"op": "owners", "mine": mine, "held": held})
 
 
@@ -178,7 +178,7 @@ async def handle_op(c, text):
         if key == "fleet/estop" and not c["authed"]:
             await c["ws"].send(json.dumps({"op": "error", "reason": "estop requires operator auth"}))
         elif val is not None and not ownership_ok(c, key, val):
-            await c["ws"].send(json.dumps({"op": "error", "reason": "rover claimed by another student"}))
+            await c["ws"].send(json.dumps({"op": "error", "reason": "robot claimed by another student"}))
         elif val is not None:
             if key == "fleet/estop" and isinstance(val, dict):
                 estop_latched = val.get("engaged") is not False   # missing/true => engaged
@@ -213,17 +213,17 @@ async def handle_op(c, text):
         # Presence-gated: only lands during a live BOOT-tap window, consumed on
         # the first claim.
         rid = msg.get("id")
-        r = rovers.get(rid) if isinstance(rid, str) else None
+        r = robots.get(rid) if isinstance(rid, str) else None
         if r and loop.time() < r["claimable_until"]:
             r["owner"] = c["client_id"]
             r["claimable_until"] = 0.0
             broadcast_owner(rid)
         else:
-            await c["ws"].send(json.dumps({"op": "error", "reason": "press the rover's BOOT button first"}))
+            await c["ws"].send(json.dumps({"op": "error", "reason": "press the robot's BOOT button first"}))
     elif op == "release":
         # The owner, or the operator (master override), may release.
         rid = msg.get("id")
-        r = rovers.get(rid) if isinstance(rid, str) else None
+        r = robots.get(rid) if isinstance(rid, str) else None
         if r and (c["authed"] or r["owner"] == c["client_id"]):
             r["owner"] = ""
             broadcast_owner(rid)

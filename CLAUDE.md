@@ -30,7 +30,7 @@ The Pi build-embeds the top-level `dashboard.html`
 (`include_str!("../../../dashboard.html")`) and speaks the `envelopes/` contract.
 
 **The second hub — the whole hub on one ESP32 — moved out 2026-07-09.** It is now
-a *boot role* of the unified firmware in `better-robotics/robot` (a rover that
+a *boot role* of the unified firmware in `better-robotics/robot` (a robot that
 finds no `hub-*` becomes one), not a separate implementation. That repo **vendors**
 `dashboard.html` from here (canonical stays in this monorepo) with a drift check
 (`robot/tools/sync-dashboard.sh --check`) — the tradeoff for one-image firmware:
@@ -100,7 +100,7 @@ vocabulary**, which is *encoded, not described* (2026-07-16):
   text pre-filled, containing a focusable button). Writes are change-guarded
   because the 2 s clock re-renders unconditionally — verify with a
   MutationObserver, not by eye.
-- `.gate-row`, `.cchip` corner chips (the card corner is the rover's topbar),
+- `.gate-row`, `.cchip` corner chips (the card corner is the robot's topbar),
   the modal sheet, `#chip-pop` corner popover, the `--fs-body` panel beat.
 - **The rail is `Fleet · Code · Messages`, Settings pinned below** — three nouns
   of the system in the order a student meets it (the robots · what you say · how
@@ -157,7 +157,7 @@ from `#chip-pop` for months, which is exactly how they all got `gap: 0`).
 
 ## Not in this repo (deliberately)
 `hub-zenoh` (Zenoh evaluation baseline — **archived 2026-07-09**, MQTT won the
-bake-off; kept read-only as the baseline record), `robot` (the rover + ESP32-hub-role
+bake-off; kept read-only as the baseline record), `robot` (the robot + ESP32-hub-role
 firmware), `workbench` (browser dev env, drifting from the classroom model),
 `ide` (the blocks-and-Python editor `pi/` fetches and serves at `/ide/` — a
 client of this repo's contract, not an implementation of it). Different projects.

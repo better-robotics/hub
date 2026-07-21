@@ -30,11 +30,11 @@ That builds hubd, installs it, and brings up both `hubd` (dashboard on :80) and
 
 ## The one host-varying decision: a stable address
 
-Peers — especially ESP32 rovers — dial a **literal IP**, so that IP must not
+Peers — especially ESP32 robots — dial a **literal IP**, so that IP must not
 move:
 
 - Give the host a **static IP or a DHCP reservation** on the classroom router,
-  and hand rovers/laptops that IP. (An MQTT client library that resolves
+  and hand robots/laptops that IP. (An MQTT client library that resolves
   `hub.local` could use the name, but the IP is the safe default for firmware.)
 
 Browsers, by contrast, reach the dashboard at **`http://hub.local`** (avahi/
@@ -42,7 +42,7 @@ mDNS — reliable on Apple and modern Android; `10.42.0.1` is the fallback). Bar
 `http://hub` was dropped — Apple devices don't resolve single-label names, so
 it served only some Android clients for a whole moving part (a dnsmasq drop-in).
 
-Nothing in the repo hardcodes the address; it's the rover/device endpoint config.
+Nothing in the repo hardcodes the address; it's the robot/device endpoint config.
 
 ## Worked example: Raspberry Pi
 

@@ -1,7 +1,7 @@
 //! hub — shared contract: typed envelopes + topic helpers, transport-agnostic.
 //!
 //! The broker is Mosquitto (a separate process, not hubd); these types are for
-//! MQTT clients — rover firmware, sim clients. Envelopes mirror the monorepo
+//! MQTT clients — robot firmware, sim clients. Envelopes mirror the monorepo
 //! top-level contract (`../CONTRACT.md` + `../envelopes/`, canonical there).
 //! Identity is the topic (`robots/<id>/<channel>`), never the body.
 
@@ -15,7 +15,7 @@ pub mod wifi;
 
 // ---- envelopes (mirror of the top-level envelopes/*.json) ----
 
-/// IMU sample — robot → device. `synthetic` is set only by the demo rover
+/// IMU sample — robot → device. `synthetic` is set only by the demo robot
 /// (no hardware); a real board omits it.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Imu {

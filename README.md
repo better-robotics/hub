@@ -1,8 +1,8 @@
 # hub — the classroom Robotics Hub
 
-Students join the hub's Wi-Fi, open a dashboard, and drive ESP32 rovers over
+Students join the hub's Wi-Fi, open a dashboard, and drive ESP32 robots over
 MQTT. This repo is the **contract** (topics, envelopes, the dashboard) and the
-**Raspberry Pi hub** that hosts it at classroom scale; the rover firmware — and
+**Raspberry Pi hub** that hosts it at classroom scale; the robot firmware — and
 the ESP32 that can *become* a hub — lives at
 [`better-robotics/robot`](https://github.com/better-robotics/robot).
 
@@ -17,15 +17,15 @@ configured:
  solo / home               small group · demo         full classroom
 
  ┌──────────────┐          ┌──────────────┐           ┌──────────────┐
- │  rover-XXXX  │          │   hub-XXXX   │           │  hub-pi-XXXX │
- │ the rover is │          │  any board,  │           │  Mosquitto + │
+ │  robot-XXXX  │          │   hub-XXXX   │           │  hub-pi-XXXX │
+ │ the robot is │          │  any board,  │           │  Mosquitto + │
  │ its own hub: │          │  role = hub: │           │  hubd (pi/): │
  │ AP + broker  │          │  AP + broker │           │  open ACL +  │
  │ + dashboard  │          │  + dashboard │           │  instructor   │
  └──────┬───────┘          └──────┬───────┘           └──────┬───────┘
         ▲                     ▲ ▲ ▲                     ▲ ▲ ▲ ▲ ▲
-   one phone —             rovers & phones           the whole room —
-   rover.local             join hub-XXXX —           rovers, phones,
+   one phone —             robots & phones           the whole room —
+   robot.local             join hub-XXXX —           robots, phones,
                            hub.local                 laptops — hub.local
 
  isolation: single driver  Wi-Fi perimeter (open)    Wi-Fi perimeter (open)
@@ -84,14 +84,14 @@ cd pi && sudo ./deploy/install.sh    # hubd + Mosquitto (+ the hub AP on a wlan0
 
 Both paths also install the [`ide`](https://github.com/better-robotics/ide)
 bundle, served at `http://hub.local/ide/` — snap blocks together or write
-Python, and it runs in the browser and drives a rover over this repo's own
+Python, and it runs in the browser and drives a robot over this repo's own
 contract. Reachable from any device on the hub's network, phones included
 (plain-http origin: no mixed-content wall between the page, the broker, and
-the rovers).
+the robots).
 
 **ESP32 hub:** flash the robot firmware
 ([browser flasher](https://better-robotics.github.io/)), flip the board's role
-to *hub* on its `rover.local` settings page, join its Wi-Fi, open
+to *hub* on its `robot.local` settings page, join its Wi-Fi, open
 `http://hub.local`.
 
 `pi/deploy/install.sh` seeds a placeholder `instructor` credential into
@@ -100,7 +100,7 @@ before a real class (`mosquitto_passwd`).
 
 ## The other repos
 
-[`robot`](https://github.com/better-robotics/robot) — the unified rover +
+[`robot`](https://github.com/better-robotics/robot) — the unified robot +
 ESP32-hub firmware · [`better-robotics.github.io`](https://github.com/better-robotics/better-robotics.github.io)
 — the browser flasher · [`ide`](https://github.com/better-robotics/ide) — the
 blocks-and-Python editor served at `/ide/` · `hub-zenoh` — archived (the Zenoh

@@ -2,8 +2,8 @@
 """hub_mcp.py — an MCP server that lets an LLM drive the classroom fleet.
 
 This is the *hub-side* answer to "can Claude Code run on the ESP32": it can't
-(the CLI is a native Linux/macOS binary; the rover is a 400 KB-SRAM MCU running
-FreeRTOS). Instead Claude Code runs on the hub appliance and reaches the rovers
+(the CLI is a native Linux/macOS binary; the robot is a 400 KB-SRAM MCU running
+FreeRTOS). Instead Claude Code runs on the hub appliance and reaches the robots
 over this fabric — an MCP tool server that speaks the same MQTT contract the
 dashboard and firmware already use.
 
@@ -149,10 +149,10 @@ mcp = FastMCP("hub-fleet")
 
 @mcp.tool()
 def drive(robot_id: str, left_motor: int, right_motor: int, duration_ms: int = 400) -> str:
-    """Drive a rover: signed PWM per side, magnitude 0..255, sign sets direction
+    """Drive a robot: signed PWM per side, magnitude 0..255, sign sets direction
     (positive = forward, negative = reverse). The command auto-expires after
     duration_ms — firmware stops the motors when it lapses, so a dropped follow-up
-    can't leave a rover running away. Publishes robots/<id>/pwm."""
+    can't leave a robot running away. Publishes robots/<id>/pwm."""
     body = {
         "timestamp": time.time(),
         "left_motor": _clamp(left_motor),
@@ -165,8 +165,8 @@ def drive(robot_id: str, left_motor: int, right_motor: int, duration_ms: int = 4
 
 @mcp.tool()
 def stop(robot_id: str) -> str:
-    """Immediately halt a rover (zero PWM, zero duration). Publishes robots/<id>/pwm.
-    Transient and per-rover — for a room-wide halt that STAYS engaged, use estop()."""
+    """Immediately halt a robot (zero PWM, zero duration). Publishes robots/<id>/pwm.
+    Transient and per-robot — for a room-wide halt that STAYS engaged, use estop()."""
     _publish(f"robots/{robot_id}/pwm",
              {"timestamp": time.time(), "left_motor": 0, "right_motor": 0, "duration_ms": 0})
     return f"stop {robot_id}"
@@ -175,9 +175,9 @@ def stop(robot_id: str) -> str:
 @mcp.tool()
 def estop(engaged: bool = True, reason: str = "") -> str:
     """Fleet-wide EMERGENCY STOP latch (CONTRACT.md § Fleet e-stop). engaged=True
-    halts every rover on the hub now and makes them refuse all drive commands
+    halts every robot on the hub now and makes them refuse all drive commands
     until estop(engaged=False) clears it. Published RETAINED on fleet/estop, so
-    a rover that reboots or reconnects mid-emergency latches anyway. Needs the
+    a robot that reboots or reconnects mid-emergency latches anyway. Needs the
     instructor credential (the only fleet/estop write grant in the Pi ACL)."""
     body: dict = {"timestamp": time.time(), "engaged": engaged, "by": HUB_USER}
     if reason:
@@ -189,9 +189,9 @@ def estop(engaged: bool = True, reason: str = "") -> str:
 
 @mcp.tool()
 def read_imu(robot_id: str, timeout_s: float = 2.0) -> dict:
-    """Latest IMU sample for a rover: accel_x/y/z, gyro_x/y/z (epoch-seconds
+    """Latest IMU sample for a robot: accel_x/y/z, gyro_x/y/z (epoch-seconds
     timestamp). Waits up to timeout_s for a sample *newer than this call* so a
-    reading reflects the rover's state now, not a stale cache. Reads robots/<id>/imu."""
+    reading reflects the robot's state now, not a stale cache. Reads robots/<id>/imu."""
     start = time.time()
     deadline = start + timeout_s
     while time.time() < deadline:
@@ -202,7 +202,7 @@ def read_imu(robot_id: str, timeout_s: float = 2.0) -> dict:
     cached = _imu.get(robot_id)
     if cached:
         return {**_clean(cached), "stale": True}
-    return {"error": f"no IMU seen for {robot_id}", "hint": "check robot_id and that the rover is publishing"}
+    return {"error": f"no IMU seen for {robot_id}", "hint": "check robot_id and that the robot is publishing"}
 
 
 @mcp.tool()
@@ -223,7 +223,7 @@ def fleet() -> dict:
 @mcp.tool()
 def set_led(robot_id: str, on: bool, red: int = 0, green: int = 0, blue: int = 0,
             timeout_s: float = 1.5) -> dict:
-    """Set a rover's RGB LED and wait for its ack. Sends an MQTT5 request on
+    """Set a robot's RGB LED and wait for its ack. Sends an MQTT5 request on
     robots/<id>/led (response-topic + correlation-data) and awaits the reply on
     robots/<id>/led/reply. NOTE: the firmware-side reply is not wired yet
     (hub#1); until it lands this returns {status:'sent', acked:false} on timeout —
@@ -257,7 +257,7 @@ def set_led(robot_id: str, on: bool, red: int = 0, green: int = 0, blue: int = 0
 
 @mcp.tool()
 def publish(topic: str, payload: dict) -> str:
-    """Publish a JSON payload to any MQTT topic (e.g. robots/rover3/pwm).
+    """Publish a JSON payload to any MQTT topic (e.g. robots/robot3/pwm).
     The broker ACL leaves robots/# and pair/# open to everyone on the hub's
     Wi-Fi, so this reaches any robot's subtree. Use watch() to confirm a
     message actually landed."""
@@ -297,7 +297,7 @@ def _board_name(board: str) -> str | None:
 
 @mcp.tool()
 def blink(board: str) -> str:
-    """Blink a board's LED for ~6 s so a human can find the physical rover on
+    """Blink a board's LED for ~6 s so a human can find the physical robot on
     the desk. Targets the board through its current assigned topic (works for
     pool boards too — writes are open to everyone on the hub's Wi-Fi)."""
     name = _board_name(board)
@@ -315,7 +315,7 @@ def blink(board: str) -> str:
 def assign(board: str, name: str, hub_pin: str = "") -> dict:
     """(Re)assign a board to a name — the topic id it publishes/listens under.
     Optional hub_pin locks the board to one exact hub SSID ('-' clears an
-    existing pin). The rover saves the name to NVS and reboots under it."""
+    existing pin). The robot saves the name to NVS and reboots under it."""
     cur = _board_name(board)
     if not cur:
         return {"error": f"unknown board {board} — call fleet() to see who's online"}
@@ -330,9 +330,9 @@ def assign(board: str, name: str, hub_pin: str = "") -> dict:
 
 @mcp.tool()
 def flip(board: str, direction: str) -> dict:
-    """Fix a rover driving the wrong way without rewiring: direction is one of
+    """Fix a robot driving the wrong way without rewiring: direction is one of
     'left' (reverse left motor), 'right' (reverse right motor), 'swap'
-    (exchange sides). Permutes the stored motor pins in NVS; the rover reboots
+    (exchange sides). Permutes the stored motor pins in NVS; the robot reboots
     with the fix."""
     if direction not in ("left", "right", "swap"):
         return {"error": "direction must be left, right, or swap"}

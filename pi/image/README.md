@@ -73,7 +73,7 @@ loop-mount, not a debootstrap.
    `http://10.42.0.1`. Either way, the dashboard's "Set up Wi-Fi" panel
    scans, pick the classroom SSID + password; the Pi joins on its uplink
    radio.
-4. `hubd` is already running. Pin a **static/reserved IP** so rovers can hardcode
+4. `hubd` is already running. Pin a **static/reserved IP** so robots can hardcode
    the broker at `mqtt://<ip>:1883`.
 
 If anything's wrong on first boot, plug a USB-C cable to a laptop and

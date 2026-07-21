@@ -1,6 +1,6 @@
 //! hubd — the hub's HTTP side, MQTT-transport variant. **hubd is not an MQTT
 //! client at all** (flipped 2026-07-08, see CLAUDE.md § Architecture):
-//! Mosquitto is the broker, and every MQTT party — rover firmware, the
+//! Mosquitto is the broker, and every MQTT party — robot firmware, the
 //! browser dashboard's `mqtt.js`, sim clients — talks to it directly, scoped
 //! by Mosquitto's own ACL (mosquitto-acl.example.conf). hubd only serves
 //! plain HTTP: the dashboard page (which then makes its own MQTT-over-WS
@@ -37,7 +37,7 @@ const ICON_SVG: &str = include_str!("../../public/icon.svg");
 /// and the image/installer drop it in place — hubd needs no rebuild when the
 /// IDE updates. Serving it from the hub is what makes the IDE reachable over
 /// plain http on the classroom LAN: same protocol as the broker (ws://) and
-/// the rovers' camera endpoints, so no mixed-content wall — the only shape
+/// the robots' camera endpoints, so no mixed-content wall — the only shape
 /// that works on iOS phones (no insecure-content override exists there).
 fn ide_dir() -> std::path::PathBuf {
     std::env::var("HUB_IDE_DIR").unwrap_or_else(|_| "/usr/share/hub/ide".into()).into()
@@ -365,16 +365,16 @@ async fn poll_uplink(uplink: Uplink) {
 /// Board addresses the HUB OBSERVED, for the jobs that must not trust a board's
 /// word about where it lives.
 ///
-/// A rover's `sys` beacon carries an `ip` field, and the ACL grants `robots/#`
+/// A robot's `sys` beacon carries an `ip` field, and the ACL grants `robots/#`
 /// to every client with no credential (`mosquitto-acl.example.conf`), on an open
 /// AP. So `sys.ip` is chosen by whoever published the beacon — fine for showing
 /// a fact on a card, disqualifying for anything the dashboard sends a secret to:
-/// a fake rover pointing at a laptop would collect the instructor password from
+/// a fake robot pointing at a laptop would collect the instructor password from
 /// the next person who pressed Update.
 ///
 /// dnsmasq's lease file is the counter-fact. It is written by the DHCP server
 /// that handed the address out, and a board's id derives from the very MAC
-/// holding the lease — `robot`'s `rover_format_robot_id` is `rover-%02x%02x` of
+/// holding the lease — `robot`'s `robot_format_robot_id` is `robot-%02x%02x` of
 /// the last two bytes of its STA MAC, which is the MAC that joins this AP. A
 /// beacon can claim any `ip`; it cannot make our own DHCP server agree.
 ///
@@ -411,11 +411,11 @@ fn vouched_boards() -> serde_json::Map<String, serde_json::Value> {
             }
             // Only real hardware MACs. Every phone and laptop on this AP
             // randomises its address, and a randomised MAC has the
-            // locally-administered bit set; a rover never does, because its id
+            // locally-administered bit set; a robot never does, because its id
             // comes from esp_read_mac's Espressif-assigned global address. The
             // first cut skipped this and cheerfully reported a MacBook as
-            // "rover-6f73" and a phone as "rover-5367" — every DHCP client got a
-            // rover name, because only two bytes decide one.
+            // "robot-6f73" and a phone as "robot-5367" — every DHCP client got a
+            // robot name, because only two bytes decide one.
             let Ok(first) = u8::from_str_radix(octets[0], 16) else { continue };
             if first & 0x02 != 0 {
                 continue;
@@ -424,10 +424,10 @@ fn vouched_boards() -> serde_json::Map<String, serde_json::Value> {
             // dnsmasq writes lowercase today, and a case mismatch here would
             // fail open (no vouched address → no Update button) rather than
             // loudly, which is the kind of bug that gets found in a classroom.
-            let id = format!("rover-{}{}", octets[4].to_lowercase(), octets[5].to_lowercase());
+            let id = format!("robot-{}{}", octets[4].to_lowercase(), octets[5].to_lowercase());
             // Two devices claiming one id is the exact substitution this map
             // exists to stop, so an ambiguous id vouches for NOBODY. Last-write
-            // -wins would let an attacker who spoofs a rover's low two bytes
+            // -wins would let an attacker who spoofs a robot's low two bytes
             // simply out-lease it; a collision fails closed instead, and the
             // Update button disappears rather than pointing somewhere chosen.
             if out.insert(id.clone(), serde_json::Value::String(ip.to_string())).is_some() {
@@ -448,7 +448,7 @@ fn fleet_json(uplink: &Uplink, locator: &str, ssid: &str) -> String {
     serde_json::json!({
         "uplink": *uplink.lock().unwrap(), "locator": locator,
         "ssid": ssid, "host": host,
-        // `boards` is the hub's own answer to "where does rover-xxxx live",
+        // `boards` is the hub's own answer to "where does robot-xxxx live",
         // as opposed to the beacon's. See vouched_boards.
         "boards": vouched_boards(),
     })
@@ -1047,7 +1047,7 @@ async fn accept_forever(listener: TcpListener, uplink: Uplink, locator: String, 
                     .then_some("Location: http://10.42.0.1/welcome\r\n")
                     .unwrap_or_default();
                 // ACAO *, scoped to /fleet ONLY. The reason given for it — "/fleet
-                // is public-read JSON, and the rover setup page prefills the hub
+                // is public-read JSON, and the robot setup page prefills the hub
                 // address from it" — is true of exactly one route, but the header
                 // was being stamped on every response, including /wifi/* and the
                 // dashboard itself. Handing a blanket read grant to every origin
@@ -1169,13 +1169,13 @@ async fn main() {
     let http = std::env::var("HUB_HTTP").unwrap_or_else(|_| "0.0.0.0:8000".to_string());
     // Not bound by hubd — this is Mosquitto's own listener address (see
     // mosquitto.example.conf), reported here purely so the dashboard and the
-    // rover setup page have something to prefill. Default matches Mosquitto's
+    // robot setup page have something to prefill. Default matches Mosquitto's
     // conventional raw-MQTT port.
     let mqtt_addr = std::env::var("HUB_MQTT_ADDR").unwrap_or_else(|_| "0.0.0.0:1883".to_string());
 
-    // The address students need twice (dashboard URL, rover locator) — print
+    // The address students need twice (dashboard URL, robot locator) — print
     // it, and serve it in /fleet so the dashboard can show what to paste
-    // into the rover setup page. Filter by interface
+    // into the robot setup page. Filter by interface
     // KIND, not address range: real Wi-Fi can hand out CGNAT space (measured:
     // en0 at 100.110.x.x), so an RFC1918 filter rejects real LANs, while the
     // routing-table shortcut (UDP connect + local_addr) reports the tunnel
@@ -1211,7 +1211,7 @@ async fn main() {
     if ide_dir().exists() {
         println!("[hubd] ide: http://{host}:{port}/ide/?hub={host}");
     }
-    println!("[hubd] rovers/sim clients: point at the broker, {locator} (see mosquitto.example.conf)");
+    println!("[hubd] robots/sim clients: point at the broker, {locator} (see mosquitto.example.conf)");
 
     // hubd holds no transport session — Mosquitto is a separate process.
     // Park so the HTTP chassis (dashboard, /fleet) stays up.

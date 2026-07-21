@@ -1,6 +1,6 @@
 # Login banner for the recovery console (serial autologin + ssh). Installed to
 # /etc/profile.d/, so it runs on every interactive login and prints the one thing
-# the operator needs after provisioning: the hub's IP — so rovers can be pointed
+# the operator needs after provisioning: the hub's IP — so robots can be pointed
 # at the broker mqtt://<ip>:1883 — plus whether the router is up. This is the
 # *status* surface; Wi-Fi setup itself is the dashboard's job (http://hub.local),
 # not this console.
@@ -24,7 +24,7 @@ case $- in
       else
         printf '  Wi-Fi:    %s\n' "$_hub_wlan_ip"
       fi
-      printf '  Rovers:   mqtt://%s:1883\n' "$_hub_wlan_ip"
+      printf '  Robots:   mqtt://%s:1883\n' "$_hub_wlan_ip"
     else
       printf '  Wi-Fi:    not up — set it from the dashboard (http://hub.local)\n'
     fi

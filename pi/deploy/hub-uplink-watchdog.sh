@@ -18,7 +18,7 @@
 #
 # Reloading rtl8192cu does NOT touch the AP: that is wlan0 on brcmfmac, a
 # different driver on a different chip. This is why the watchdog exists rather
-# than a reboot — the classroom keeps its AP and its rovers while the uplink
+# than a reboot — the classroom keeps its AP and its robots while the uplink
 # leg is recycled underneath them.
 #
 # WORKING WHEN: the uplink returns without a reboot. `journalctl -u

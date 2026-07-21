@@ -83,7 +83,7 @@ MANEOF
 # DHCP offer silently captures the whole laptop's traffic into an uplink-less
 # Pi (hardware-discovered 2026-07-10 — the laptop's DNS died on plug-in).
 # dnsmasq auto-tags requests with the arriving interface, so this scopes to
-# usb0 only; the wlan0 AP keeps advertising router+DNS (rovers need the NAT).
+# usb0 only; the wlan0 AP keeps advertising router+DNS (robots need the NAT).
 install -d "${ROOTFS_DIR}/etc/NetworkManager/dnsmasq-shared.d"
 cat > "${ROOTFS_DIR}/etc/NetworkManager/dnsmasq-shared.d/10-usb0-no-route.conf" <<'NOROUTEEOF'
 dhcp-option=tag:usb0,3

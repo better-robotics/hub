@@ -21,7 +21,7 @@ exactly one place (the adapter). Same FastMCP tools, same envelopes, same
     ----------   --------------------------------   ------------------------------
     pub          {op:pub,  key, val}                session.put
     sub / unsub  {op:sub,  key} / {op:unsub, key}   declare_subscriber
-    get          {op:get,  id, key, val} -> reply   session.get  (rover queryable)
+    get          {op:get,  id, key, val} -> reply   session.get  (robot queryable)
     auth         {op:auth, password}     -> {ok}    (n/a — raw had no hub auth)
     hello        {op:hello, clientId}               (n/a)
 
@@ -185,7 +185,7 @@ mcp = FastMCP("hub-fleet")
 
 @mcp.tool()
 def drive(robot_id: str, left_motor: int, right_motor: int, duration_ms: int = 400) -> str:
-    """Drive a rover: signed PWM per side, magnitude 0..255, sign sets direction
+    """Drive a robot: signed PWM per side, magnitude 0..255, sign sets direction
     (positive = forward, negative = reverse). Auto-expires after duration_ms —
     firmware stops the motors when it lapses. Publishes robots/<id>/pwm."""
     body = {
@@ -200,8 +200,8 @@ def drive(robot_id: str, left_motor: int, right_motor: int, duration_ms: int = 4
 
 @mcp.tool()
 def stop(robot_id: str) -> str:
-    """Immediately halt a rover (zero PWM, zero duration). Publishes robots/<id>/pwm.
-    Transient and per-rover — for a room-wide halt that STAYS engaged, use estop()."""
+    """Immediately halt a robot (zero PWM, zero duration). Publishes robots/<id>/pwm.
+    Transient and per-robot — for a room-wide halt that STAYS engaged, use estop()."""
     _put(f"robots/{robot_id}/pwm",
          {"timestamp": time.time(), "left_motor": 0, "right_motor": 0, "duration_ms": 0})
     return f"stop {robot_id}"
@@ -210,9 +210,9 @@ def stop(robot_id: str) -> str:
 @mcp.tool()
 def estop(engaged: bool = True, reason: str = "") -> str:
     """Fleet-wide EMERGENCY STOP latch (CONTRACT.md § Fleet e-stop). engaged=True
-    halts every rover and makes them refuse drive until estop(engaged=False).
+    halts every robot and makes them refuse drive until estop(engaged=False).
     Published on fleet/estop; the hub holds the latch (Pi storage / ESP queryable)
-    and answers a rebooting rover's join-time get, so the stop survives reconnects.
+    and answers a rebooting robot's join-time get, so the stop survives reconnects.
     The e-stop authority is the operator, enforced at the hub — this bridge must
     have authed (HUB_PASS) or the adapter refuses the write."""
     body: dict = {"timestamp": time.time(), "engaged": engaged, "by": HUB_USER}
@@ -225,7 +225,7 @@ def estop(engaged: bool = True, reason: str = "") -> str:
 
 @mcp.tool()
 def read_imu(robot_id: str, timeout_s: float = 2.0) -> dict:
-    """Latest IMU sample for a rover: accel_x/y/z, gyro_x/y/z. Waits up to
+    """Latest IMU sample for a robot: accel_x/y/z, gyro_x/y/z. Waits up to
     timeout_s for a sample newer than this call. Reads robots/<id>/imu."""
     start = time.time()
     deadline = start + timeout_s
@@ -237,7 +237,7 @@ def read_imu(robot_id: str, timeout_s: float = 2.0) -> dict:
     cached = _imu.get(robot_id)
     if cached:
         return {**_clean(cached), "stale": True}
-    return {"error": f"no IMU seen for {robot_id}", "hint": "check robot_id and that the rover is publishing"}
+    return {"error": f"no IMU seen for {robot_id}", "hint": "check robot_id and that the robot is publishing"}
 
 
 @mcp.tool()
@@ -256,7 +256,7 @@ def fleet() -> dict:
 @mcp.tool()
 def set_led(robot_id: str, on: bool, red: int = 0, green: int = 0, blue: int = 0,
             timeout_s: float = 1.5) -> dict:
-    """Set a rover's RGB LED and wait for its ack. A get() on the rover's queryable
+    """Set a robot's RGB LED and wait for its ack. A get() on the robot's queryable
     at robots/<id>/led carries the request over the adapter and returns the reply
     ({status:ok} / {status:error,message})."""
     req = {"method": "set_led", "on": bool(on),
@@ -274,14 +274,14 @@ def set_led(robot_id: str, on: bool, red: int = 0, green: int = 0, blue: int = 0
     if got and isinstance(val, dict):
         return {"acked": True, **val}
     return {"status": "sent", "acked": False,
-            "note": "no reply within timeout — is the rover declaring a robots/<id>/led queryable?"}
+            "note": "no reply within timeout — is the robot declaring a robots/<id>/led queryable?"}
 
 
 # ---- wire primitives ---------------------------------------------------------
 
 @mcp.tool()
 def publish(topic: str, payload: dict) -> str:
-    """Publish a JSON payload to any key (e.g. robots/rover3/pwm). robots/** and
+    """Publish a JSON payload to any key (e.g. robots/robot3/pwm). robots/** and
     pair/** are open to everyone on the hub's Wi-Fi. Use watch() to confirm it landed."""
     _put(topic, payload)
     return f"published to {topic}: {json.dumps(payload)}"
@@ -320,7 +320,7 @@ def _board_name(board: str) -> str | None:
 
 @mcp.tool()
 def blink(board: str) -> str:
-    """Blink a board's LED for ~6 s so a human can find the physical rover.
+    """Blink a board's LED for ~6 s so a human can find the physical robot.
     Targets the board through its assigned topic. Writes robots/<name>/cmd/identify."""
     name = _board_name(board)
     if not name:
@@ -333,7 +333,7 @@ def blink(board: str) -> str:
 def assign(board: str, name: str, hub_pin: str = "") -> dict:
     """(Re)assign a board to a name — the topic id it publishes/listens under.
     Optional hub_pin locks the board to one hub SSID ('-' clears). Writes
-    robots/<cur>/cmd/config; the rover saves to NVS and reboots under the name."""
+    robots/<cur>/cmd/config; the robot saves to NVS and reboots under the name."""
     cur = _board_name(board)
     if not cur:
         return {"error": f"unknown board {board} — call fleet() to see who's online"}
@@ -348,8 +348,8 @@ def assign(board: str, name: str, hub_pin: str = "") -> dict:
 
 @mcp.tool()
 def flip(board: str, direction: str) -> dict:
-    """Fix a rover driving the wrong way without rewiring: 'left', 'right', or
-    'swap'. Permutes the stored motor pins in NVS; the rover reboots with the fix."""
+    """Fix a robot driving the wrong way without rewiring: 'left', 'right', or
+    'swap'. Permutes the stored motor pins in NVS; the robot reboots with the fix."""
     if direction not in ("left", "right", "swap"):
         return {"error": "direction must be left, right, or swap"}
     name = _board_name(board)

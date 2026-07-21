@@ -7,11 +7,11 @@ standalone `better-robotics/hub-mqtt` repo until the 2026-07-08 monorepo merge
 (the evaluation baseline, greenfield origin
 [hub-zenoh#4](https://github.com/better-robotics/hub-zenoh/issues/4)) was
 archived read-only 2026-07-09 as the baseline record.
-Rover firmware: [`better-robotics/robot`](https://github.com/better-robotics/robot).
+Robot firmware: [`better-robotics/robot`](https://github.com/better-robotics/robot).
 
 **Broker chosen, no-relay architecture landed (2026-07-08) — see [hub#1](../../issues/1)
 for what's left.** hubd is **not an MQTT client**: Mosquitto is the broker,
-and every MQTT party (rover firmware, the browser dashboard's `mqtt.js`, sim
+and every MQTT party (robot firmware, the browser dashboard's `mqtt.js`, sim
 clients) talks to it directly, scoped by Mosquitto's own ACL. This repo is a
 fork of hub-zenoh's shared chassis (dashboard, uplink probe, device-served
 Wi-Fi setup, Pi image build) with the Zenoh-only session/subscribe/publish call sites
@@ -42,7 +42,7 @@ relay itself was removed.
 ## Architecture
 Three layers; the hub (this repo) is no longer the middle one for MQTT
 traffic — it's a plain HTTP server sitting *beside* the broker:
-- **ESP32 rover** — `esp-mqtt` (first-party ESP-IDF component, actively
+- **ESP32 robot** — `esp-mqtt` (first-party ESP-IDF component, actively
   maintained, supports MQTT 3.1.1 and 5.0 natively including
   `esp_mqtt5_publish_property_config`'s `response_topic`/`correlation_data`
   fields — exactly what the RPC binding below needs). Shipped in
@@ -51,7 +51,7 @@ traffic — it's a plain HTTP server sitting *beside* the broker:
   this broker. Note: this is the native C component, not the separate Rust
   `esp-idf-svc` MQTT binding, which is v3-only.
 - **Mosquitto** (`mosquitto.example.conf`, a separate process from hubd) —
-  the actual broker. Raw MQTT on 1883 (rover, sim clients, `mosquitto_pub`/
+  the actual broker. Raw MQTT on 1883 (robot, sim clients, `mosquitto_pub`/
   `sub`), MQTT-over-WebSocket on 9001 (the browser dashboard's `mqtt.js`,
   connecting directly — no relay).
 - **Device/laptop** — the browser dashboard connects with `mqtt.js`, inlined
@@ -147,7 +147,7 @@ never a credential.
 
 **Diagnostic: `allow_anonymous true` means an anonymous CONNECT cannot be
 refused.** So a CONNACK *not authorized* proves the client **sent a username**
-— which, for a rover, means firmware older than 2026-07-13 (`rover_role.c`
+— which, for a robot, means firmware older than 2026-07-13 (`robot_role.c`
 still passing `.credentials` from NVS: its assigned name, or the `unassigned`
 pool). `instructor` is the only entry in `hub-passwd`, so the broker rejects an
 identity it was never told about. Nothing is wrong with the broker or the ACL:
@@ -165,7 +165,7 @@ carried already lives in `mosquitto-acl.example.conf`'s header):
   **only if absent** — re-running install never clobbers a rotated one.
 - `/etc/mosquitto/hub-passwd` is the live truth (salted+hashed).
 - **The ESP32 hub keeps its own**: `robot`'s `hub_role.c` `connect_cb` reads
-  NVS per-connect (`rover_config_load_instructor_pass`), falling back to the
+  NVS per-connect (`robot_config_load_instructor_pass`), falling back to the
   compile-time `INSTRUCTOR_PASS` when unset; set it via the portal's
   `POST /wifi/instructor`, no reflash or reboot. Two hubs, two independent
   definitions of one secret — rotate the Pi and the ESP hub still admits its
@@ -191,7 +191,7 @@ hardware boot). Scars:
   discovered 2026-07-10, second flash): wlan0/wlan1 is a per-boot kernel
   enumeration coin flip between the SDIO builtin and the USB dongle. The v2
   image's first boot lost it — the AP came up on the Edimax as `hub-e959`
-  (suffix followed the wrong MAC, so rovers lost `hub-a2f5`) while the builtin
+  (suffix followed the wrong MAC, so robots lost `hub-a2f5`) while the builtin
   took the uplink. `hub-ap-setup.sh` now picks the brcmfmac by driver and
   self-heals a wrong-radio profile; the capport dnsmasq option tags `!usb0`
   instead of `wlan0`; `uplink_device()` was already role-based (it dodged the
@@ -218,7 +218,7 @@ hardware boot). Scars:
 
 ## Conventions
 - **Measured data only** — a real board's IMU omits fields it can't sense; no
-  synthetic telemetry on real topics. (Inherited — applies once a rover sim
+  synthetic telemetry on real topics. (Inherited — applies once a robot sim
   exists here.)
 - **Identity in the topic, not the body** — mirrors hub-zenoh's
   identity-in-the-key convention. The `rpc_set_led.json` request carries no
@@ -236,8 +236,8 @@ hardware boot). Scars:
 Two processes, not one: `mosquitto -c mosquitto.example.conf` (broker;
 `examples/classroom-mosquitto-demo.sh` generates the passwd file first) and
 `cargo run --bin hubd` (dashboard/HTTP chassis — `HUB_MQTT_ADDR` tells it what
-broker address to report to rovers/the dashboard; it does not bind that
-address itself). No sim clients exist yet (hub-zenoh's `rover`/`device`/
+broker address to report to robots/the dashboard; it does not bind that
+address itself). No sim clients exist yet (hub-zenoh's `robot`/`device`/
 `watch`/`intruder` bins were Zenoh-specific and were deleted rather than left
 broken).
 

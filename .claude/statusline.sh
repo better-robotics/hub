@@ -2,12 +2,12 @@
 # Global statusline (dir · model · branch) + hub liveness + live fleet count.
 #
 # Target: the broker IS the hub, and on the hub's AP the DHCP gateway is the hub
-# (the same discovery the rovers use), so default to the gateway unless HUB_HOST
+# (the same discovery the robots use), so default to the gateway unless HUB_HOST
 # overrides. Off the hub's network the hub is unreachable → "hub down", honestly
 # (e.g. on WhiteSky, which isolates this Mac from the Pi's subnet — you see the
 # fleet only when the Mac is on the hub's AP, which is the intended dev spot).
 #
-# Count: distinct rover board-ids on robots/+/sys (all teams share the topic, so
+# Count: distinct robot board-ids on robots/+/sys (all teams share the topic, so
 # the payload's "board" field is what's distinct). An MQTT census takes ~2s, so
 # it runs in the BACKGROUND and caches to /tmp — the status line stays instant,
 # showing the last count while a refresh runs.

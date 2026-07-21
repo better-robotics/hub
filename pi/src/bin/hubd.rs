@@ -1,17 +1,18 @@
-//! hubd — the hub's HTTP side, MQTT-transport variant. **hubd is not an MQTT
-//! client at all** (flipped 2026-07-08, see CLAUDE.md § Architecture):
-//! Mosquitto is the broker, and every MQTT party — robot firmware, the
-//! browser dashboard's `mqtt.js`, sim clients — talks to it directly, scoped
-//! by Mosquitto's own ACL (mosquitto-acl.example.conf). hubd only serves
-//! plain HTTP: the dashboard page (which then makes its own MQTT-over-WS
-//! connection), `/fleet` (uplink verdict + broker locator, for the parts a
-//! browser can't get over MQTT), and device-served Wi-Fi setup at `/wifi/*`
-//! (nmcli, `src/wifi.rs`) — the day-zero provisioning that used to be a
-//! separate BLE `provisiond` binary (deleted 2026-07-09).
+//! hubd — the hub's HTTP side. **hubd is not a transport client at all**
+//! (flipped 2026-07-08, see CLAUDE.md § Architecture): zenohd is the router,
+//! and every Zenoh party — robot firmware, sim clients — talks to it directly;
+//! the browser reaches it through the WS-JSON adapter beside zenohd. Scoping is
+//! the Wi-Fi perimeter plus the adapter's operator gate + the router ACL
+//! (zenoh-router.example.json5). hubd only serves plain HTTP: the dashboard page
+//! (which then opens its own WS-JSON connection to the adapter), `/fleet`
+//! (uplink verdict + the Zenoh locator, for the parts a browser can't discover
+//! itself), and device-served Wi-Fi setup at `/wifi/*` (nmcli, `src/wifi.rs`) —
+//! the day-zero provisioning that used to be a separate BLE `provisiond` binary
+//! (deleted 2026-07-09).
 //!
 //! `GET /` is the embedded dashboard; `GET /fleet` is `{uplink, locator}`;
 //! `GET /ide/` serves the better-robotics/ide bundle from disk when installed.
-//! The dashboard has `mqtt.js` inlined directly (2026-07-08) rather than
+//! The dashboard has its transport shim inlined directly (2026-07-08) rather than
 //! served as a separate file — that's also what makes it a genuine
 //! standalone artifact: download the top-level `dashboard.html` on its own, open it
 //! as `file://`, type in a hub address, and it works with no hubd behind it
@@ -1138,7 +1139,7 @@ async fn serve_http(uplink: Uplink, addr: String, locator: String, ssid: String)
 #[tokio::main]
 async fn main() {
     // hubd takes NO CLI arguments — it is configured entirely by env (HUB_HTTP,
-    // HUB_MQTT_ADDR, HUB_IDE_DIR). Handle --version/--help and REJECT anything
+    // HUB_ZENOH_ADDR, HUB_IDE_DIR). Handle --version/--help and REJECT anything
     // else rather than ignoring it: an ignored unknown arg is why a `hubd
     // --version` probe silently booted a SECOND instance beside systemd's,
     // squatting :8000 with a stale binary (twice on 2026-07-19). A binary that
@@ -1154,7 +1155,7 @@ async fn main() {
                     "hubd — the classroom hub HTTP chassis (dashboard, /fleet, device-served Wi-Fi setup).\n",
                     "Takes no arguments; configured by env:\n",
                     "  HUB_HTTP        listen address (default 0.0.0.0:8000; the appliance unit sets :80)\n",
-                    "  HUB_MQTT_ADDR   broker address to advertise to clients (default 0.0.0.0:1883)\n",
+                    "  HUB_ZENOH_ADDR  Zenoh endpoint to advertise to clients (default 0.0.0.0:7447)\n",
                     "  HUB_IDE_DIR     IDE bundle directory (default /usr/share/hub/ide)"));
                 return;
             }
@@ -1167,11 +1168,11 @@ async fn main() {
     }
 
     let http = std::env::var("HUB_HTTP").unwrap_or_else(|_| "0.0.0.0:8000".to_string());
-    // Not bound by hubd — this is Mosquitto's own listener address (see
-    // mosquitto.example.conf), reported here purely so the dashboard and the
-    // robot setup page have something to prefill. Default matches Mosquitto's
-    // conventional raw-MQTT port.
-    let mqtt_addr = std::env::var("HUB_MQTT_ADDR").unwrap_or_else(|_| "0.0.0.0:1883".to_string());
+    // Not bound by hubd — this is zenohd's own listener address (see
+    // zenoh-router.example.json5), reported here purely so the dashboard and the
+    // robot setup page have something to prefill. Default matches Zenoh's
+    // conventional TCP port.
+    let zenoh_addr = std::env::var("HUB_ZENOH_ADDR").unwrap_or_else(|_| "0.0.0.0:7447".to_string());
 
     // The address students need twice (dashboard URL, robot locator) — print
     // it, and serve it in /fleet so the dashboard can show what to paste
@@ -1197,8 +1198,8 @@ async fn main() {
         .ok()
         .flatten()
         .unwrap_or_else(|| "<this-machine>".into());
-    let mqtt_port = mqtt_addr.rsplit(':').next().unwrap_or("1883");
-    let locator = format!("mqtt://{host}:{mqtt_port}");
+    let zenoh_port = zenoh_addr.rsplit(':').next().unwrap_or("7447");
+    let locator = format!("tcp/{host}:{zenoh_port}");
 
     let uplink: Uplink = Arc::new(Mutex::new("unknown".into()));
     tokio::spawn(poll_uplink(uplink.clone()));
@@ -1211,7 +1212,7 @@ async fn main() {
     if ide_dir().exists() {
         println!("[hubd] ide: http://{host}:{port}/ide/?hub={host}");
     }
-    println!("[hubd] robots/sim clients: point at the broker, {locator} (see mosquitto.example.conf)");
+    println!("[hubd] robots/sim clients: point at the hub's Zenoh endpoint, {locator} (see zenoh-router.example.json5)");
 
     // hubd holds no transport session — Mosquitto is a separate process.
     // Park so the HTTP chassis (dashboard, /fleet) stays up.

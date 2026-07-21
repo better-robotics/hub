@@ -49,10 +49,6 @@
   }
   .card h2 { font-size: 20px; font-weight: 700; letter-spacing: -.015em; margin: 0 0 6px; }
   .s { color: var(--ink-muted); font-size: 13px; }
-  /* An address to read off the screen and retype into Safari: tabular mono so
-     1/l and 0/O can't be confused, user-select:all so a long-press copies it. */
-  .addr { display: inline-block; color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-variant-numeric: tabular-nums; -webkit-user-select: all; user-select: all; word-break: break-all; }
   /* Base control = the neutral tile; tiers layer on. */
   button, .btn {
     /* inline-flex + gap: centres label (and any icon) on both axes. Block
@@ -84,7 +80,6 @@
   <div class="card" id="after" role="status" hidden>
     <h2>You&rsquo;re set</h2>
     <a class="btn btn-primary" href="http://10.42.0.1/" target="_blank" rel="noopener">Open the dashboard</a>
-    <p class="s">Opens <b class="addr">10.42.0.1</b> in your browser.</p>
   </div>
 </main>
 <script>

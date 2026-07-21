@@ -101,9 +101,12 @@ before a real class (edit the file, then restart the ws-adapter).
 ## The other repos
 
 [`robot`](https://github.com/better-robotics/robot) — the unified robot +
-ESP32-hub firmware · [`better-robotics.github.io`](https://github.com/better-robotics/better-robotics.github.io)
-— the browser flasher · [`ide`](https://github.com/better-robotics/ide) — the
-blocks-and-Python editor served at `/ide/` · `hub-zenoh` — archived (the
+ESP32-hub firmware, and the browser flasher it serves at
+[`/robot/`](https://better-robotics.github.io/robot/) ·
+[`better-robotics.github.io`](https://github.com/better-robotics/better-robotics.github.io)
+— the org's landing URL, redirects to the flasher ·
+[`ide`](https://github.com/better-robotics/ide) — the blocks-and-Python editor
+served at `/ide/` · `hub-zenoh` — archived (the
 standalone Zenoh evaluation baseline; the live transport is now Zenoh in-repo,
 hub#9) · `workbench` — a browser dev environment, drifting from the classroom
 model.

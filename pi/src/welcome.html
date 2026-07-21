@@ -4,8 +4,11 @@
      the captive (hubd answers the probe with genuine success regardless of
      uplink), so the OS trusts this Wi-Fi and dismisses the sheet — which is what
      lets the "Open the dashboard" link (target=_blank) open the phone's REAL
-     browser, even with no internet, while it stays connected to the hub. The
-     known cost: the phone believes the network has internet until it leaves. -->
+     browser, even with no internet, while it stays connected to the hub. Two
+     known costs, both accepted: the phone believes the network has internet
+     until it leaves, and the captive surface parks on /welcome?done=1 beside
+     the opened dashboard — an OS sandbox nothing can close from inside, so
+     the "You're set" card says the user may close it themselves. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -79,6 +82,11 @@
   </div>
   <div class="card" id="after" role="status" hidden>
     <h2>You&rsquo;re set</h2>
+    <!-- This page stays parked here after the dashboard opens: the captive
+         surface is an OS sandbox no page can close (window.close is dead
+         there, industry-wide), so the line below turns the leftover into an
+         instruction instead of a confusion. -->
+    <p class="s">You can close this window once the dashboard is open.</p>
     <a class="btn btn-primary" href="http://10.42.0.1/" target="_blank" rel="noopener">Open the dashboard</a>
   </div>
 </main>

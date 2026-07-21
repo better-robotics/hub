@@ -148,7 +148,9 @@ jobs:
           # usb0 recovery-link fixes (both hardware-discovered on the 2026-07-10 first boot):
           sudo test -f /mnt/hub/etc/NetworkManager/conf.d/10-usb0-managed.conf        # NM must manage usb0 (udev defaults g_ether to unmanaged)
           sudo test -f /mnt/hub/etc/NetworkManager/dnsmasq-shared.d/10-usb0-no-route.conf  # never capture the laptop's default route/DNS
-          sudo test -f /mnt/hub/etc/mosquitto/hub-passwd                          # operator's placeholder credential seeded
+          sudo test -x /mnt/hub/opt/hub/zenoh/zenohd                              # the Zenoh router binary baked
+          sudo test -f /mnt/hub/opt/hub/ws-adapter/venv/bin/python3               # the ws-adapter venv provisioned
+          sudo test -f /mnt/hub/etc/hub/operator.env                             # operator's placeholder credential seeded
           sudo test -f /mnt/hub/etc/NetworkManager/dnsmasq-shared.d/20-ap-capport.conf  # option-114 dashboard advertisement (AP leg only)
           # Base config — customize-image.sh owns what pi-gen used to (since 2026-07-10):
           sudo chroot /mnt/hub getent passwd pi                                       # first user baked

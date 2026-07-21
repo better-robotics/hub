@@ -40,12 +40,15 @@
 # whose source genuinely differs per context.)
 deploy/hubd.service                   /etc/systemd/system/hubd.service                 0644  yes     always
 
-# Mosquitto: the actual broker (hubd is not an MQTT client). The package ships
-# its own unit and includes /etc/mosquitto/conf.d/*.conf, so the config is a
-# drop-in rather than a unit of ours. The passwd file is generated, not copied
-# — install.sh and 01-run-chroot.sh each seed it where mosquitto_passwd exists.
-deploy/mosquitto.conf                 /etc/mosquitto/conf.d/hub.conf                   0644  -       always
-mosquitto-acl.example.conf            /etc/mosquitto/hub-acl.conf                      0644  -       always
+# Zenoh: the router (zenohd) + the browser edge (ws-adapter) — the transport.
+# The two units and the two plain files (the router config, the adapter script)
+# are rows; the zenohd BINARY and the adapter's VENV are NOT — a download and a
+# venv, provisioned by install.sh / the image chroot (see below). The operator
+# credential is generated, not copied — seeded into /etc/hub/operator.env.
+deploy/zenohd.service                 /etc/systemd/system/zenohd.service               0644  yes     always
+deploy/ws-adapter.service             /etc/systemd/system/ws-adapter.service           0644  yes     always
+zenoh-router.example.json5            /opt/hub/zenoh/zenoh-router.json5                0644  -       always
+ws-adapter/ws_zenoh_adapter.py        /opt/hub/ws-adapter/ws_zenoh_adapter.py          0644  -       always
 
 # Day-zero hub-XXXX AP (open, 10.42.0.1) — a hub nobody can find isn't a hub.
 # The profile is created once on first boot; NetworkManager owns it after.

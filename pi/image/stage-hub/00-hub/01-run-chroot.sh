@@ -21,16 +21,30 @@
 # checking nothing.
 raspi-config nonint do_wifi_country US
 
-# Mosquitto broker: seed the one PLACEHOLDER credential (change before a real
-# class: mosquitto_passwd -b /etc/mosquitto/hub-passwd operator <newpass>).
-# Config + ACL were staged by 00-run.sh; generate the passwd here where
-# mosquitto_passwd exists, and lock down the cred/acl files (mosquitto refuses
-# world-readable ones). The hub's own Wi-Fi is the classroom's real boundary
-# (mosquitto-acl.example.conf) — operator is the only identity that needs a
-# password at all, gating just the fleet-wide emergency stop.
-mosquitto_passwd -b -c /etc/mosquitto/hub-passwd operator change-me
-chown mosquitto:mosquitto /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
-chmod 0600 /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
+# Zenoh transport: bake the router binary + the ws-adapter venv, seed the
+# operator credential. Mirrors deploy/install.sh (the manual path); the chroot
+# is arm64 with build-time network, so the download + pip install run here. The
+# router config + adapter script are payload.tsv rows 00-run.sh already placed.
+ZENOH_VERSION=1.9.0
+install -d /opt/hub/zenoh
+tmp="$(mktemp -d)"
+curl -fsSL "https://github.com/eclipse-zenoh/zenoh/releases/download/${ZENOH_VERSION}/zenoh-${ZENOH_VERSION}-aarch64-unknown-linux-gnu-standalone.zip" -o "$tmp/z.zip"
+unzip -oq "$tmp/z.zip" -d "$tmp"
+install -m0755 "$tmp/zenohd" /opt/hub/zenoh/zenohd
+install -m0644 "$tmp"/libzenoh_plugin_storage_manager.so /opt/hub/zenoh/ 2>/dev/null || true
+rm -rf "$tmp"
+
+# ws-adapter venv (eclipse-zenoh + websockets — native aarch64 wheels).
+python3 -m venv /opt/hub/ws-adapter/venv
+/opt/hub/ws-adapter/venv/bin/pip install -q --upgrade pip eclipse-zenoh websockets
+
+# Operator credential — the one gated identity, gating just the fleet-wide
+# emergency stop. The hub's own Wi-Fi is the classroom's real boundary.
+# PLACEHOLDER; change before a real class:
+#   sed -i 's/^OPERATOR_PASS=.*/OPERATOR_PASS=<newpass>/' /etc/hub/operator.env
+install -d -m0755 /etc/hub
+printf 'OPERATOR_PASS=change-me\n' > /etc/hub/operator.env
+chmod 0600 /etc/hub/operator.env
 
 # Enable every unit deploy/payload.tsv marks — the same list 00-run.sh just
 # installed from, so a unit can't be placed in the rootfs and then forgotten
@@ -45,13 +59,13 @@ while read -r src dest mode enable on_host; do
     systemctl enable "$(basename "$dest")"
 done < <(grep -Ev '^[[:space:]]*(#|$)' /tmp/hub-payload.tsv)
 
-# Not manifest rows: the broker's unit ships with the package, and the serial
-# console is a stock template unit instantiated on the gadget's tty.
-systemctl enable mosquitto.service
+# Not a manifest row: the serial console is a stock template unit instantiated
+# on the gadget's tty. (zenohd + ws-adapter ARE manifest rows now — enabled by
+# the loop above, like hubd.)
 systemctl enable serial-getty@ttyGS0.service
 
 # --- Appliance diet: a single-purpose broker/AP box, offline by design ---
-# dphys-swapfile: no swap — mosquitto+hubd use a few MB on a 1–8 GB Pi, and a
+# dphys-swapfile: no swap — zenohd+hubd use a few MB on a 1–8 GB Pi, and a
 #   swapfile on the SD card only wears it (also skips the 100 MB first-boot
 #   swap allocation).
 # triggerhappy: hotkey daemon for input devices the hub doesn't have.

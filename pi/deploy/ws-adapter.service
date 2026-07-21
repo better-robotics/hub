@@ -1,0 +1,27 @@
+# ws-adapter — the browser edge of the Zenoh hub (MQTT->Zenoh migration, hub#9).
+# Terminates the dashboard's WS-JSON protocol on :9001 and maps it onto the local
+# zenohd session over loopback. This is where per-owner claiming (hub#10) and the
+# operator e-stop gate are enforced — and, because it reaches zenohd over
+# loopback, it is the ACL-trusted sole drive path (zenoh-router.example.json5).
+# Deployed by install.sh into /opt/hub/ws-adapter/ with its own venv.
+[Unit]
+Description=ws-adapter — WS-JSON browser edge of the Zenoh hub
+After=network-online.target zenohd.service
+Wants=network-online.target
+Requires=zenohd.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/hub/ws-adapter
+Environment=ZENOH_CONNECT=tcp/127.0.0.1:7447
+Environment=WS_PORT=9001
+# OPERATOR_PASS — the one gated identity (engage/clear the fleet e-stop). Seeded
+# as a placeholder by install.sh; CHANGE IT before a real class.
+EnvironmentFile=/etc/hub/operator.env
+ExecStart=/opt/hub/ws-adapter/venv/bin/python3 /opt/hub/ws-adapter/ws_zenoh_adapter.py
+Restart=always
+RestartSec=2
+User=root
+
+[Install]
+WantedBy=multi-user.target

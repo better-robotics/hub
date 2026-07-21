@@ -27,22 +27,55 @@ echo "[install] staging $PREFIX…"
 install -d "$PREFIX"
 install -m 0755 "$REPO_DIR/target/release/hubd" "$PREFIX/hubd"
 
-# ---- Mosquitto: the actual MQTT broker (hubd is not an MQTT client) ----
-# Debian's packaged mosquitto ships its own systemd unit and includes
-# /etc/mosquitto/conf.d/*.conf — so we drop our config there rather than write
-# a custom unit (deploy/payload.tsv puts it there). Broker-native ACL enforces
-# classroom scoping (operator/team); see mosquitto-acl.example.conf.
-# Installed before the payload below so /etc/mosquitto and the `mosquitto` user
-# exist when the config, ACL, and their ownership land.
-echo "[install] installing Mosquitto broker…"
+# ---- Zenoh: the router (zenohd) + the browser edge (ws-adapter) ----
+# The transport. Robots connect to tcp/<gateway>:7447; the browser reaches the
+# fabric through the ws-adapter beside zenohd (hubd is a client of neither — it
+# only serves the page + /fleet locator). Provisioned before the payload below
+# so the binaries/venv exist when payload.tsv enables the two services.
+echo "[install] installing dependencies…"
 apt-get update -qq
-# `iw` is hubd's association check (the captive release keys on it, see
-# reap_acks). Raspberry Pi OS ships it, so this is a no-op today — declared
-# anyway because "the base image happens to carry it" is not a dependency, and
-# a base bump that dropped it would silently strand every ack. Mirrored in
-# image/stage-hub/00-hub/00-packages: an image installs from its own list, and
-# a fresh card that came up without this would have nothing to say so (2fd8fdf).
-apt-get install -y -qq mosquitto mosquitto-clients iw
+# `iw` is hubd's association check (captive release keys on it, see reap_acks);
+# python3-venv + unzip provision the ws-adapter and unpack the zenohd release.
+# Mirrored in image/stage-hub/00-hub/00-packages.
+apt-get install -y -qq iw python3-venv unzip
+
+# zenohd is a downloaded release, NOT apt (and NOT musl — Raspberry Pi OS is
+# glibc; the musl standalone wants a loader the Pi lacks, scar in
+# deploy/zenohd.service). Idempotent: an existing binary is kept. Version must
+# match the firmware's zenoh-pico pin (robot/platformio.ini → 1.9.0).
+ZENOH_VERSION="${ZENOH_VERSION:-1.9.0}"
+ZENOH_DIR=/opt/hub/zenoh
+install -d "$ZENOH_DIR"
+if [[ ! -x "$ZENOH_DIR/zenohd" ]]; then
+  case "$(uname -m)" in
+    aarch64|arm64) triple=aarch64-unknown-linux-gnu ;;
+    x86_64|amd64)  triple=x86_64-unknown-linux-gnu ;;
+    *) triple="" ;;
+  esac
+  if [[ -n "$triple" ]]; then
+    url="https://github.com/eclipse-zenoh/zenoh/releases/download/${ZENOH_VERSION}/zenoh-${ZENOH_VERSION}-${triple}-standalone.zip"
+    echo "[install] fetching zenohd ${ZENOH_VERSION} (${triple})…"
+    tmp="$(mktemp -d)"
+    if curl -fsSL "$url" -o "$tmp/zenoh.zip" && unzip -oq "$tmp/zenoh.zip" -d "$tmp"; then
+      install -m 0755 "$tmp/zenohd" "$ZENOH_DIR/zenohd"
+      install -m 0644 "$tmp"/libzenoh_plugin_storage_manager.so "$ZENOH_DIR/" 2>/dev/null || true
+      echo "[install]   $ZENOH_DIR/zenohd"
+    else
+      echo "[install] WARNING: couldn't fetch zenohd — install it into $ZENOH_DIR by hand before starting the hub (deploy/zenohd.service documents the steps)" >&2
+    fi
+    rm -rf "$tmp"
+  else
+    echo "[install] WARNING: unknown arch $(uname -m) — install zenohd ${ZENOH_VERSION} into $ZENOH_DIR manually (deploy/zenohd.service)" >&2
+  fi
+fi
+# The router config (the ACL + fleet/estop storage) and the adapter script are
+# payload.tsv rows — the loop below installs them. Only the ws-adapter venv is
+# provisioned here (a venv is not a plain file copy): eclipse-zenoh + websockets.
+WSA_DIR=/opt/hub/ws-adapter
+echo "[install] provisioning the ws-adapter venv…"
+install -d "$WSA_DIR"
+[[ -d "$WSA_DIR/venv" ]] || python3 -m venv "$WSA_DIR/venv"
+"$WSA_DIR/venv/bin/pip" install -q --upgrade pip eclipse-zenoh websockets
 
 # ---- Payload: every file deploy/payload.tsv maps into place ----
 # That manifest is the one list — the Pi image installs the same rows and CI
@@ -72,26 +105,23 @@ while read -r src dest mode enable on_host; do
   fi
 done < <(grep -Ev '^[[:space:]]*(#|$)' "$REPO_DIR/deploy/payload.tsv")
 
-# Password file — one identity. The hub's own Wi-Fi is the classroom's real
-# boundary (mosquitto-acl.example.conf); operator is the one credential
-# that ACL can't give away for free (fleet/estop write). CHANGE THIS before
-# a real class:
-#   sudo mosquitto_passwd -b /etc/mosquitto/hub-passwd operator <newpass>
+# Operator credential — the one gated identity: engaging/clearing the fleet
+# e-stop (the ws-adapter checks it; the router ACL is defense-in-depth). The
+# hub's own Wi-Fi is the classroom's real boundary. CHANGE THIS before a real
+# class, then restart the adapter:
+#   sudo sed -i 's/^OPERATOR_PASS=.*/OPERATOR_PASS=<newpass>/' /etc/hub/operator.env
+#   sudo systemctl restart ws-adapter
 # (Only created if absent, so re-running install.sh won't clobber a real one.)
-if [[ ! -f /etc/mosquitto/hub-passwd ]]; then
+install -d -m 0755 /etc/hub
+if [[ ! -f /etc/hub/operator.env ]]; then
   echo "[install] seeding the placeholder operator password — CHANGE IT before a real class"
-  mosquitto_passwd -b -c /etc/mosquitto/hub-passwd operator change-me
+  printf 'OPERATOR_PASS=change-me\n' > /etc/hub/operator.env
 fi
-# mosquitto runs as the `mosquitto` user and refuses world-readable cred/acl files.
-chown mosquitto:mosquitto /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
-chmod 0600 /etc/mosquitto/hub-passwd /etc/mosquitto/hub-acl.conf
+chmod 0600 /etc/hub/operator.env
 
-systemctl enable mosquitto.service
-systemctl restart mosquitto.service   # pick up the conf.d drop-in
-
-# Every unit payload.tsv marked `enable`, in one pass — mosquitto's own unit is
-# above because the package, not the manifest, ships it. (Guarded: a zero-arg
-# `systemctl enable` is an error, and the Wi-Fi gate above can thin this list.)
+# Every unit payload.tsv marked `enable` (hubd, zenohd, ws-adapter, the Wi-Fi
+# units), in one pass. (Guarded: a zero-arg `systemctl enable` is an error, and
+# the Wi-Fi gate above can thin this list.)
 if [[ ${#units[@]} -gt 0 ]]; then
   echo "[install] enabling units: ${units[*]}"
   systemctl daemon-reload
@@ -122,8 +152,8 @@ else
 fi
 
 echo "[install] done. status:"
-systemctl --no-pager status hubd.service mosquitto.service || true
+systemctl --no-pager status hubd.service zenohd.service ws-adapter.service || true
 echo
-echo "logs:   journalctl -u hubd -u mosquitto -f"
-echo "verify: curl http://<this-host-ip>/fleet                         # dashboard chassis (hubd, :80)"
-echo "        mosquitto_sub -h <ip> -t 'robots/#'                      # broker + ACL — no credential needed"
+echo "logs:   journalctl -u hubd -u zenohd -u ws-adapter -f"
+echo "verify: curl http://<this-host-ip>/fleet          # dashboard chassis (hubd, :80)"
+echo "        ss -ltn | grep -E '7447|9001'             # zenohd router + ws-adapter listening"

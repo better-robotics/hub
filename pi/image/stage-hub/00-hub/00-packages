@@ -1,5 +1,6 @@
 avahi-daemon
 network-manager
-mosquitto
-mosquitto-clients
+python3-venv
+unzip
+curl
 iw

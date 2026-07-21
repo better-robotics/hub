@@ -12,9 +12,9 @@
 install -d "${ROOTFS_DIR}/opt/hub"
 install -m 0755 files/hubd "${ROOTFS_DIR}/opt/hub/hubd"
 
-# --- Everything payload.tsv maps into place: hubd's unit, the Mosquitto broker
-# config + ACL (the package itself comes from 00-packages; the passwd file is
-# generated in the chroot, 01-run-chroot.sh), the day-zero AP, the uplink
+# --- Everything payload.tsv maps into place: hubd's unit, the Zenoh router +
+# ws-adapter units + config + adapter script (the zenohd binary and the adapter
+# venv are provisioned in the chroot, 01-run-chroot.sh), the day-zero AP, the uplink
 # watchdog, the USB-gadget recovery channel, and the login banner. Per-row
 # rationale lives in the manifest.
 #

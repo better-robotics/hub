@@ -72,7 +72,8 @@
     },
   },
 
-  // The storage_manager plugin (libzenoh_plugin_storage_manager) must be on the
-  // plugin search path — installed beside zenohd, or add:
-  //   plugins_loading: { enabled: true, search_dirs: ["/usr/lib/zenoh"] },
+  // The storage_manager plugin (libzenoh_plugin_storage_manager) is installed
+  // beside zenohd (install.sh → /opt/hub/zenoh), so point the loader there. A
+  // dev run from another dir can override with --plugin-search-dir.
+  plugins_loading: { enabled: true, search_dirs: ["/opt/hub/zenoh", "/usr/lib/zenoh"] },
 }

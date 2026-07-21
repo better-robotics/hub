@@ -18,7 +18,7 @@ Config via env:
   ZENOH_CONNECT   tcp/<zenohd-host>:7447  (client mode; production = beside zenohd)
   ZENOH_LISTEN    tcp/127.0.0.1:7447      (peer mode with a listen endpoint; local test)
   WS_PORT         9001
-  INSTRUCTOR_PASS the one gated identity (default "change-me")
+  OPERATOR_PASS the one gated identity (default "change-me")
 """
 import asyncio, json, os, sys
 import zenoh
@@ -34,8 +34,8 @@ ZENOH_LISTEN = os.environ.get("ZENOH_LISTEN", "")
 # fallback — a deploy that skips it fails visibly, not open. (Mirrors the ESP
 # hub's compile-time default + the Pi's install.sh hub-passwd placeholder: a
 # placeholder to rotate, announced as one.)
-_INSTRUCTOR_PASS_ENV = os.environ.get("INSTRUCTOR_PASS", "")
-INSTRUCTOR_PASS = _INSTRUCTOR_PASS_ENV or "change-me"
+_OPERATOR_PASS_ENV = os.environ.get("OPERATOR_PASS", "")
+OPERATOR_PASS = _OPERATOR_PASS_ENV or "change-me"
 
 clients = []             # each: {"ws","subs":set,"authed":bool,"queue":asyncio.Queue}
 estop_latched = False
@@ -103,7 +103,7 @@ async def handle_op(c, text):
     elif op == "pub" and key:
         val = msg.get("val")
         if key == "fleet/estop" and not c["authed"]:
-            await c["ws"].send(json.dumps({"op": "error", "reason": "estop requires instructor auth"}))
+            await c["ws"].send(json.dumps({"op": "error", "reason": "estop requires operator auth"}))
         elif val is not None:
             if key == "fleet/estop" and isinstance(val, dict):
                 estop_latched = val.get("engaged") is not False   # missing/true => engaged
@@ -125,7 +125,7 @@ async def handle_op(c, text):
         else:
             session.get(key, handler=on_reply, timeout=4.0)
     elif op == "auth":
-        c["authed"] = msg.get("password") == INSTRUCTOR_PASS
+        c["authed"] = msg.get("password") == OPERATOR_PASS
         await c["ws"].send(json.dumps({"op": "auth", "ok": c["authed"]}))
 
 
@@ -143,10 +143,10 @@ async def ws_handler(ws):
 
 async def main():
     global loop, session
-    if not _INSTRUCTOR_PASS_ENV:
-        print("[ws-adapter] WARNING: INSTRUCTOR_PASS is unset — using the well-known "
-              "default 'change-me'. The e-stop instructor gate is meaningless with a "
-              "public default; set INSTRUCTOR_PASS to your classroom code before any "
+    if not _OPERATOR_PASS_ENV:
+        print("[ws-adapter] WARNING: OPERATOR_PASS is unset — using the well-known "
+              "default 'change-me'. The e-stop operator gate is meaningless with a "
+              "public default; set OPERATOR_PASS to your classroom code before any "
               "real deployment.", file=sys.stderr, flush=True)
     loop = asyncio.get_running_loop()
     session = zenoh.open(build_config())

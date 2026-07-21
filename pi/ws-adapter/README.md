@@ -13,7 +13,7 @@ tiers**:
 | `{op:"sub", key}` / `{op:"unsub", key}` | declare/drop a per-client key filter |
 | `{op:"pub", key, val}` | `session.put` (a `fleet/estop` write is gated on auth) |
 | `{op:"get", key, val, id}` → `{op:"reply", id, val}` | `session.get` (set_led, e-stop latch) |
-| `{op:"auth", password}` → `{op:"auth", ok}` | the one instructor gate |
+| `{op:"auth", password}` → `{op:"auth", ok}` | the one operator gate |
 | adapter → client: `{key, val}` | a delivered subscription sample |
 
 The hub owns the `fleet/estop` latch: an authed estop pub updates it and a
@@ -24,7 +24,7 @@ message, as a query.
 
 ```sh
 pip install eclipse-zenoh websockets
-ZENOH_CONNECT=tcp/127.0.0.1:7447 WS_PORT=9001 INSTRUCTOR_PASS=<the classroom code> \
+ZENOH_CONNECT=tcp/127.0.0.1:7447 WS_PORT=9001 OPERATOR_PASS=<the classroom code> \
   python3 ws_zenoh_adapter.py
 ```
 
@@ -41,10 +41,10 @@ Permissions; `../../CONTRACT.md` § Discovery & isolation): **everything under
 `robots/**` and `pair/**` is open** to any client, authenticated or not — a
 robot's name is a topic address, not a credential, so a per-topic gate would
 protect nothing the hub's own Wi-Fi doesn't already. The **one** gated action is
-engaging/clearing `fleet/estop`, which requires `{op:auth}` with the instructor
+engaging/clearing `fleet/estop`, which requires `{op:auth}` with the operator
 code — deliberate friction so a stray tap can't halt or release the room. This is
 the same posture as the ESP hub (`ws_zenoh_bridge.c`) and the broker it replaces;
-gating `cmd/*` here would diverge from the contract, not harden it. `INSTRUCTOR_PASS`
+gating `cmd/*` here would diverge from the contract, not harden it. `OPERATOR_PASS`
 is a placeholder to rotate at deploy — an unset value warns loudly on startup
 rather than silently admitting the public default.
 
@@ -52,6 +52,6 @@ rather than silently admitting the public default.
 
 Browser-tested end-to-end against a real `dashboard.html` (the `zenohTransport`
 swap) with a local zenoh peer + a test rover: the fleet card rendered from
-telemetry, the e-stop banner armed from the latch query, instructor sign-in
+telemetry, the e-stop banner armed from the latch query, operator sign-in
 unlocked controls via `{op:auth}`, and an authed estop-clear + a joystick drive
 both reached the rover. No Wi-Fi join — the browser hit `ws://localhost:9001`.

@@ -15,7 +15,7 @@ cd hub && python3 -m http.server 8123 --bind 127.0.0.1
 ```
 
 Expected environment noise offline: 404s for /fleet, /wifi/status
-and ws://…:9001 connection refusals (no hubd/broker behind a static server).
+and ws://…:9001 connection refusals (no hubd/ws-adapter behind a static server).
 Anything else in the console is real. (The Pi's `/codes` HTTP API is gone —
 confirmed 2026-07-13, the hub's own Wi-Fi is the security boundary now, not a
 login — so there's no `/codes/*` fetch to see 404 anymore.)
@@ -23,7 +23,7 @@ login — so there's no `/codes/*` fetch to see 404 anymore.)
 ## Handles
 
 - App functions (`openConfig`, `openCamera`, …) are globals — callable from
-  `browser_evaluate` when no live MQTT fleet exists to click through. Clicks
+  `browser_evaluate` when no live fleet exists to click through. Clicks
   on the resulting DOM are still real gestures.
 - Operator-gated sections (the Assign sheet, e-stop Stop-all/Clear) are
   `display:none` offline until a operator session is simulated — walk

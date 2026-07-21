@@ -2,24 +2,27 @@
 
 An [MCP](https://modelcontextprotocol.io) tool server that lets an LLM agent
 (Claude Code, or anything that speaks MCP) operate the classroom robots over the
-same MQTT contract the dashboard and firmware use.
+same contract the dashboard and firmware use — WS-JSON to the hub's ws-adapter,
+exactly as the dashboard does.
 
 The robots are ESP32s — they can't host an LLM, so the intelligence runs on the
 **hub** and reaches the fleet across the fabric:
 
 ```
-  Claude Code ──stdio──► hub_mcp.py ──MQTT :1883──► Mosquitto ──► ESP32 robots
-   (on the hub)          (this tool,  as `operator`)   (broker)   (esp-mqtt)
+  Claude Code ──stdio──► hub_mcp.py ──WS-JSON :9001──► ws-adapter ──► zenohd ──► robots
+   (on the hub)          (as `operator`)               (browser edge) (router)  (zenoh-pico)
 ```
 
-**A robot's name is a topic address, not a credential.** The hub's own Wi-Fi
-is the security boundary: every MQTT client — robot or browser — gets full
-read+write on `robots/#` and `pair/#` with no username/password at all.
-HUB_USER/HUB_PASS matter for exactly one tool: `estop()`, the sole action
-still gated behind the `operator` credential (the only `fleet/estop` write
-grant in the Pi ACL). Every other tool here works fine connected
-anonymously. No role logic lives in this server. It is the first real MQTT
-*client* in this repo (hubd is deliberately not one).
+**A robot's name is a key address, not a credential.** The hub's own Wi-Fi is
+the security boundary: every client — robot or browser — gets full read+write on
+`robots/**` and `pair/**` with no username/password at all. `HUB_PASS` matters
+for one thing: authenticating as the `operator`, which the ws-adapter requires
+before an `estop()` write — and before driving a *claimed* robot (per-owner
+claiming, hub#10). Every other tool works fine connected anonymously; this bridge
+just authes as the operator so it can also override. No role logic lives in this
+server — the adapter enforces it, exactly as it does for the dashboard. And the
+bridge speaks WS-JSON to the ws-adapter, **not raw Zenoh**, so all its drive
+flows through the hub's one drive path (hub#10 step 5).
 
 ## Tools it exposes
 
@@ -32,7 +35,7 @@ Fleet (open to any client on the hub's Wi-Fi — no credential needed):
 | `stop(robot_id)` | `robots/<id>/pwm` | zero PWM, immediate halt |
 | `blink(board)` | `robots/<name>/cmd/identify` | flash a board's LED ~6 s — find the physical robot |
 | `read_imu(robot_id, timeout_s=2)` | `robots/<id>/imu` | latest accel/gyro sample, freshness-gated (channel lands with next-gen electronics) |
-| `set_led(robot_id, on, red, green, blue)` | `robots/<id>/led` | RGB set via MQTT5 request/reply* |
+| `set_led(robot_id, on, red, green, blue)` | `robots/<id>/led` | RGB set via a Zenoh query/reply* |
 
 Wire primitives (the pedagogy layer — and how any future channel is usable
 before a dedicated tool exists):
@@ -54,34 +57,34 @@ Operator-gated (the one credentialed action — needs `HUB_PASS` set to the
 
 | tool | topic | what it does |
 |------|-------|--------------|
-| `estop(engaged=True, reason="")` | `fleet/estop` | fleet-wide emergency stop latch, retained |
+| `estop(engaged=True, reason="")` | `fleet/estop` | fleet-wide emergency stop latch (a hub-held queryable) |
 
-\* The firmware-side `led/reply` isn't wired yet (hub#1); until it lands
+\* The firmware-side queryable reply isn't wired yet (hub#1); until it lands
 `set_led` returns `acked: false` on timeout — the LED still changes, only the
 confirmation is missing.
 
 ## Run
 
 ```sh
-pip install -r requirements.txt          # or: uv pip install -r requirements.txt
-HUB_HOST=hub.local python hub_mcp.py                       # anonymous — everything but estop() works
-HUB_HOST=hub.local HUB_PASS=<operator-pw> python hub_mcp.py  # adds estop()
+pip install "mcp[cli]" websockets        # or: pip install -r requirements.txt
+HUB_HOST=hub.local python hub_mcp.py                         # anonymous — everything but estop() works
+HUB_HOST=hub.local HUB_PASS=<operator-pw> python hub_mcp.py  # authes as operator — adds estop()
 ```
 
-Environment knobs (defaults match `../pi/mosquitto.example.conf`):
+Environment knobs:
 
 | var | default | note |
 |-----|---------|------|
-| `HUB_HOST` | `localhost` | broker host (`hub.local` reaches either hub) |
-| `HUB_PORT` | `1883` | raw MQTT — **not** the `:9001` WebSocket port |
-| `HUB_USER` | `operator` | ACL identity (ignored without a `HUB_PASS`) |
-| `HUB_PASS` | *(empty)* | the `operator` password from your `mosquitto-passwd`; empty = connect anonymous, which is fine for every tool except `estop()` |
+| `HUB_HOST` | `127.0.0.1` | the ws-adapter host (`hub.local` reaches either hub; its DHCP gateway on the hub AP) |
+| `HUB_WS_PORT` | `9001` | the ws-adapter's WebSocket port (the fixed dashboard convention) |
+| `HUB_USER` | `operator` | the auth role (ignored without a `HUB_PASS`) |
+| `HUB_PASS` | *(empty)* | the `operator` code from `/etc/hub/operator.env`; empty = connect anonymous, which is fine for every tool except `estop()` and driving a claimed robot |
 
 ## Register with Claude Code
 
 This repo ships a committed **`.mcp.json`** at its root, so opening `hub/` in
 Claude Code offers the `hub-fleet` server automatically (you approve it once).
-It resolves this script by project-relative path and pulls the broker password
+It resolves this script by project-relative path and pulls the operator password
 from your environment — never a committed secret:
 
 ```json
@@ -112,7 +115,7 @@ the safety floor if the session drops.
 
 ## Scope
 
-A demo/operator bridge, not a control-loop runtime — MQTT QoS 0, one shared
-`operator` credential, no rate limiting. Per-device identity and the `set_led`
-reply path are hub#1. For hard-real-time motion, close the loop on the robot;
-this is for supervisory, natural-language operation.
+A demo/operator bridge, not a control-loop runtime — best-effort delivery, one
+shared `operator` credential, no rate limiting. The `set_led` reply path is
+hub#1. For hard-real-time motion, close the loop on the robot; this is for
+supervisory, natural-language operation.

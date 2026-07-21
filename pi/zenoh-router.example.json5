@@ -1,6 +1,6 @@
-// Zenoh router config for the Pi hub — the MQTT->Zenoh migration's backbone.
-// See zenoh-migration.md and better-robotics/hub#9. Staged for the cutover, not
-// yet baked into the image (deploy/install.sh installs Mosquitto until then).
+// Zenoh router config for the Pi hub — the transport backbone (hub#9). Deployed
+// by deploy/install.sh + the image build to /opt/hub/zenoh/zenoh-router.json5
+// (payload.tsv row); the zenohd binary is fetched beside it (see install.sh).
 //
 // Run:  zenohd -c zenoh-router.example.json5
 // The storage_manager plugin ships in the official zenoh standalone release

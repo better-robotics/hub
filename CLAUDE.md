@@ -8,7 +8,7 @@ one implementation.
 ## Structure
 - **Top level = the shared contract**: `CONTRACT.md` (topic scheme), `envelopes/`
   (message shapes), `dashboard.html` (browser client), `mcp-bridge/` (LLM client).
-- **`pi/`** — Raspberry Pi implementation (Rust `hubd` + Mosquitto + Pi image).
+- **`pi/`** — Raspberry Pi implementation (Rust `hubd` + zenohd + ws-adapter + Pi image).
   Was `better-robotics/hub-mqtt`. hubd also serves the
   [`better-robotics/ide`](https://github.com/better-robotics/ide) bundle
   (its built dist — source + vendored Blockly/Monaco/mqtt.js/MicroPython-WASM,
@@ -18,7 +18,7 @@ one implementation.
   a code editor: students land in a Blockly workspace and the MicroPython it
   generates renders live beneath it (Monaco is that read-only preview, not the
   authoring surface), running as WASM in the tab. `ide` is a browser-only
-  client of this monorepo's own MQTT/WS contract — no firmware or hubd changes
+  client of this monorepo's own Zenoh/WS contract — no firmware or hubd changes
   needed when it updates. The ESP32 hub serves the same editor at its own
   `/ide/` since 2026-07-20 — not the bundle (619 KB never fit beside A/B OTA)
   but `ide`'s ~2 KB loader shell, which pulls the app from `ide`'s GitHub
@@ -145,8 +145,8 @@ staged with hostile-length data, popovers *open* — the sweep was pointed away
 from `#chip-pop` for months, which is exactly how they all got `gap: 0`).
 
 ## Where impl-specific context lives
-- `pi/CLAUDE.md` — the deep Pi context (broker deploy, AP/NAT, device-served
-  Wi-Fi setup, ACL).
+- `pi/CLAUDE.md` — the deep Pi context (zenohd + ws-adapter deploy, AP/NAT,
+  device-served Wi-Fi setup, router ACL).
   Contract refs point at the monorepo top level (`../CONTRACT.md`,
   `../envelopes/`); remaining `protocol/` mentions there are hub-zenoh's own.
 - The ESP32 hub role's context lives in `better-robotics/robot` (`CLAUDE.md`).

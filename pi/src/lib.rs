@@ -1,7 +1,8 @@
 //! hub — shared contract: typed envelopes + topic helpers, transport-agnostic.
 //!
-//! The broker is Mosquitto (a separate process, not hubd); these types are for
-//! MQTT clients — robot firmware, sim clients. Envelopes mirror the monorepo
+//! The transport is Zenoh — zenohd + the ws-adapter, separate from hubd; these
+//! types are the shared contract every party mirrors (robot firmware on
+//! zenoh-pico, sim clients, the Rust side). Envelopes mirror the monorepo
 //! top-level contract (`../CONTRACT.md` + `../envelopes/`, canonical there).
 //! Identity is the topic (`robots/<id>/<channel>`), never the body.
 

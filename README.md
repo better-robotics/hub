@@ -1,14 +1,14 @@
 # hub — the classroom Robotics Hub
 
 Students join the hub's Wi-Fi, open a dashboard, and drive ESP32 robots over
-MQTT. This repo is the **contract** (topics, envelopes, the dashboard) and the
+Zenoh. This repo is the **contract** (keys, envelopes, the dashboard) and the
 **Raspberry Pi hub** that hosts it at classroom scale; the robot firmware — and
 the ESP32 that can *become* a hub — lives at
 [`better-robotics/robot`](https://github.com/better-robotics/robot).
 
 ## One contract, three room sizes
 
-The room grows; the wire never changes — `robots/<name>/…` over MQTT, one
+The room grows; the wire never changes — `robots/<name>/…` over Zenoh, one
 `dashboard.html`. The robot firmware picks its shape **per boot**, nothing is
 configured:
 
@@ -18,9 +18,9 @@ configured:
 
  ┌──────────────┐          ┌──────────────┐           ┌──────────────┐
  │  robot-XXXX  │          │   hub-XXXX   │           │  hub-pi-XXXX │
- │ the robot is │          │  any board,  │           │  Mosquitto + │
+ │ the robot is │          │  any board,  │           │  zenohd +    │
  │ its own hub: │          │  role = hub: │           │  hubd (pi/): │
- │ AP + broker  │          │  AP + broker │           │  open ACL +  │
+ │ AP + Zenoh   │          │  AP + Zenoh  │           │  open ACL +  │
  │ + dashboard  │          │  + dashboard │           │  operator   │
  └──────┬───────┘          └──────┬───────┘           └──────┬───────┘
         ▲                     ▲ ▲ ▲                     ▲ ▲ ▲ ▲ ▲
@@ -39,9 +39,9 @@ configured:
 
 ## The dashboard
 
-One self-contained `dashboard.html` (mqtt.js inlined; also runs from `file://`
-with the hub's address typed once), two tiers — each enforced by the
-**broker**, not by page logic:
+One self-contained `dashboard.html` (it speaks a small WS-JSON protocol to the
+hub's ws-adapter; also runs from `file://` with the hub's address typed once),
+two tiers — each enforced by the **adapter**, not by page logic:
 
 | tier | credential | can |
 |---|---|---|
@@ -49,13 +49,13 @@ with the hub's address typed once), two tiers — each enforced by the
 | operator | `operator:password` | everything anyone can, plus engage/clear the fleet-wide **e-stop** · **Assign**: Blink 💡 a board's LED to find it on the desk, then give it a name, hub pin, motor pins |
 
 The hub's own Wi-Fi is the real boundary, not a login — a robot's name in the
-topic is an address, not a credential. Fresh boards arrive in an
+key is an address, not a credential. Fresh boards arrive in an
 **unassigned** pool anyone can drive, same as any other robot.
 
 ## Layout
 
 ```
-CONTRACT.md         the wire contract — topics, envelopes, identity/ACL model, cmd/* channels
+CONTRACT.md         the wire contract — keys, envelopes, identity/ACL model, cmd/* channels
 envelopes/          message shapes (imu, pwm, rpc_set_led)
 dashboard.html      the browser client — CANONICAL copy (the ESP32 hub vendors it;
                     robot/tools/sync-dashboard.sh --check gates drift)
@@ -63,10 +63,10 @@ mcp-bridge/         MCP tool server — drive the fleet from an LLM over the sam
 pi/                 the Raspberry Pi hub
 ├── src/            hubd — dashboard/HTTP chassis + device-served Wi-Fi setup (nmcli)
 │                   + serves the ide bundle at /ide/ when installed
-├── mosquitto*.conf broker config + the open ACL (operator gated on fleet/estop only)
-├── deploy/         systemd install: hubd · Mosquitto · day-zero hub AP · USB-gadget recovery
-├── image/          the CI-baked, flash-and-go Pi image (official Lite base + customize-image.sh)
-└── examples/       broker ACL + WebSocket transport tests (CI-gated)
+├── zenoh-router.example.json5  zenohd config + the router ACL (sole drive path)
+├── ws-adapter/     the browser edge (WS-JSON ↔ zenohd) + per-owner claiming (hub#10)
+├── deploy/         systemd install: hubd · zenohd · ws-adapter · day-zero AP · USB recovery
+└── image/          the CI-baked, flash-and-go Pi image (official Lite base + customize-image.sh)
 ```
 
 ## Run
@@ -79,14 +79,14 @@ the headless recovery console.
 
 **Pi, onto an existing OS:**
 ```sh
-cd pi && sudo ./deploy/install.sh    # hubd + Mosquitto (+ the hub AP on a wlan0 host)
+cd pi && sudo ./deploy/install.sh    # hubd + zenohd + ws-adapter (+ the hub AP on a wlan0 host)
 ```
 
 Both paths also install the [`ide`](https://github.com/better-robotics/ide)
 bundle, served at `http://hub.local/ide/` — snap blocks together or write
 Python, and it runs in the browser and drives a robot over this repo's own
 contract. Reachable from any device on the hub's network, phones included
-(plain-http origin: no mixed-content wall between the page, the broker, and
+(plain-http origin: no mixed-content wall between the page, the ws-adapter, and
 the robots).
 
 **ESP32 hub:** flash the robot firmware
@@ -95,14 +95,15 @@ to *hub* on its `robot.local` settings page, join its Wi-Fi, open
 `http://hub.local`.
 
 `pi/deploy/install.sh` seeds a placeholder `operator` credential into
-`/etc/mosquitto/hub-passwd` — the only login the classroom has — change it
-before a real class (`mosquitto_passwd`).
+`/etc/hub/operator.env` — the only login the classroom has — change it
+before a real class (edit the file, then restart the ws-adapter).
 
 ## The other repos
 
 [`robot`](https://github.com/better-robotics/robot) — the unified robot +
 ESP32-hub firmware · [`better-robotics.github.io`](https://github.com/better-robotics/better-robotics.github.io)
 — the browser flasher · [`ide`](https://github.com/better-robotics/ide) — the
-blocks-and-Python editor served at `/ide/` · `hub-zenoh` — archived (the Zenoh
-evaluation baseline MQTT won against) · `workbench` — a browser dev
-environment, drifting from the classroom model.
+blocks-and-Python editor served at `/ide/` · `hub-zenoh` — archived (the
+standalone Zenoh evaluation baseline; the live transport is now Zenoh in-repo,
+hub#9) · `workbench` — a browser dev environment, drifting from the classroom
+model.

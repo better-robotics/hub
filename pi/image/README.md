@@ -1,6 +1,6 @@
 # hub Pi image — flash-and-go appliance
 
-A CI-built Raspberry Pi 4 (arm64) image with **`hubd` + the Mosquitto broker
+A CI-built Raspberry Pi 4 (arm64) image with **`hubd` + `zenohd` + the ws-adapter
 baked into the rootfs**. No ethernet, no on-device build: flash it, join the
 hub's own `hub-XXXX` Wi-Fi from a phone and set the uplink network in the
 dashboard, and the classroom hub is already running.
@@ -12,12 +12,17 @@ installs everything *at build time*. The Pi never installs anything.
 
 ## What's baked in
 - **`hubd`** — the dashboard/HTTP chassis (serves the page on :80, `/fleet`, and
-  device-served Wi-Fi setup at `/wifi/*`; not itself an MQTT client). Static musl
+  device-served Wi-Fi setup at `/wifi/*`; a client of no transport). Static musl
   aarch64 → `/opt/hub/hubd`, enabled via `deploy/hubd.service` (runs as root so it
   can drive NetworkManager for the Wi-Fi panel).
-- **Mosquitto** — the MQTT broker every client talks to (`:1883` raw, `:9001`
-  WebSocket), config + ACL from `deploy/mosquitto.conf` /
-  `mosquitto-acl.example.conf`, placeholder creds seeded in the chroot.
+- **`zenohd`** — the Zenoh router robots connect to (`tcp/<gateway>:7447`), config
+  + router ACL from `zenoh-router.example.json5`. A downloaded standalone release
+  under `/opt/hub/zenoh`, fetched at build time (the offline Pi can't fetch it),
+  enabled via `deploy/zenohd.service`.
+- **the ws-adapter** — the browser edge (WS-JSON on `:9001`, mapping the dashboard
+  onto zenohd with operator auth + per-owner claiming), its own venv under
+  `/opt/hub/ws-adapter`, enabled via `deploy/ws-adapter.service`; placeholder
+  operator credential seeded in the chroot.
 - **USB-gadget recovery** — the USB-C port presents a composite **ECM ethernet +
   ACM serial** gadget: `ssh pi@10.55.0.1` and a serial console at `/dev/ttyGS0`,
   both independent of Wi-Fi/the hub. This is the see-logs / unbrick channel.
@@ -73,8 +78,9 @@ loop-mount, not a debootstrap.
    `http://10.42.0.1`. Either way, the dashboard's "Set up Wi-Fi" panel
    scans, pick the classroom SSID + password; the Pi joins on its uplink
    radio.
-4. `hubd` is already running. Pin a **static/reserved IP** so robots can hardcode
-   the broker at `mqtt://<ip>:1883`.
+4. `hubd` is already running. Pin a **static/reserved IP** so robots can reach the
+   Zenoh router at `tcp/<ip>:7447` (on the hub's own AP, gateway discovery makes
+   this moot — the gateway *is* the hub).
 
 If anything's wrong on first boot, plug a USB-C cable to a laptop and
 `ssh pi@10.55.0.1` (or open `/dev/ttyGS0` at 115200) — that channel works even
@@ -83,8 +89,9 @@ with Wi-Fi down.
 ## First hardware boot — verified 2026-07-10
 The CI mount-assert proves the artifacts are *present*; the first real-Pi boot
 proved they *run*: day-zero AP on the air (`hub-a2f5`), dashboard HTTP 200 on
-:80, broker ACL answering on :1883/:9001, gadget serial + ssh live, rootfs
-auto-expanded, swap/BT/diet absences confirmed. It also caught two real bugs,
+:80, the transport (zenohd + ws-adapter) answering on :7447/:9001, gadget serial
++ ssh live, rootfs auto-expanded, swap/BT/diet absences confirmed. It also caught
+two real bugs,
 both fixed in `00-run.sh` and CI-asserted since:
 - **usb0 sat unmanaged** — NM's udev rules default `g_ether` interfaces to
   `NM_UNMANAGED=1`, so the baked nmconnection never activated
@@ -98,10 +105,10 @@ uplink network (`/wifi/*` scan verified; a join needs a second network in
 range), and WPA2 on the hub AP (open for now — the ESP32 join scar, see
 `pi/CLAUDE.md`).
 
-Security: the broker ships with the open ACL and one PLACEHOLDER credential
-baked in — the `operator` password, gating only `fleet/estop` writes; every
-other robot/browser client needs no login at all. Change it with
-`mosquitto_passwd` before a real class. The serial
+Security: the hub ships with the open floor and one PLACEHOLDER credential
+baked in — the `operator` password (in `/etc/hub/operator.env`), gating only
+`fleet/estop` writes; every other robot/browser client needs no login at all.
+Change it before a real class. The serial
 console autologs in as `pi`, and `pi` has passwordless sudo (baked by
 `customize-image.sh`, deliberately): **cable possession = root**, the same boundary as holding
 the removable, unencrypted SD card — and root over the cable is what makes the

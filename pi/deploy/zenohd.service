@@ -1,7 +1,7 @@
-# zenohd — the Zenoh router for the classroom hub (MQTT->Zenoh migration, see
-# ../../zenoh-migration.md and better-robotics/hub#9). Runs beside Mosquitto
-# during the migration; NOT yet installed by deploy/install.sh (staged for the
-# cutover). hubd/Mosquitto keep serving until the transport actually flips.
+# zenohd — the Zenoh router for the classroom hub: the transport (hub#9). Robots
+# and the ws-adapter connect to it at tcp/<gateway>:7447; hubd serves only the
+# dashboard + /fleet, a client of no transport. Installed by deploy/install.sh
+# and baked into the image; enabled via deploy/payload.tsv.
 #
 # Deploy (validated on a real Pi 4, Debian Bookworm, 2026-07-21):
 #   1. Fetch the GLIBC build — NOT musl; Raspberry Pi OS is glibc, and the musl

@@ -6,65 +6,64 @@ standalone `better-robotics/hub-mqtt` repo until the 2026-07-08 monorepo merge
 [`better-robotics/hub-zenoh`](https://github.com/better-robotics/hub-zenoh)
 (the evaluation baseline, greenfield origin
 [hub-zenoh#4](https://github.com/better-robotics/hub-zenoh/issues/4)) was
-archived read-only 2026-07-09 as the baseline record.
-Robot firmware: [`better-robotics/robot`](https://github.com/better-robotics/robot).
+archived read-only 2026-07-09 as the baseline record. The transport then
+migrated MQTT→Zenoh (the ROS 2 on-ramp won the re-evaluation,
+[hub#9](https://github.com/better-robotics/hub/issues/9)); this doc is the Zenoh
+hub. Robot firmware: [`better-robotics/robot`](https://github.com/better-robotics/robot).
 
-**Broker chosen, no-relay architecture landed (2026-07-08) — see [hub#1](../../issues/1)
-for what's left.** hubd is **not an MQTT client**: Mosquitto is the broker,
-and every MQTT party (robot firmware, the browser dashboard's `mqtt.js`, sim
-clients) talks to it directly, scoped by Mosquitto's own ACL. This repo is a
-fork of hub-zenoh's shared chassis (dashboard, uplink probe, device-served
-Wi-Fi setup, Pi image build) with the Zenoh-only session/subscribe/publish call sites
-deleted rather than reimplemented — there was nothing to reimplement once the
-relay itself was removed.
+**hubd is a client of no transport.** The fabric is `zenohd` (the Zenoh router,
+`tcp/<gateway>:7447`) plus the **ws-adapter** (the browser edge, `:9001`,
+WS-JSON) — each its own on-Pi service beside hubd. Robots and the ESP hub role
+speak `zenoh-pico` (the ESP hub role adds a peer-listen endpoint +
+`ws_zenoh_bridge.c`, its own copy of the adapter). hubd only serves the dashboard
+page (which opens its own WS-JSON connection to the adapter), `/fleet` (the Zenoh
+locator), and device-served Wi-Fi setup. Migration decisions and the source
+evaluation are in hub#9; the settled spec is `../CONTRACT.md`.
 
 ## Source of truth
 - **Contract:** `../CONTRACT.md` + `../envelopes/` (monorepo top level) is
   canonical (flipped 2026-07-08, hub#1) — hub-zenoh's copy is frozen with that
   archived repo.
-- **Broker: Mosquitto, not embedded `rumqttd`.** Decided after concrete
-  research, not familiarity: `rumqttd` runs MQTT v4 and v5 on **fully separate
-  queues** by default (a v4 client and a v5 client never see each other's
-  messages on the same topic) — the same class of hardware-discovered interop
-  landmine as zenoh-pico's missing `usrpwd` support. Mosquitto is Espressif's
-  own tested reference broker for `esp-mqtt` (its examples default to
-  `test.mosquitto.org`), has mature MQTT5 request/response support
-  (`response_topic`/`correlation_data`, its own `mosquitto_rr` CLI), and
-  unifies all protocol versions on one topic space. Costs the single-binary
-  property (Mosquitto is a separate process) — a packaging cost, not a
-  reliability one, which is where this project has actually been burned
-  before.
-- **hubd carries no MQTT client library** — not `rumqttc`, not anything.
-  Once classroom scoping moved to Mosquitto's broker-native ACL (see below),
-  hubd's remaining jobs (dashboard HTML, uplink probe, locator string,
-  device-served Wi-Fi setup) never needed one.
+- **Transport: `zenohd` (the Zenoh router) + the ws-adapter, not an embedded
+  broker.** The Pi runs the official `zenohd` release — a downloaded standalone
+  (`deploy/install.sh` → `/opt/hub/zenoh`, version-pinned to the firmware's
+  zenoh-pico, 1.9.0) — plus the `ws-adapter` (`ws-adapter/`, the browser edge,
+  its own venv). Robots and the ESP hub role speak `zenoh-pico`. Why Zenoh over
+  the MQTT that won the first bake-off: the ROS 2 on-ramp (`cmd_vel`/`odom` are
+  Zenoh's native boundary, bridgeable via `zenoh-bridge-ros2dds`), query/reply as
+  a first-class RPC primitive (`set_led`, the e-stop latch), and brokerless peer
+  discovery — full evaluation in hub#9. Costs a routed transport's scoping work
+  on the Pi (a full router routes, so the ws-adapter is made the sole drive path —
+  see Permissions), not a reliability one.
+- **hubd is a client of no transport** — no MQTT client, no Zenoh session.
+  Classroom scoping lives in the ws-adapter + the `zenohd` router ACL, so hubd's
+  remaining jobs (dashboard HTML, uplink probe, `/fleet` locator, device-served
+  Wi-Fi setup) never needed one.
 
 ## Architecture
-Three layers; the hub (this repo) is no longer the middle one for MQTT
-traffic — it's a plain HTTP server sitting *beside* the broker:
-- **ESP32 robot** — `esp-mqtt` (first-party ESP-IDF component, actively
-  maintained, supports MQTT 3.1.1 and 5.0 natively including
-  `esp_mqtt5_publish_property_config`'s `response_topic`/`correlation_data`
-  fields — exactly what the RPC binding below needs). Shipped in
-  `better-robotics/robot`'s unified firmware (2026-07-09): sys telemetry,
-  pwm drive, and the `cmd/config` assign flow all run over esp-mqtt against
-  this broker. Note: this is the native C component, not the separate Rust
-  `esp-idf-svc` MQTT binding, which is v3-only.
-- **Mosquitto** (`mosquitto.example.conf`, a separate process from hubd) —
-  the actual broker. Raw MQTT on 1883 (robot, sim clients, `mosquitto_pub`/
-  `sub`), MQTT-over-WebSocket on 9001 (the browser dashboard's `mqtt.js`,
-  connecting directly — no relay).
-- **Device/laptop** — the browser dashboard connects with `mqtt.js`, inlined
-  directly into `dashboard.html` (2026-07-08, no CDN — the classroom Pi may
-  have no internet uplink, which is exactly what the uplink probe below
-  exists to detect). Inlining also makes the page a genuine **standalone
-  artifact**: download the top-level `../dashboard.html` on its own, open it as
-  `file://`, type in a hub address (remembered in `localStorage`), and it
-  works with no hubd behind it at all — verified live, a `file://` origin can
+Three layers; the hub (this repo) is not the middle one for fabric traffic —
+hubd is a plain HTTP server sitting *beside* the transport:
+- **ESP32 robot** — `zenoh-pico` (Eclipse's C Zenoh, the MCU-sized client;
+  version-pinned to the Pi's `zenohd`, 1.9.0). Shipped in
+  `better-robotics/robot`'s unified firmware: sys telemetry, pwm drive, and the
+  `cmd/config` assign flow all run over zenoh-pico against the hub's endpoint —
+  the robot connects to `tcp/<gateway>:7447` (`../CONTRACT.md` § Discovery).
+- **`zenohd` + the ws-adapter** (separate processes from hubd) — the transport.
+  `zenohd` (`zenoh-router.example.json5`) listens on `tcp/0.0.0.0:7447` for
+  robots and the on-Pi adapter; the **ws-adapter** (`ws-adapter/`, a Python
+  process beside it) is the browser edge, terminating one WebSocket on `:9001`
+  and mapping a small **WS-JSON op protocol** onto its local Zenoh session. Same
+  protocol as the ESP hub's `ws_zenoh_bridge.c`, so one dashboard serves both.
+- **Device/laptop** — the browser dashboard speaks WS-JSON to the ws-adapter
+  over that one WebSocket (no CDN — the classroom Pi may have no internet uplink,
+  which is exactly what the uplink probe below exists to detect). The page is a
+  genuine **standalone artifact**: download the top-level `../dashboard.html` on
+  its own, open it as `file://`, type in a hub address (remembered in
+  `localStorage`), and it reaches the adapter directly — a `file://` origin can
   open a plain `ws://` connection with no mixed-content block (unlike an
   `https:`-hosted copy, e.g. GitHub Pages, which would need `wss://` and a
   browser-trusted cert for a dynamic local IP — impractical). Python/Rust sim
-  clients TBD (hub#1 phase 4).
+  clients point at `tcp/<gateway>:7447` directly (TBD, hub#1 phase 4).
 
 **Naming ladder (inherited from hub-zenoh, settled 2026-07-05):** deployment
 context = **classroom / home** — the axis that changes config (ACL, AP,
@@ -77,17 +76,16 @@ commands are planned on the **command plane** `robots/<id>/cmd/<verb>` (first
 verb in hub-zenoh: `reprovision`) — not yet wired here.
 
 **Fleet HTTP (dashboard):** hubd serves plain HTTP — `/` is the embedded
-top-level `../dashboard.html` (mqtt.js inlined — no separate `/mqtt.min.js`
-route), `/fleet` just `{uplink, locator}` now. The live per-robot fleet table
-is **not** server-aggregated any more: `dashboard.html` opens its own
-`mqtt.js` connection (no login needed) and subscribes `robots/+/sys` directly
-— Mosquitto's ACL grants every client `robots/#` rw (open by design, same
-contract `/fleet`'s `robots` array used to serve). HTTP for the page itself
-because the audience is any browser on the hub's network, and because an
+top-level `../dashboard.html`, `/fleet` just `{uplink, locator}` (the `locator`
+is the Zenoh endpoint, `tcp/<host>:7447`). The live per-robot fleet table is
+**not** server-aggregated: `dashboard.html` opens its own WS-JSON connection to
+the ws-adapter (no login needed) and subscribes `robots/*/sys` directly — the
+open floor grants every client `robots/**` rw (open by design). HTTP for the page
+itself because the audience is any browser on the hub's network, and because an
 `https:`-served page can't open a plain `ws://` connection (mixed content) —
 serving the dashboard from the hub's own plain-HTTP origin is what makes the
-direct MQTT-over-WS connection possible at all, same reasoning that already
-ruled out the public github.io setup page fetching `/fleet` directly.
+direct WS-JSON connection possible at all, same reasoning that already ruled out
+the public github.io setup page fetching `/fleet` directly.
 
 **Wi-Fi setup is device-served** (replaced BLE/Improv provisioning, deleted
 2026-07-09). hubd exposes `GET /wifi/scan`, `GET /wifi/status`, `POST
@@ -118,62 +116,77 @@ the uplink radio, never the AP's (the 2026-07-04 outage lesson; see
   one sign-in unlocks everyone. (Inherited unchanged.)
 
 ## Permissions (ACL)
-**Redesigned to a Wi-Fi-perimeter model (confirmed 2026-07-13)** —
-broker-native, not a Rust relay, and no longer per-robot.
-`mosquitto-acl.example.conf` is three top-level rules plus one user block:
+**A Wi-Fi-perimeter model (confirmed 2026-07-13)** — enforced at the
+application layer, not per-robot. Zenoh has no broker ACL and zenoh-pico has no
+session auth, so scoping lives in the **ws-adapter**
+(`ws-adapter/ws_zenoh_adapter.py`) plus the `zenohd` router ACL
+(`zenoh-router.example.json5`):
 
 - **Every client — robot or browser, authenticated or not** — gets
-  `robots/#` rw and `pair/#` rw, and read on `fleet/estop`. A robot's name
-  (`robots/<id>/…`) is a topic address, not a credential: the hub's own
+  `robots/**` rw and `pair/**` rw, and read on `fleet/estop`. A robot's name
+  (`robots/<id>/…`) is a key address, not a credential: the hub's own
   Wi-Fi is the real boundary, so there's nothing left for a per-robot
   password to protect that the perimeter doesn't already cover. Directional
   per-channel rules (imu robot→device, pwm device→robot) stay dropped — they'd
   guard a robot spoofing its OWN telemetry, not a classroom threat.
-- **`operator`** — the only named user block, and the only gated identity:
-  `readwrite fleet/estop` on top of the open baseline. It protects the one
-  thing the open ACL can't hand out for free — engaging/clearing the
-  fleet-wide emergency stop (`../CONTRACT.md` § Fleet e-stop) — so a stray
-  keypress can't halt or release the room.
+- **`operator`** — the one gated identity: engaging/clearing the fleet-wide
+  emergency stop (`../CONTRACT.md` § Fleet e-stop). zenoh-pico has no usrpwd to
+  lean on, so the ws-adapter (and the ESP hub's `ws_zenoh_bridge.c`) accepts an
+  `fleet/estop` state-change only after an `{op:auth}` carrying the operator
+  code — gating the one action, not the connection, which is *stronger* than a
+  whole-session accept. It protects the thing the open floor can't hand out for
+  free, so a stray keypress can't halt or release the room.
+- **Per-owner claiming (hub#10)** — opt-in exclusivity on top of the open
+  floor: a student can *claim* a robot (a physical BOOT-tap window, keyed to an
+  opaque browser id) so nobody else drives it; the adapter drops non-zero drive
+  to a claimed robot from anyone but the owner or the operator, while a stop
+  always passes. Ownership lives only in the adapter, never on the wire; the Pi
+  and ESP hub implement it identically. See `ws-adapter/README.md`.
+- **Pi only — the ws-adapter is made the sole drive path.** A full `zenohd`
+  *routes*, so a raw Zenoh client on the AP could reach a robot around the
+  adapter (the ESP hub's zenoh-pico doesn't route, so it has this for free). The
+  router ACL denies AP-radio clients (`wlan0`/`wlan1`) writes to the command
+  channels (`robots/*/pwm`, `robots/*/cmd/**`, `fleet/estop`); only the on-Pi
+  adapter, over loopback, may inject them — after it has applied the per-owner +
+  operator logic. The **MCP bridge** rides this same edge (WS-JSON to the adapter
+  as an operator, not raw Zenoh), so all drive flows through one place.
 
 This replaced the per-robot-credential model: one `pattern readwrite
 robots/%u/#` rule per identity, a `cmd/config`-assigned name+password, an
 `unassigned` pool credential, and the Pi's `/codes` HTTP API for
 minting/rotating/deleting those credentials and running the knock-and-approve
-pairing ceremony — all now deleted. None of that machinery enforced anything
-a determined student couldn't already read off a card; it just made every
-fresh board a manual provisioning step. `cmd/config` now only assigns a
-board's name (`{"name":"scout"}`, no password field) — a name is an address,
+pairing ceremony — all deleted with the MQTT broker. None of that machinery
+enforced anything a determined student couldn't already read off a card; it just
+made every fresh board a manual provisioning step. `cmd/config` now only assigns
+a board's name (`{"name":"scout"}`, no password field) — a name is an address,
 never a credential.
 
-**Diagnostic: `allow_anonymous true` means an anonymous CONNECT cannot be
-refused.** So a CONNACK *not authorized* proves the client **sent a username**
-— which, for a robot, means firmware older than 2026-07-13 (`robot_role.c`
-still passing `.credentials` from NVS: its assigned name, or the `unassigned`
-pool). `operator` is the only entry in `hub-passwd`, so the broker rejects an
-identity it was never told about. Nothing is wrong with the broker or the ACL:
-reflash the board. Expect this from any board that sat out the migration —
-the broker migrated in one commit, firmware migrates one flash at a time.
-(Scar 2026-07-15: a supermini's rejection was chased as an ACL bug for hours.)
+**Stale-firmware diagnostic.** A board still running MQTT firmware (pre-cutover)
+can't reach `zenohd` at all — a different protocol on a different port — so it
+never joins the fabric and simply never appears in the fleet. Nothing is wrong
+with the transport or the ACL: reflash the board. Expect this from any board that
+sat out the cutover — the hub migrated in one commit, firmware migrates one flash
+at a time. (Scar 2026-07-15, MQTT era: a supermini's *broker* rejection — CONNACK
+*not authorized*, because its stale firmware still sent a username the
+lone-`operator` passwd file didn't know — was chased as an ACL bug for hours; same
+species, a stale-firmware board reads as an infra bug.)
 
-**Where the operator credential actually lives** (deleted
-`classroom.example.json5` 2026-07-16 — it described this value while being
-loaded by nothing, so it was a third place to forget, and its own header had
-admitted it stopped being runtime config on 2026-07-08; the rationale it
-carried already lives in `mosquitto-acl.example.conf`'s header):
+**Where the operator credential lives:**
 
-- `deploy/install.sh` seeds `/etc/mosquitto/hub-passwd` with a placeholder,
-  **only if absent** — re-running install never clobbers a rotated one.
-- `/etc/mosquitto/hub-passwd` is the live truth (salted+hashed).
-- **The ESP32 hub keeps its own**: `robot`'s `hub_role.c` `connect_cb` reads
-  NVS per-connect (`robot_config_load_operator_pass`), falling back to the
-  compile-time `OPERATOR_PASS` when unset; set it via the portal's
-  `POST /wifi/operator`, no reflash or reboot. Two hubs, two independent
-  definitions of one secret — rotate the Pi and the ESP hub still admits its
-  own. **The split is structural, not a TODO**: there is no shared store (the
-  two hubs are alternatives, rarely on one network), and the values aren't
-  even mirror-able — the Pi keeps a PBKDF2 hash and never holds the plaintext
-  again, while the ESP `strcmp`s plaintext. Don't "fix" it by copying a value;
-  rotate each hub at its own surface.
+- `deploy/install.sh` seeds `/etc/hub/operator.env` (`OPERATOR_PASS=change-me`)
+  with a placeholder, **only if absent** — re-running install never clobbers a
+  rotated one; rotate with a `sed` + `systemctl restart ws-adapter` (the file's
+  own install-time comment has the line).
+- `/etc/hub/operator.env` is the live truth; the ws-adapter reads `OPERATOR_PASS`
+  from it and compares each `{op:auth}` against it.
+- **The ESP32 hub keeps its own**: `robot`'s hub role reads the operator code
+  from NVS, falling back to the compile-time `OPERATOR_PASS`; set it via the
+  portal's `POST /wifi/operator`, no reflash or reboot. Two hubs, two independent
+  definitions of one secret — rotate the Pi and the ESP hub still admits its own.
+  **The split is structural, not a TODO**: there is no shared store (the two hubs
+  are alternatives, rarely on one network). Both now hold the code as plaintext
+  (the ws-adapter and the ESP each compare it directly), so don't "fix" it by
+  copying a value between them — rotate each hub at its own surface.
 
 ## Hub-AP mode (live on the classroom Pi since 2026-07-04)
 Not transport-specific — this is Pi/Wi-Fi-radio topology: wlan0 AP `hub-XXXX`
@@ -220,31 +233,32 @@ hardware boot). Scars:
 - **Measured data only** — a real board's IMU omits fields it can't sense; no
   synthetic telemetry on real topics. (Inherited — applies once a robot sim
   exists here.)
-- **Identity in the topic, not the body** — mirrors hub-zenoh's
-  identity-in-the-key convention. The `rpc_set_led.json` request carries no
-  `topic` field; MQTT5's `response_topic`/`correlation_data` properties (on a
-  fixed `robots/<id>/led/reply` pattern, not a fully dynamic topic — see
-  `../CONTRACT.md`) keep that holding without the queryable primitive
-  Zenoh has.
-- **No relay, ever, for MQTT-native jobs.** Before adding a Rust call site
-  that touches MQTT pub/sub, check whether Mosquitto's own ACL/broker
-  features already do the job — that's the lesson of this whole redesign
-  (classroom scoping used to be ~80 lines of Rust; it's now a broker config
-  file).
+- **Identity in the key, not the body** — the `rpc_set_led.json` request carries
+  no `key`/`topic` field; the robot declares a **Zenoh queryable** on
+  `robots/<id>/led` and a client `get`s it, so query/reply pairs the request to
+  its answer with no reply key and no correlation-data (`../CONTRACT.md`). This
+  is the native primitive the MQTT5 `response_topic`/`correlation_data` dance
+  used to emulate.
+- **No relay, ever.** hubd touches no fabric traffic; before adding a Rust call
+  site that would, check whether the transport (the `zenohd` ACL, the ws-adapter's
+  auth) or the firmware already does the job — that's the lesson of this whole
+  redesign (classroom scoping used to be ~80 lines of Rust; it's now the adapter's
+  auth check plus a router-ACL file).
 
 ## Run
-Two processes, not one: `mosquitto -c mosquitto.example.conf` (broker;
-`examples/classroom-mosquitto-demo.sh` generates the passwd file first) and
-`cargo run --bin hubd` (dashboard/HTTP chassis — `HUB_MQTT_ADDR` tells it what
-broker address to report to robots/the dashboard; it does not bind that
-address itself). No sim clients exist yet (hub-zenoh's `robot`/`device`/
-`watch`/`intruder` bins were Zenoh-specific and were deleted rather than left
-broken).
+Three processes: `zenohd -c zenoh-router.example.json5` (the router), the
+**ws-adapter** beside it (`ZENOH_CONNECT=tcp/127.0.0.1:7447 WS_PORT=9001
+OPERATOR_PASS=<code> python3 ws-adapter/ws_zenoh_adapter.py` — see its README; a
+self-contained bench with no router can set `ZENOH_LISTEN=` instead), and
+`cargo run --bin hubd` (dashboard/HTTP chassis — `HUB_ZENOH_ADDR` tells it what
+Zenoh endpoint to advertise to robots/the dashboard as the `/fleet` locator; it
+does not bind that endpoint itself). No sim clients exist yet (hub-zenoh's
+`robot`/`device`/`watch`/`intruder` bins were deleted rather than left broken).
 
 ## Ops (`tools/`)
-`tools/deploy-hubd.sh` and `tools/pi-serial.py` are transport-agnostic,
-unchanged from hub-zenoh — though the Pi image/systemd unit will need a
-second unit for Mosquitto (not yet done; hub#1). `tools/reprovision.py` is a
-stub — it used a Zenoh Python client (`pip install eclipse-zenoh`) in
-hub-zenoh; port it to an MQTT client library once sim clients land (hub#1
-phase 4).
+`tools/deploy-hubd.sh` and `tools/pi-serial.py` are transport-agnostic. The
+appliance now runs `zenohd` and the ws-adapter as their own systemd units
+(`deploy/zenohd.service`, `deploy/ws-adapter.service`, installed from
+`deploy/payload.tsv`). `tools/reprovision.py` is a stub — port it to a Zenoh
+publish on `robots/<id>/cmd/reprovision` (via the ws-adapter, or a
+`pip install eclipse-zenoh` client) once sim clients land (hub#1 phase 4).

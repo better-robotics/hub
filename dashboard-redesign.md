@@ -61,8 +61,8 @@ doesn't match the wire teaches a fiction that breaks their code.
 
 Non-negotiable: UI strings come from `CONTRACT.md` verbatim.
 
-- `robots/<id>/<channel>` — **plural `robots`**, load-bearing (the Mosquitto ACL
-  and the firmware hardcode it). The friendly name ("Scout") lives in the card
+- `robots/<id>/<channel>` — **plural `robots`**, load-bearing (the `zenohd`
+  router ACL and the firmware hardcode it). The friendly name ("Scout") lives in the card
   header; the topic path stays `robots/a044/…`.
 - Channels: `pwm` (drive), `imu`, `set_led`; planned `range` (**not**
   "distance" — sensor-agnostic by design: HC-SR04 today, VL53L0X next kit),

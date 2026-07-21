@@ -366,8 +366,8 @@ async fn poll_uplink(uplink: Uplink) {
 /// Board addresses the HUB OBSERVED, for the jobs that must not trust a board's
 /// word about where it lives.
 ///
-/// A robot's `sys` beacon carries an `ip` field, and the ACL grants `robots/#`
-/// to every client with no credential (`mosquitto-acl.example.conf`), on an open
+/// A robot's `sys` beacon carries an `ip` field, and the open posture grants
+/// `robots/**` to every client with no credential (CONTRACT.md § Discovery), on an open
 /// AP. So `sys.ip` is chosen by whoever published the beacon — fine for showing
 /// a fact on a card, disqualifying for anything the dashboard sends a secret to:
 /// a fake robot pointing at a laptop would collect the operator password from
@@ -380,7 +380,7 @@ async fn poll_uplink(uplink: Uplink) {
 /// beacon can claim any `ip`; it cannot make our own DHCP server agree.
 ///
 /// Not proof of identity — MAC spoofing exists — but it costs an attacker a
-/// collision with the real board on our own L2 segment instead of one MQTT
+/// collision with the real board on our own L2 segment instead of one
 /// publish anyone on the AP can send.
 ///
 /// Every `dnsmasq-*.leases` is merged rather than reading the AP's by name:
@@ -1214,7 +1214,7 @@ async fn main() {
     }
     println!("[hubd] robots/sim clients: point at the hub's Zenoh endpoint, {locator} (see zenoh-router.example.json5)");
 
-    // hubd holds no transport session — Mosquitto is a separate process.
+    // hubd holds no transport session — zenohd + the ws-adapter are separate processes.
     // Park so the HTTP chassis (dashboard, /fleet) stays up.
     loop {
         tokio::time::sleep(Duration::from_secs(3600)).await;

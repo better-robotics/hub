@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""hub_mcp_zenoh.py — the Zenoh port of hub_mcp.py (MQTT→Zenoh migration, M2).
+"""hub_mcp.py — drive the classroom fleet from an LLM (the MCP server).
 
-Runs alongside the MQTT `hub_mcp.py` during the migration — the live bench tool
-stays on MQTT until the cutover; this is the Zenoh prototype that validates the
-`zenoh-migration.md` wire spec.
+The bench tool. It talks to the hub's WS-JSON adapter as the operator, so every
+drive command flows through the one adapter edge that the router ACL trusts (the
+MQTT bridge it replaced was retired in the Zenoh cutover).
 
 **Transport: the WS-JSON adapter, as an operator — NOT raw Zenoh (hub#10 step 5).**
 The bridge is a drive path, and on the Pi `zenohd` routes, so a raw client could

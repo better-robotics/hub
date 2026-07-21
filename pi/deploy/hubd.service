@@ -1,11 +1,11 @@
 [Unit]
 # Generic Linux unit — runs hubd as the always-on classroom dashboard/HTTP
-# chassis on any systemd host (a Pi is just one). hubd is NOT the MQTT broker:
-# that's Mosquitto, a separate service (see deploy/install.sh + mosquitto.conf).
+# chassis on any systemd host (a Pi is just one). hubd is NOT the transport:
+# that's zenohd + the ws-adapter, separate services (deploy/install.sh).
 # hubd serves the dashboard (:80), /fleet, and device-served Wi-Fi setup
 # (/wifi/*, driving NetworkManager) — the latter folded in when provisiond and
 # the BLE stack were deleted (2026-07-09).
-Description=hub — classroom dashboard + Wi-Fi setup (broker is Mosquitto)
+Description=hub — classroom dashboard + Wi-Fi setup (transport is zenohd + ws-adapter)
 # NetworkManager (not just network-online): /wifi/scan|connect shell out to nmcli.
 After=network-online.target NetworkManager.service
 Wants=network-online.target NetworkManager.service
@@ -16,7 +16,7 @@ WorkingDirectory=/opt/hub
 # Dashboard on :80 so the classroom URL is just http://hub.local (avahi/mDNS,
 # hostname `hub`; 10.42.0.1 is the fallback). Code default stays :8000 so
 # unprivileged dev runs (`cargo run --bin hubd`) still bind. hubd holds no
-# MQTT connection, so it needs no broker credentials.
+# transport session, so it needs no credentials.
 Environment=HUB_HTTP=0.0.0.0:80
 ExecStart=/opt/hub/hubd
 Restart=always

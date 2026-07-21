@@ -1,16 +1,11 @@
 # ---- pi (Rust) ----
 pi/target/
 # Cargo.lock is committed — binary crate, reproducible builds.
-pi/mosquitto-passwd.example          # broker demo output — salted, but a credential file
-# CI stages these into pi-gen files/ at build time — not source:
+# CI stages these into the image files/ dir at build time — not source:
 pi/image/stage-hub/00-hub/files/hubd
-pi/image/stage-hub/00-hub/files/provisiond
 pi/image/stage-hub/00-hub/files/hubd.service
-pi/image/stage-hub/00-hub/files/provisiond.service
 pi/image/stage-hub/00-hub/files/usb-gadget.service
 pi/image/stage-hub/00-hub/files/usb-gadget-setup.sh
-pi/image/stage-hub/00-hub/files/mosquitto.conf
-pi/image/stage-hub/00-hub/files/mosquitto-acl.conf
 
 # (The ESP32 hub moved to better-robotics/robot as a boot role, 2026-07-09 — its
 # build artifacts + creds are gitignored there now.)

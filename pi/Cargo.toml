@@ -2,13 +2,13 @@
 name = "hub"
 version = "0.1.0"
 edition = "2021"
-description = "The classroom Robotics Hub — MQTT-transport variant. hubd serves the dashboard and device-served Wi-Fi setup (/wifi/*, via nmcli); Mosquitto (a separate process) is the broker every MQTT party talks to directly, see hub-mqtt#1"
+description = "The classroom Robotics Hub. hubd serves the dashboard and device-served Wi-Fi setup (/wifi/*, via nmcli); the transport is zenohd + the ws-adapter (separate services), which every Zenoh party talks to directly"
 license = "MIT"
 
 # Cargo auto-discovers src/lib.rs (crate `hub`) and src/bin/hubd.rs.
-# No MQTT client crate here — hubd isn't an MQTT client (2026-07-08: scoping
-# moved to Mosquitto's own ACL, browsers connect with mqtt.js directly; see
-# CLAUDE.md § Architecture and mosquitto.example.conf). Wi-Fi provisioning is
+# No transport-client crate here — hubd isn't a Zenoh client (2026-07-08: scoping
+# moved off hubd; browsers reach the fabric through the ws-adapter beside zenohd;
+# see CLAUDE.md § Architecture and zenoh-router.example.json5). Wi-Fi provisioning is
 # now device-served over HTTP (nmcli shelled out from hubd, src/wifi.rs) — the
 # BLE stack (bluer/uuid + the `provisiond` binary) was deleted 2026-07-09.
 

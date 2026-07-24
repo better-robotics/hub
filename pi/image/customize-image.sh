@@ -129,7 +129,7 @@ rm -f "$ROOTFS/tmp/01-run-chroot.sh" "$ROOTFS/tmp/hub-payload.tsv"
 # Fetched on the CI host (the chroot has DNS but this needs no chroot). The
 # release asset is the full built site INCLUDING its vendored deps (Blockly,
 # Monaco, mqtt.js, MicroPython-WASM) —
-# better-robotics/ide's vendor/ is gitignored (fetched by vendor.sh, not
+# sprocket-robotics/ide's vendor/ is gitignored (fetched by vendor.sh, not
 # committed), so a plain source tarball would ship a broken page.
 #
 # PINNED by tag and digest (IDE_RELEASE / IDE_SHA256, build-image.yml), like the
@@ -138,7 +138,7 @@ rm -f "$ROOTFS/tmp/01-run-chroot.sh" "$ROOTFS/tmp/hub-payload.tsv"
 # cut when latest was ide-v7 -- would bake ide-v9 today and call it the same tag.
 : "${IDE_RELEASE:?IDE_RELEASE not set — pin it in build-image.yml}"
 : "${IDE_SHA256:?IDE_SHA256 not set — pin it in build-image.yml}"
-curl -fsSL "https://github.com/better-robotics/ide/releases/download/${IDE_RELEASE}/ide-dist.tar.gz" \
+curl -fsSL "https://github.com/sprocket-robotics/ide/releases/download/${IDE_RELEASE}/ide-dist.tar.gz" \
   -o /tmp/ide-dist.tar.gz
 echo "${IDE_SHA256}  /tmp/ide-dist.tar.gz" | sha256sum -c -
 install -d "$ROOTFS/usr/share/hub/ide"

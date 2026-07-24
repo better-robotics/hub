@@ -24,7 +24,7 @@
 # checksum, and `install.sh` cannot run on the Pi: it native-builds and there is
 # no toolchain there by design):
 #
-#   gh run download <run> -R better-robotics/hub -n hubd-arm64
+#   gh run download <run> -R sprocket-robotics/hub -n hubd-arm64
 #   scp hubd pi@hub.local:/tmp/hubd-new
 #   ssh pi@hub.local 'sha256sum /tmp/hubd-new | grep -q <sha> \
 #     && sudo cp -a /opt/hub/hubd /opt/hub/hubd.prev \
@@ -37,7 +37,7 @@
 # runs and watches. Add the flag when someone can exercise both paths.
 set -euo pipefail
 
-REPO=better-robotics/hub   # was hub-mqtt — merged into the monorepo 2026-07-08
+REPO=sprocket-robotics/hub   # was hub-mqtt — merged into the monorepo 2026-07-08
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$DIR"
 

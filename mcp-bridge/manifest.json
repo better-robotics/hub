@@ -1,17 +1,17 @@
 {
   "manifest_version": "0.2",
   "name": "hub-fleet",
-  "display_name": "Better Robotics — Hub Fleet",
+  "display_name": "Sprocket Robotics — Hub Fleet",
   "version": "0.3.0",
   "description": "Drive and observe the classroom robots from your AI, over the hub's MQTT contract.",
-  "long_description": "Connects Claude Desktop (or any MCPB-capable client) to a Better Robotics classroom hub. Your team code scopes what your AI can do — drive your own robot, watch live telemetry on the wire, blink it to find it on the desk. The operator identity additionally manages team codes, access requests, and robot assignment. Join the hub's Wi-Fi, install this, and ask your AI to drive: no code is needed up front — it starts read-only and can request access in the chat, which your team approves with one click on its signed-in dashboard (match the pairing code). Or enter your team code here to skip the pairing step.",
+  "long_description": "Connects Claude Desktop (or any MCPB-capable client) to a Sprocket Robotics classroom hub. Your team code scopes what your AI can do — drive your own robot, watch live telemetry on the wire, blink it to find it on the desk. The operator identity additionally manages team codes, access requests, and robot assignment. Join the hub's Wi-Fi, install this, and ask your AI to drive: no code is needed up front — it starts read-only and can request access in the chat, which your team approves with one click on its signed-in dashboard (match the pairing code). Or enter your team code here to skip the pairing step.",
   "author": {
-    "name": "Better Robotics",
-    "url": "https://github.com/better-robotics"
+    "name": "Sprocket Robotics",
+    "url": "https://github.com/sprocket-robotics"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/better-robotics/hub"
+    "url": "https://github.com/sprocket-robotics/hub"
   },
   "server": {
     "type": "python",

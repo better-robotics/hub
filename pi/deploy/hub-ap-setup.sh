@@ -24,7 +24,7 @@ CON=hub-ap
 # how the client resolves names.
 #
 # MIRRORED DESIGN — this nft table and the ESP32's src/captive_nat.c are one
-# captive policy in two languages (better-robotics/robot). The single spec both
+# captive policy in two languages (sprocket-robotics/robot). The single spec both
 # reconcile to is the monorepo's CONTRACT.md § Captive onboarding: the capture
 # set (DNS 53 + HTTP 80, never 443), the `acked` bypass, the 90 s presence-reaper
 # grace (hubd.rs reap_acks / robot's captive_reap_absent), and the genuine-success

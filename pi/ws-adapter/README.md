@@ -1,7 +1,7 @@
 # ws-adapter — the browser edge of the Pi Zenoh hub
 
 The Pi-side of the MQTT→Zenoh migration's browser tier (tracked in
-[`#9`](https://github.com/better-robotics/hub/issues/9); wire spec:
+[`#9`](https://github.com/sprocket-robotics/hub/issues/9); wire spec:
 `../../zenoh-migration.md`). A browser can't speak native Zenoh, so the dashboard
 speaks a small **WS-JSON op protocol** over one WebSocket and this process maps it
 onto a zenoh session beside `zenohd`. It is the Python sibling of the ESP

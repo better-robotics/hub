@@ -1,7 +1,7 @@
 # CONTRACT — the hub wire contract
 
 The transport-agnostic message contract every hub — the Pi (`pi/`) and the ESP32
-hub role (in `better-robotics/robot`) — and client (`dashboard.html`,
+hub role (in `sprocket-robotics/robot`) — and client (`dashboard.html`,
 `mcp-bridge/`) agrees on:
 envelopes + topic scheme. Currently the imu/pwm/led subset. Planned data
 channels, in the order the kits will need them (each lands with an envelope
@@ -81,7 +81,7 @@ exists in the window before anyone has assigned a name — i.e. exactly the demo
 
 ## The BLE transport (workbench)
 
-[`workbench`](https://github.com/better-robotics/workbench) speaks the same
+[`workbench`](https://github.com/sprocket-robotics/workbench) speaks the same
 contract semantics over Web Bluetooth GATT — one characteristic per channel
 instead of one topic per channel. The mapping, with the unit differences that
 make a blind rename wrong:
@@ -162,7 +162,7 @@ isolation).
 
 ## Discovery & isolation — how a client reaches *either* hub
 
-The robot (`better-robotics/robot`) connects to the hub's Zenoh endpoint, so the
+The robot (`sprocket-robotics/robot`) connects to the hub's Zenoh endpoint, so the
 two hosts (the Pi hub, and the ESP32 hub role) are **the same hub to it** — same
 `:7447`, same keys, same session. One firmware runs against both. The only
 host-specific concern is *finding* the hub, and it resolves to two host-agnostic

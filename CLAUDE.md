@@ -9,8 +9,8 @@ one implementation.
 - **Top level = the shared contract**: `CONTRACT.md` (topic scheme), `envelopes/`
   (message shapes), `dashboard.html` (browser client), `mcp-bridge/` (LLM client).
 - **`pi/`** — Raspberry Pi implementation (Rust `hubd` + zenohd + ws-adapter + Pi image).
-  Was `better-robotics/hub-mqtt`. hubd also serves the
-  [`better-robotics/ide`](https://github.com/better-robotics/ide) bundle
+  Was `sprocket-robotics/hub-mqtt`. hubd also serves the
+  [`sprocket-robotics/ide`](https://github.com/sprocket-robotics/ide) bundle
   (its built dist — source + vendored Blockly/Monaco/mqtt.js/MicroPython-WASM,
   fetched as a release asset since `ide`'s `vendor/` is gitignored) at `/ide/`
   from `HUB_IDE_DIR` (default `/usr/share/hub/ide`; installed by
@@ -30,7 +30,7 @@ The Pi build-embeds the top-level `dashboard.html`
 (`include_str!("../../../dashboard.html")`) and speaks the `envelopes/` contract.
 
 **The second hub — the whole hub on one ESP32 — moved out 2026-07-09.** It is now
-a *boot role* of the unified firmware in `better-robotics/robot` (a robot that
+a *boot role* of the unified firmware in `sprocket-robotics/robot` (a robot that
 finds no `hub-*` becomes one), not a separate implementation. That repo **vendors**
 `dashboard.html` from here (canonical stays in this monorepo) with a drift check
 (`robot/tools/sync-dashboard.sh --check`) — the tradeoff for one-image firmware:
@@ -149,11 +149,11 @@ from `#chip-pop` for months, which is exactly how they all got `gap: 0`).
   device-served Wi-Fi setup, router ACL).
   Contract refs point at the monorepo top level (`../CONTRACT.md`,
   `../envelopes/`); remaining `protocol/` mentions there are hub-zenoh's own.
-- The ESP32 hub role's context lives in `better-robotics/robot` (`CLAUDE.md`).
+- The ESP32 hub role's context lives in `sprocket-robotics/robot` (`CLAUDE.md`).
 
 ## Building
 - Pi: `cd pi && cargo build` (or `sudo ./deploy/install.sh`). Build-verified 2026-07-08.
-- The ESP32 hub role builds from `better-robotics/robot` (`pio run`), not here.
+- The ESP32 hub role builds from `sprocket-robotics/robot` (`pio run`), not here.
 
 ## Not in this repo (deliberately)
 `hub-zenoh` (Zenoh evaluation baseline — **archived 2026-07-09**, MQTT won the
@@ -167,7 +167,7 @@ client of this repo's contract, not an implementation of it). Different projects
 `pi/`-prefixed artifact paths). `broker-tests` (on push) and `build-hubd` (via
 dispatch) both **verified green** 2026-07-09 — the rehome holds. The other
 `build-*`/`release-*` workflows are `workflow_dispatch` (or tag-gated for
-`build-image`); trigger on demand with `gh workflow run <name>.yml -R better-robotics/hub`.
+`build-image`); trigger on demand with `gh workflow run <name>.yml -R sprocket-robotics/hub`.
 
 **`build-image` builds no base OS since 2026-07-10** (verified green same day,
 ~4.5 min end-to-end): it downloads the pinned official Raspberry Pi OS Lite

@@ -26,7 +26,7 @@ nothing here is Pi-specific** except the network values, which you supply.
   image-only (it needs boot-partition changes this installer doesn't make).
 
 ```sh
-git clone https://github.com/better-robotics/hub && cd hub/pi
+git clone https://github.com/sprocket-robotics/hub && cd hub/pi
 sudo ./deploy/install.sh
 ```
 

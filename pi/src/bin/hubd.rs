@@ -11,7 +11,7 @@
 //! (deleted 2026-07-09).
 //!
 //! `GET /` is the embedded dashboard; `GET /fleet` is `{uplink, locator}`;
-//! `GET /ide/` serves the better-robotics/ide bundle from disk when installed.
+//! `GET /ide/` serves the sprocket-robotics/ide bundle from disk when installed.
 //! The dashboard has its transport shim inlined directly (2026-07-08) rather than
 //! served as a separate file — that's also what makes it a genuine
 //! standalone artifact: download the top-level `dashboard.html` on its own, open it
@@ -31,7 +31,7 @@ use tokio::net::TcpListener;
 const DASHBOARD_HTML: &str = include_str!("../../../dashboard.html");
 const ICON_SVG: &str = include_str!("../../public/icon.svg");
 
-/// The ide bundle (better-robotics/ide's built dist — source + vendored
+/// The ide bundle (sprocket-robotics/ide's built dist — source + vendored
 /// Blockly/Monaco/mqtt.js/MicroPython-WASM), served at `/ide/`. On-disk
 /// rather than embedded: it's a
 /// large tree with binary/vendored assets, ships on its own release cadence,
@@ -297,7 +297,7 @@ async fn ide_serve(raw_path: &str, req: &str, keep: bool) -> Vec<u8> {
                 b"not found"
             } else {
                 b"IDE bundle not installed \xe2\x80\x94 run deploy/install.sh (needs internet), \
-                  or place better-robotics/ide's built dist at /usr/share/hub/ide"
+                  or place sprocket-robotics/ide's built dist at /usr/share/hub/ide"
             };
             let mut resp = format!(
                 "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain; charset=utf-8\r\n\

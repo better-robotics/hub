@@ -78,7 +78,7 @@ SN=$(awk '/Serial/ { print $NF; exit }' /proc/cpuinfo 2>/dev/null || echo "00000
 SUFFIX=$(echo "$SN" | tail -c 5 | tr '[:lower:]' '[:upper:]')
 [ -z "$SUFFIX" ] && SUFFIX="0000"
 echo "$SN" > strings/0x409/serialnumber
-echo "Better Robotics" > strings/0x409/manufacturer
+echo "Sprocket Robotics" > strings/0x409/manufacturer
 echo "hub-$SUFFIX" > strings/0x409/product
 
 mkdir -p configs/c.1/strings/0x409

@@ -3,7 +3,7 @@
 # service. Host-agnostic: works on any systemd Linux box (a Pi is one). Run it
 # *on the target* (it native-builds for the host arch — no cross toolchain).
 #
-#   git clone https://github.com/better-robotics/hub && cd hub/pi
+#   git clone https://github.com/sprocket-robotics/hub && cd hub/pi
 #   sudo ./deploy/install.sh
 #
 # Cross-compiling from a dev machine is the later optimization (see README);
@@ -129,7 +129,7 @@ if [[ ${#units[@]} -gt 0 ]]; then
 fi
 
 # ---- IDE bundle (optional — needs internet at install time) ----
-# hubd serves better-robotics/ide's built dist at /ide/ when present
+# hubd serves sprocket-robotics/ide's built dist at /ide/ when present
 # (HUB_IDE_DIR, default /usr/share/hub/ide). The release asset is the full
 # static site INCLUDING its vendored deps — Blockly, Monaco, mqtt.js,
 # MicroPython-WASM (ide's vendor/ is gitignored —
@@ -138,7 +138,7 @@ fi
 # bundle, or runs without one.
 IDE_DIR=/usr/share/hub/ide
 echo "[install] fetching ide bundle…"
-if curl -fsSL https://github.com/better-robotics/ide/releases/latest/download/ide-dist.tar.gz \
+if curl -fsSL https://github.com/sprocket-robotics/ide/releases/latest/download/ide-dist.tar.gz \
      -o /tmp/ide-dist.tar.gz 2>/dev/null; then
   rm -rf "$IDE_DIR.new"
   mkdir -p "$IDE_DIR.new"

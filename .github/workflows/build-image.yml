@@ -54,7 +54,7 @@ jobs:
       # It is the largest single thing on the card and the only unpinned one, 70
       # lines from a base image pinned by name, URL and digest.
       # Bump deliberately: new tag + its digest from
-      #   gh release view -R better-robotics/ide --json assets
+      #   gh release view -R sprocket-robotics/ide --json assets
       IDE_RELEASE: ide-v9
       IDE_SHA256: 0ffc6003bc5fdfcc80d00e4c74c4175d527f784291c1285b796781b01f7934aa
       # key-only login — pubkey baked, no password set

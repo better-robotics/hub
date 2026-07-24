@@ -4,7 +4,7 @@ name: captive contract
 # CONTRACT.md § Captive onboarding — the single spec both hubs reconcile to.
 # Guards the drift that shipped 2026-07-19 (hubd missing the Firefox /success.txt
 # arm the ESP had): invisible to review, every other arm present and correct.
-# The ESP twin is guarded in better-robotics/robot (tools/check-captive-probes.py,
+# The ESP twin is guarded in sprocket-robotics/robot (tools/check-captive-probes.py,
 # which also catches ESP-IDF's dead-unregistered-handler class this hub can't have).
 on:
   push:

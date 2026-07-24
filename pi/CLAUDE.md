@@ -1,15 +1,15 @@
 # pi/ — Raspberry Pi hub context
 
 The Raspberry Pi implementation of the classroom Robotics Hub. Was the
-standalone `better-robotics/hub-mqtt` repo until the 2026-07-08 monorepo merge
+standalone `sprocket-robotics/hub-mqtt` repo until the 2026-07-08 monorepo merge
 (hub-mqtt → `hub`, this directory); MQTT won the transport bake-off and
-[`better-robotics/hub-zenoh`](https://github.com/better-robotics/hub-zenoh)
+[`sprocket-robotics/hub-zenoh`](https://github.com/sprocket-robotics/hub-zenoh)
 (the evaluation baseline, greenfield origin
-[hub-zenoh#4](https://github.com/better-robotics/hub-zenoh/issues/4)) was
+[hub-zenoh#4](https://github.com/sprocket-robotics/hub-zenoh/issues/4)) was
 archived read-only 2026-07-09 as the baseline record. The transport then
 migrated MQTT→Zenoh (the ROS 2 on-ramp won the re-evaluation,
-[hub#9](https://github.com/better-robotics/hub/issues/9)); this doc is the Zenoh
-hub. Robot firmware: [`better-robotics/robot`](https://github.com/better-robotics/robot).
+[hub#9](https://github.com/sprocket-robotics/hub/issues/9)); this doc is the Zenoh
+hub. Robot firmware: [`sprocket-robotics/robot`](https://github.com/sprocket-robotics/robot).
 
 **hubd is a client of no transport.** The fabric is `zenohd` (the Zenoh router,
 `tcp/<gateway>:7447`) plus the **ws-adapter** (the browser edge, `:9001`,
@@ -45,7 +45,7 @@ Three layers; the hub (this repo) is not the middle one for fabric traffic —
 hubd is a plain HTTP server sitting *beside* the transport:
 - **ESP32 robot** — `zenoh-pico` (Eclipse's C Zenoh, the MCU-sized client;
   version-pinned to the Pi's `zenohd`, 1.9.0). Shipped in
-  `better-robotics/robot`'s unified firmware: sys telemetry, pwm drive, and the
+  `sprocket-robotics/robot`'s unified firmware: sys telemetry, pwm drive, and the
   `cmd/config` assign flow all run over zenoh-pico against the hub's endpoint —
   the robot connects to `tcp/<gateway>:7447` (`../CONTRACT.md` § Discovery).
 - **`zenohd` + the ws-adapter** (separate processes from hubd) — the transport.
@@ -227,7 +227,7 @@ hardware boot). Scars:
   `hub-ap-setup.sh` pins it now, so a fresh card can't come up without it.
 - **Open AP for now**: ESP32-C3 WPA2 join fails against this AP (4-way
   handshake timeout; open joins in ~6 s). Interop unresolved — see
-  `better-robotics/robot` CLAUDE.md.
+  `sprocket-robotics/robot` CLAUDE.md.
 
 ## Conventions
 - **Measured data only** — a real board's IMU omits fields it can't sense; no

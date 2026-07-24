@@ -72,6 +72,6 @@ The wire contract — topic scheme and message shapes — is canonical at the
 monorepo top level: [`CONTRACT.md`](../CONTRACT.md) + [`envelopes/`](../envelopes).
 
 State, roadmap: **[hub#1](../../issues/1)**. The robot firmware the hub
-serves is [`better-robotics/robot`](https://github.com/better-robotics/robot);
+serves is [`sprocket-robotics/robot`](https://github.com/sprocket-robotics/robot);
 an ESP32 board can also *be* the hub (a boot role of that same firmware) when
 no Pi is present.

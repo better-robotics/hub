@@ -7,7 +7,7 @@ pi/image/stage-hub/00-hub/files/hubd.service
 pi/image/stage-hub/00-hub/files/usb-gadget.service
 pi/image/stage-hub/00-hub/files/usb-gadget-setup.sh
 
-# (The ESP32 hub moved to better-robotics/robot as a boot role, 2026-07-09 — its
+# (The ESP32 hub moved to sprocket-robotics/robot as a boot role, 2026-07-09 — its
 # build artifacts + creds are gitignored there now.)
 
 # ---- shared / session ----

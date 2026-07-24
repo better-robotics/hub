@@ -4,7 +4,7 @@ Students join the hub's Wi-Fi, open a dashboard, and drive ESP32 robots over
 Zenoh. This repo is the **contract** (keys, envelopes, the dashboard) and the
 **Raspberry Pi hub** that hosts it at classroom scale; the robot firmware — and
 the ESP32 that can *become* a hub — lives at
-[`better-robotics/robot`](https://github.com/better-robotics/robot).
+[`sprocket-robotics/robot`](https://github.com/sprocket-robotics/robot).
 
 ## One contract, three room sizes
 
@@ -82,7 +82,7 @@ the headless recovery console.
 cd pi && sudo ./deploy/install.sh    # hubd + zenohd + ws-adapter (+ the hub AP on a wlan0 host)
 ```
 
-Both paths also install the [`ide`](https://github.com/better-robotics/ide)
+Both paths also install the [`ide`](https://github.com/sprocket-robotics/ide)
 bundle, served at `http://hub.local/ide/` — snap blocks together or write
 Python, and it runs in the browser and drives a robot over this repo's own
 contract. Reachable from any device on the hub's network, phones included
@@ -90,7 +90,7 @@ contract. Reachable from any device on the hub's network, phones included
 the robots).
 
 **ESP32 hub:** flash the robot firmware
-([browser flasher](https://better-robotics.github.io/)), flip the board's role
+([browser flasher](https://sprocket-robotics.github.io/)), flip the board's role
 to *hub* on its `robot.local` settings page, join its Wi-Fi, open
 `http://hub.local`.
 
@@ -100,12 +100,12 @@ before a real class (edit the file, then restart the ws-adapter).
 
 ## The other repos
 
-[`robot`](https://github.com/better-robotics/robot) — the unified robot +
+[`robot`](https://github.com/sprocket-robotics/robot) — the unified robot +
 ESP32-hub firmware, and the browser flasher it serves at
-[`/robot/`](https://better-robotics.github.io/robot/) ·
-[`better-robotics.github.io`](https://github.com/better-robotics/better-robotics.github.io)
+[`/robot/`](https://sprocket-robotics.github.io/robot/) ·
+[`sprocket-robotics.github.io`](https://github.com/sprocket-robotics/sprocket-robotics.github.io)
 — the org's landing URL, redirects to the flasher ·
-[`ide`](https://github.com/better-robotics/ide) — the blocks-and-Python editor
+[`ide`](https://github.com/sprocket-robotics/ide) — the blocks-and-Python editor
 served at `/ide/` · `hub-zenoh` — archived (the
 standalone Zenoh evaluation baseline; the live transport is now Zenoh in-repo,
 hub#9) · `workbench` — a browser dev environment, drifting from the classroom
